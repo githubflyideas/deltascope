@@ -1,0 +1,7 @@
+# build artifact
+/deltascope
+# vendored Go deps: 建议在需要离线构建的分支/环境中提交, 默认忽略
+/vendor/
+# local dev
+*.db
+*.key
