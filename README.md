@@ -107,8 +107,10 @@ deploy.sh:安装/校验 PCP → 启用 pmcd/pmlogger → 配置 `pmlogger_daily 
 - 极性:`worse_up`(CPU、重传,升=恶化)/ `better_up`(可用内存,升=改善)/
   `neutral`(吞吐量,显著变化仅标 🟡 关注)
 - A=0 → B≠0 记 ∞ 按方向判定;单侧无数据标 🟡
-- 内置 **59 项指标 · 5 大分类**(CPU / 内存 / 磁盘 I/O / 文件系统 / 网络),磁盘分盘、
-  网卡分卡独立成行判定;白名单集中在 `internal/pcp/catalog.go`,增删只改这一个文件
+- 内置 **94 项指标 · 5 大分类**(CPU / 内存 / 磁盘 I/O / 文件系统 / 网络),含 TCP 监听
+  队列溢出、SYN Cookie、OOM Kill、孤儿连接等深水区信号;磁盘分盘、网卡分卡独立成行判定
+- 指标目录可完全自定义:`deltascope catalog export > catalog.json` 导出内置目录,
+  编辑后 `serve -catalog catalog.json` 加载;归档中不存在的指标自动跳过,不产生噪音
 
 ### 安全设计
 
@@ -165,9 +167,11 @@ and installs a hardened systemd unit.
 - Polarity: `worse_up` (CPU, TCP retrans — up is bad), `better_up`
   (available memory — up is good), `neutral` (throughput — flagged 🟡 only)
 - A=0 → B≠0 is reported as ∞ and judged by direction; one-sided gaps get 🟡
-- **59 built-in metrics across 5 categories** (CPU / memory / disk I/O / filesystem /
-  network) with per-device and per-NIC instance rows; the whitelist lives in
-  `internal/pcp/catalog.go` — one file to extend
+- **94 built-in metrics across 5 categories** (CPU / memory / disk I/O / filesystem /
+  network) incl. TCP listen overflows, SYN cookies, OOM kills, orphan sockets, with
+  per-device and per-NIC instance rows
+- Fully customizable catalog: `deltascope catalog export > catalog.json`, edit, then
+  `serve -catalog catalog.json`; metrics absent from the archive are skipped silently
 
 ### Security
 
@@ -221,9 +225,11 @@ DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='強いパスワード' ./deploy.sh
 - 極性:`worse_up`(CPU・TCP 再送 — 上昇=悪化)/ `better_up`(空きメモリ —
   上昇=改善)/ `neutral`(スループット — 変化は 🟡 のみ)
 - A=0 → B≠0 は ∞ として方向で判定。片側欠損は 🟡
-- **59 メトリクス・5 カテゴリ**(CPU / メモリ / ディスク I/O / ファイルシステム /
-  ネットワーク)を内蔵。デバイス別・NIC 別のインスタンス行で個別判定。
-  ホワイトリストは `internal/pcp/catalog.go` に集約 — 追加はこの 1 ファイルのみ
+- **94 メトリクス・5 カテゴリ**を内蔵(TCP リッスンキュー溢れ、SYN Cookie、OOM Kill、
+  オーファンソケット等の深層シグナルを含む)。デバイス別・NIC 別に個別判定
+- カタログは完全カスタマイズ可能:`deltascope catalog export > catalog.json` で
+  エクスポートし、編集後 `serve -catalog catalog.json` で読み込み。アーカイブに
+  存在しないメトリクスは自動スキップ
 
 ### セキュリティ
 

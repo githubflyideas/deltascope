@@ -36,6 +36,8 @@ func main() {
 		cmdServe(os.Args[2:])
 	case "user":
 		cmdUser(os.Args[2:])
+	case "catalog":
+		cmdCatalog(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -49,7 +51,8 @@ func usage() {
   deltascope serve [flags]     启动 Web 服务
   deltascope user add <name>   创建/重置用户 (口令读 DSCOPE_PASSWORD 或交互输入)
   deltascope user del <name>   删除用户
-  deltascope user list         列出用户
+  deltascope user list          列出用户
+  deltascope catalog export     导出内置指标目录 (编辑后经 serve -catalog 加载)
 
 serve flags:
   -listen   监听地址 (默认 127.0.0.1:8080)
@@ -101,7 +104,15 @@ func cmdServe(args []string) {
 	tlsCert := fs.String("tls-cert", "", "TLS 证书 (可选)")
 	tlsKey := fs.String("tls-key", "", "TLS 私钥 (可选)")
 	ttl := fs.Duration("session-ttl", 12*time.Hour, "会话有效期")
+	catalogPath := fs.String("catalog", "", "自定义指标目录 JSON (可选)")
 	fs.Parse(args)
+
+	if *catalogPath != "" {
+		if err := pcp.LoadCatalogFile(*catalogPath); err != nil {
+			log.Fatalf("加载指标目录失败: %v", err)
+		}
+		log.Printf("已加载自定义指标目录 %s (%d 项)", *catalogPath, len(pcp.Catalog))
+	}
 
 	if _, err := os.Stat(*archive); err != nil {
 		log.Printf("警告: 归档目录 %s 不可访问 (%v), 请确认 pmlogger 已运行", *archive, err)
@@ -140,6 +151,19 @@ func cmdServe(args []string) {
 	}
 	log.Printf("v%s HTTP 监听 %s, 归档 %s", version, *listen, *archive)
 	log.Fatal(h.ListenAndServe())
+}
+
+func cmdCatalog(args []string) {
+	if len(args) == 0 || args[0] != "export" {
+		fmt.Fprintln(os.Stderr, "用法: deltascope catalog export > catalog.json")
+		os.Exit(2)
+	}
+	data, err := pcp.ExportCatalog()
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Stdout.Write(data)
+	fmt.Println()
 }
 
 func cmdUser(args []string) {

@@ -3,6 +3,7 @@ package pcp
 import (
 	"context"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -180,5 +181,35 @@ func TestTrendStep(t *testing.T) {
 	}
 	if s := TrendStep(now.Add(-14*24*time.Hour), now); s != 15*time.Minute {
 		t.Errorf("14d 窗口步长应封顶 15m, got %v", s)
+	}
+}
+
+func TestCatalogRoundTrip(t *testing.T) {
+	before := len(Catalog)
+	data, err := ExportCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := t.TempDir() + "/cat.json"
+	if err := os.WriteFile(f, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCatalogFile(f); err != nil {
+		t.Fatal(err)
+	}
+	if len(Catalog) != before {
+		t.Fatalf("往返后指标数不一致: %d != %d", len(Catalog), before)
+	}
+	if _, ok := Lookup("network.tcp.syncookiessent"); !ok {
+		t.Error("加载后索引未重建")
+	}
+	bad := t.TempDir() + "/bad.json"
+	os.WriteFile(bad, []byte(`{"categories":["x"],"metrics":[{"metric":"a;rm -rf","label":"l","category":"x","polarity":"neutral"}]}`), 0o644)
+	if err := LoadCatalogFile(bad); err == nil {
+		t.Error("非法指标名应被拒绝")
+	}
+	os.WriteFile(bad, []byte(`{"categories":["x"],"metrics":[{"metric":"a.b","label":"l","category":"x","polarity":"up"}]}`), 0o644)
+	if err := LoadCatalogFile(bad); err == nil {
+		t.Error("非法极性应被拒绝")
 	}
 }
