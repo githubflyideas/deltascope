@@ -63,8 +63,13 @@ if (page === "main") {
   main().catch((e) => console.error(e));
 }
 
+let CAT = null;
+let foldSet = new Set();
+
 async function main() {
   const me = await api("/api/me");
+  CAT = await api("/api/catalog");
+  foldSet = new Set(CAT.metrics.filter((m) => m.fold).map((m) => m.metric));
   $("#userChip").textContent = me.user;
   $("#hostChip").textContent = me.archive;
   $("#logoutBtn").addEventListener("click", async () => {
@@ -145,81 +150,186 @@ async function runDiff() {
   }
 }
 
-const VERDICT = {
-  worse:  { icon: "🔴", text: "恶化", cls: "v-worse" },
-  better: { icon: "🟢", text: "改善", cls: "v-better" },
-  watch:  { icon: "🟡", text: "关注", cls: "v-watch" },
-  flat:   { icon: "·",  text: "平稳", cls: "v-flat" },
+const KIND = {
+  worse:  { icon: "\u{1F534}", text: "恶化", cls: "v-worse", rgb: "255,93,108" },
+  better: { icon: "\u{1F7E2}", text: "改善", cls: "v-better", rgb: "61,220,151" },
+  watch:  { icon: "\u{1F7E1}", text: "关注", cls: "v-watch", rgb: "232,197,71" },
+  flat:   { icon: "\u00B7",   text: "平稳", cls: "v-flat", rgb: null },
+  new:    { icon: "\u2295",   text: "新出现", cls: "v-new", rgb: "178,141,255" },
+  gone:   { icon: "\u2296",   text: "消失", cls: "v-gone", rgb: "131,145,173" },
 };
+const KIND_RANK = { worse: 0, new: 1, watch: 2, gone: 3, better: 4, flat: 5 };
+
+function rowKind(r) {
+  if (r.a === null && r.b !== null) return "new";
+  if (r.b === null && r.a !== null) return "gone";
+  return r.verdict;
+}
+
+function absD(r) {
+  if (r.delta_pct !== null && r.delta_pct !== undefined) return Math.abs(r.delta_pct);
+  if (r.a === null || r.b === null) return Infinity;
+  return 0;
+}
+
+const SEV = { crit: "严重", warn: "警告", info: "提示" };
+
+function renderFindings(findings) {
+  const box = $("#findings");
+  if (!findings || !findings.length) {
+    box.innerHTML = `<div class="no-finding">未命中已知诊断模式 — 请查看下方明细与趋势曲线。</div>`;
+    return;
+  }
+  const order = { crit: 0, warn: 1, info: 2 };
+  const sorted = [...findings].sort((a, b) => order[a.severity] - order[b.severity]);
+  box.innerHTML = sorted.map((f) => `
+    <div class="finding f-${f.severity}">
+      <div class="finding-head">
+        <span class="sev sev-${f.severity}">${SEV[f.severity] || f.severity}</span>
+        <span class="finding-conclusion">${escapeHtml(f.conclusion)}</span>
+      </div>
+      <div class="finding-evidence">依据: ${f.evidence.map(escapeHtml).join(" · ")}</div>
+      ${f.next && f.next.length ? `<div class="finding-next">下一步: ${f.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
+    </div>`).join("");
+}
+
+function renderTop5(rows) {
+  const box = $("#top5");
+  const worst = rows.filter((r) => rowKind(r) === "worse")
+    .sort((a, b) => absD(b) - absD(a)).slice(0, 5);
+  if (!worst.length) { box.innerHTML = ""; return; }
+  box.innerHTML = worst.map((r) => {
+    const d = r.delta_pct === null ? "\u221E" : (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(0) + "%";
+    const inst = r.instance ? `[${escapeHtml(r.instance)}]` : "";
+    return `<button class="chip" data-target="${r._id}">${escapeHtml(r.label)}${inst} ${d}</button>`;
+  }).join("");
+  box.querySelectorAll(".chip").forEach((c) =>
+    c.addEventListener("click", () => {
+      const el = document.getElementById(c.dataset.target);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.classList.add("row-flash"); setTimeout(() => el.classList.remove("row-flash"), 1600); }
+    }));
+}
+
+function rowHTML(r, kind, extraCls, hiddenAttr) {
+  const k = KIND[kind];
+  let deltaTxt, barHtml = "";
+  if (kind === "new") deltaTxt = "\u2295";
+  else if (kind === "gone") deltaTxt = "\u2296";
+  else if (r.delta_pct === null) deltaTxt = "\u221E";
+  else {
+    deltaTxt = (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
+    const pct = Math.min(50, absD(r) / renderScale * 50);
+    barHtml = `<span class="delta-bar-wrap"><span class="delta-bar ${r.delta_pct >= 0 ? "up" : "down"}" data-w="${pct.toFixed(2)}"></span></span>`;
+  }
+  const inst = r.instance ? ` <code>[${escapeHtml(r.instance)}]</code>` : "";
+  const bg = k.rgb && isFinite(absD(r)) && absD(r) > 0
+    ? `rgba(${k.rgb},${Math.min(0.05 + absD(r) / renderScale * 0.16, 0.22).toFixed(3)})`
+    : (k.rgb && !isFinite(absD(r)) ? `rgba(${k.rgb},0.18)` : "");
+  return `<tr id="${r._id}" class="${k.cls}${extraCls}"${hiddenAttr}${bg ? ` data-bg="${bg}"` : ""}>
+    <td class="metric-cell">
+      <span class="m-label">${k.icon} ${escapeHtml(r.label)}${inst}</span>
+      <span class="m-name">${escapeHtml(r.metric)}</span>
+    </td>
+    <td class="col-a">${fmtNum(r.a)}</td>
+    <td class="col-b">${fmtNum(r.b)}</td>
+    <td class="delta-cell">${deltaTxt}${barHtml}</td>
+    <td>${k.text}</td>
+    <td class="units-cell">${escapeHtml(r.units || "")}</td>
+  </tr>`;
+}
+
+let renderScale = 100;
 
 function renderReport(rep) {
   $("#diffEmpty").classList.add("hidden");
   $("#diffResult").classList.remove("hidden");
 
-  const counts = { worse: 0, better: 0, watch: 0, flat: 0 };
-  rep.rows.forEach((r) => counts[r.verdict]++);
+  rep.rows.forEach((r, i) => { r._id = "row-" + i; });
+  renderFindings(rep.findings);
+
+  const counts = { worse: 0, better: 0, watch: 0, flat: 0, new: 0, gone: 0 };
+  rep.rows.forEach((r) => counts[rowKind(r)]++);
 
   const w = rep.window;
-  const fmtW = (s, e) => `${s.slice(5, 16).replace("T", " ")} → ${e.slice(11, 16)}`;
+  const fmtW = (s, e) => `${s.slice(5, 16).replace("T", " ")} \u2192 ${e.slice(11, 16)}`;
+  const extra = (counts.new ? ` <span class="verdict-pill pill-new">\u2295 新出现 <b>${counts.new}</b></span>` : "") +
+                (counts.gone ? ` <span class="verdict-pill pill-flat">\u2296 消失 <b>${counts.gone}</b></span>` : "");
   $("#verdictStrip").innerHTML = `
-    <span class="verdict-pill pill-bad">🔴 恶化 <b>${counts.worse}</b></span>
-    <span class="verdict-pill pill-good">🟢 改善 <b>${counts.better}</b></span>
-    <span class="verdict-pill pill-warn">🟡 关注 <b>${counts.watch}</b></span>
-    <span class="verdict-pill pill-flat">平稳 <b>${counts.flat}</b></span>
+    <span class="verdict-pill pill-bad">\u{1F534} 恶化 <b>${counts.worse}</b></span>
+    <span class="verdict-pill pill-good">\u{1F7E2} 改善 <b>${counts.better}</b></span>
+    <span class="verdict-pill pill-warn">\u{1F7E1} 关注 <b>${counts.watch}</b></span>
+    <span class="verdict-pill pill-flat">平稳 <b>${counts.flat}</b></span>${extra}
     <span class="verdict-window">
       <span class="wa">[A ${fmtW(w.a_start, w.a_end)}]</span> vs
-      <span class="wb">[B ${fmtW(w.b_start, w.b_end)}]</span> · 阈值 ${w.threshold_pct}%
+      <span class="wb">[B ${fmtW(w.b_start, w.b_end)}]</span> \u00B7 阈值 ${w.threshold_pct}%
     </span>`;
 
-  const onlyExceeded = $("#onlyExceeded").checked;
+  renderTop5(rep.rows);
+
+  const focus = $("#onlyExceeded").checked;
+  const finiteMax = rep.rows.filter((r) => r.delta_pct !== null).map((r) => Math.abs(r.delta_pct));
+  renderScale = Math.max(100, ...finiteMax);
+
   const byCat = new Map();
   rep.rows.forEach((r) => {
-    if (onlyExceeded && !r.exceeded) return;
+    if (focus && rowKind(r) === "flat") return;
     if (!byCat.has(r.category)) byCat.set(r.category, []);
     byCat.get(r.category).push(r);
   });
 
-  const maxAbs = Math.max(100, ...rep.rows.filter((r) => r.delta_pct !== null).map((r) => Math.abs(r.delta_pct)));
-
   const blocks = [];
   for (const [cat, rows] of byCat) {
-    const trs = rows.map((r) => {
-      const v = VERDICT[r.verdict];
-      let deltaTxt, barHtml = "";
-      if (r.delta_pct === null) {
-        deltaTxt = r.a === null ? "新出现" : (r.b === null ? "消失" : "∞");
-      } else {
-        deltaTxt = (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
-        const pct = Math.min(50, Math.abs(r.delta_pct) / maxAbs * 50);
-        barHtml = `<span class="delta-bar-wrap"><span class="delta-bar ${r.delta_pct >= 0 ? "up" : "down"}" data-w="${pct.toFixed(2)}"></span></span>`;
+    const trs = [];
+    let i = 0;
+    while (i < rows.length) {
+      const r = rows[i];
+      if (foldSet.has(r.metric)) {
+        let j = i;
+        while (j < rows.length && rows[j].metric === r.metric) j++;
+        const grp = rows.slice(i, j);
+        if (grp.length > 4) {
+          const worst = [...grp].sort((a, b) =>
+            KIND_RANK[rowKind(a)] - KIND_RANK[rowKind(b)] || absD(b) - absD(a))[0];
+          const wk = rowKind(worst);
+          const bMax = Math.max(...grp.map((x) => x.b ?? -Infinity));
+          const bMin = Math.min(...grp.map((x) => x.b ?? Infinity));
+          const wd = worst.delta_pct === null ? "\u221E" : (worst.delta_pct > 0 ? "+" : "") + worst.delta_pct.toFixed(1) + "%";
+          trs.push(`<tr class="fold-agg ${KIND[wk].cls}" data-fold="${escapeHtml(r.metric)}">
+            <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} 实例</code></span>
+            <span class="m-name">${escapeHtml(r.metric)} \u00B7 B \u6781\u5DEE ${fmtNum(bMin)} ~ ${fmtNum(bMax)}</span></td>
+            <td class="col-a"></td><td class="col-b">${fmtNum(bMax)}</td>
+            <td class="delta-cell">\u6700\u5DEE ${wd}</td><td>${KIND[wk].text}</td><td class="units-cell">${escapeHtml(r.units || "")}</td></tr>`);
+          grp.forEach((x) => trs.push(rowHTML(x, rowKind(x), " fold-child", " hidden")));
+          i = j;
+          continue;
+        }
       }
-      const inst = r.instance ? ` <code>[${escapeHtml(r.instance)}]</code>` : "";
-      return `<tr class="${v.cls}">
-        <td class="metric-cell">
-          <span class="m-label">${v.icon} ${escapeHtml(r.label)}${inst}</span>
-          <span class="m-name">${escapeHtml(r.metric)}</span>
-        </td>
-        <td class="col-a">${fmtNum(r.a)}</td>
-        <td class="col-b">${fmtNum(r.b)}</td>
-        <td class="delta-cell">${deltaTxt}${barHtml}</td>
-        <td>${v.text}</td>
-        <td class="units-cell">${escapeHtml(r.units || "")}</td>
-      </tr>`;
-    }).join("");
-    blocks.push(`<div class="cat-block">
-      <div class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} 项</span></div>
+      trs.push(rowHTML(r, rowKind(r), "", ""));
+      i++;
+    }
+    blocks.push(`<details class="cat-block" open>
+      <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} 项</span></summary>
       <table class="report">
-        <thead><tr><th>指标</th><th>A 均值</th><th>B 均值</th><th>Δ</th><th>结论</th><th>单位</th></tr></thead>
-        <tbody>${trs}</tbody>
+        <thead><tr><th>指标</th><th>A 均值</th><th>B 均值</th><th>\u0394</th><th>结论</th><th>单位</th></tr></thead>
+        <tbody>${trs.join("")}</tbody>
       </table>
-    </div>`);
+    </details>`);
   }
   $("#reportTables").innerHTML = blocks.length
     ? blocks.join("")
-    : `<div class="empty-hint">没有指标超过 ${rep.window.threshold_pct}% 阈值 —— 两个窗口表现基本一致 👍<br>可取消勾选「只看显著变化」查看全量数据。</div>`;
-  document.querySelectorAll(".delta-bar[data-w]").forEach((el) => {
-    el.style.width = el.dataset.w + "%";
-  });
+    : `<div class="empty-hint">聚焦模式下没有可显示的变化行 — 可关闭聚焦查看全量 ${rep.rows.length} 行。</div>`;
+
+  document.querySelectorAll(".delta-bar[data-w]").forEach((el) => { el.style.width = el.dataset.w + "%"; });
+  document.querySelectorAll("tr[data-bg]").forEach((el) => { el.style.backgroundColor = el.dataset.bg; });
+  document.querySelectorAll(".fold-agg").forEach((agg) =>
+    agg.addEventListener("click", () => {
+      agg.classList.toggle("open");
+      let sib = agg.nextElementSibling;
+      while (sib && sib.classList.contains("fold-child")) {
+        sib.hidden = !sib.hidden;
+        sib = sib.nextElementSibling;
+      }
+    }));
 
   const warnBox = $("#warnBox");
   if (rep.warnings && rep.warnings.length) {
@@ -245,9 +355,9 @@ async function trendInit() {
   if (trendReady) { chart && chart.resize(); return; }
   trendReady = true;
 
-  const cat = await api("/api/catalog");
+  const cat = CAT || (CAT = await api("/api/catalog"));
   const seg = $("#presetSeg");
-  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "sock", "syn", "fs"];
+  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "sock", "syn", "psi", "fs"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");

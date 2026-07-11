@@ -213,3 +213,51 @@ func TestCatalogRoundTrip(t *testing.T) {
 		t.Error("非法极性应被拒绝")
 	}
 }
+
+func TestRulesEngine(t *testing.T) {
+	rows := []DiffRow{
+		{Metric: "swap.pagesout", Verdict: VWorse, A: f(0.1), B: f(50), DeltaPct: f(49900)},
+		{Metric: "mem.util.available", Verdict: VWorse, A: f(8e6), B: f(2e6), DeltaPct: f(-75)},
+		{Metric: "kernel.all.cpu.user", Verdict: VFlat, A: f(100), B: f(105), DeltaPct: f(5)},
+	}
+	fs := EvaluateRules(rows)
+	found := false
+	for _, x := range fs {
+		if x.ID == "swap-spiral" {
+			found = true
+			if len(x.Evidence) != 2 {
+				t.Errorf("swap-spiral 证据应为 2 条: %+v", x.Evidence)
+			}
+		}
+		if x.ID == "disk-saturated" {
+			t.Error("未满足的规则不应命中")
+		}
+	}
+	if !found {
+		t.Error("swap-spiral 应命中")
+	}
+	if got := EvaluateRules(nil); len(got) != 0 {
+		t.Errorf("空行集不应有结论: %+v", got)
+	}
+}
+
+func TestRulesRoundTrip(t *testing.T) {
+	n := len(Rules)
+	data, err := ExportRules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fpath := t.TempDir() + "/r.json"
+	os.WriteFile(fpath, data, 0o644)
+	if err := LoadRulesFile(fpath); err != nil {
+		t.Fatal(err)
+	}
+	if len(Rules) != n {
+		t.Fatalf("往返后规则数不一致: %d != %d", len(Rules), n)
+	}
+	bad := t.TempDir() + "/bad.json"
+	os.WriteFile(bad, []byte(`[{"id":"x","severity":"fatal","conclusion":"c","when":[{"metric":"a.b"}]}]`), 0o644)
+	if err := LoadRulesFile(bad); err == nil {
+		t.Error("非法 severity 应被拒绝")
+	}
+}

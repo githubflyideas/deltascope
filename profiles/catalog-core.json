@@ -1,0 +1,739 @@
+{
+  "categories": [
+    "CPU",
+    "内存",
+    "磁盘 I/O",
+    "文件系统",
+    "网络"
+  ],
+  "metrics": [
+    {
+      "metric": "kernel.all.cpu.user",
+      "label": "用户态 CPU",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.sys",
+      "label": "内核态 CPU",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.nice",
+      "label": "低优先级 CPU",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.cpu.idle",
+      "label": "空闲 CPU",
+      "category": "CPU",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "kernel.all.cpu.wait.total",
+      "label": "I/O 等待",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.irq.hard",
+      "label": "硬中断 CPU",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.irq.soft",
+      "label": "软中断 CPU",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.steal",
+      "label": "被抢占 (steal)",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.cpu.guest",
+      "label": "Guest CPU",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.load",
+      "label": "系统负载",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.runnable",
+      "label": "可运行任务数",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.blocked",
+      "label": "I/O 阻塞任务数",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.nprocs",
+      "label": "进程总数",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.pswitch",
+      "label": "上下文切换",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.intr",
+      "label": "中断速率",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.sysfork",
+      "label": "进程创建 (fork)",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.uptime",
+      "label": "运行时长 (uptime)",
+      "category": "CPU",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "kernel.all.pressure.cpu.some.avg",
+      "label": "CPU 压力 (PSI some)",
+      "category": "CPU",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.util.available",
+      "label": "可用内存",
+      "category": "内存",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "mem.util.free",
+      "label": "空闲内存",
+      "category": "内存",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "mem.util.cached",
+      "label": "页缓存",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.bufmem",
+      "label": "缓冲区",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.dirty",
+      "label": "脏页",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.util.writeback",
+      "label": "回写中页",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.util.slab",
+      "label": "slab",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.anonpages",
+      "label": "匿名页",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.mapped",
+      "label": "映射页",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.shmem",
+      "label": "共享内存",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.swapCached",
+      "label": "swap 缓存",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.util.committed_AS",
+      "label": "已承诺内存 (Committed_AS)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.util.pageTables",
+      "label": "页表占用",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "swap.free",
+      "label": "可用 swap",
+      "category": "内存",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "swap.pagesin",
+      "label": "换入页 (swap in)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "swap.pagesout",
+      "label": "换出页 (swap out)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.pgmajfault",
+      "label": "主缺页 (major fault)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.pgfault",
+      "label": "缺页总量",
+      "category": "内存",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "mem.vmstat.oom_kill",
+      "label": "OOM Kill 次数",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.pgscan_direct",
+      "label": "直接回收扫描",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.pgscan_kswapd",
+      "label": "kswapd 回收扫描",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.allocstall",
+      "label": "分配停顿 (allocstall)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "mem.vmstat.compact_stall",
+      "label": "内存规整停顿",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.pressure.memory.some.avg",
+      "label": "内存压力 (PSI some)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.pressure.memory.full.avg",
+      "label": "内存压力 (PSI full)",
+      "category": "内存",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "disk.all.read",
+      "label": "读 IOPS·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.write",
+      "label": "写 IOPS·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.read_bytes",
+      "label": "读吞吐·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.write_bytes",
+      "label": "写吞吐·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.total",
+      "label": "总 IOPS·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.read_merge",
+      "label": "读合并·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.write_merge",
+      "label": "写合并·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.all.avactive",
+      "label": "磁盘活跃时间·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "disk.all.aveq",
+      "label": "I/O 队列·全盘",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "disk.dev.read",
+      "label": "读 IOPS·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.dev.write",
+      "label": "写 IOPS·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.dev.read_bytes",
+      "label": "读吞吐·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.dev.write_bytes",
+      "label": "写吞吐·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.dev.total",
+      "label": "总 IOPS·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "disk.dev.avactive",
+      "label": "磁盘活跃时间·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "disk.dev.aveq",
+      "label": "I/O 队列·分盘",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.pressure.io.some.avg",
+      "label": "I/O 压力 (PSI some)",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "kernel.all.pressure.io.full.avg",
+      "label": "I/O 压力 (PSI full)",
+      "category": "磁盘 I/O",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "filesys.full",
+      "label": "空间使用率",
+      "category": "文件系统",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "filesys.free",
+      "label": "剩余空间",
+      "category": "文件系统",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "filesys.usedfiles",
+      "label": "已用 inode",
+      "category": "文件系统",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "vfs.files.count",
+      "label": "打开文件数",
+      "category": "文件系统",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "vfs.inodes.count",
+      "label": "内核 inode 缓存",
+      "category": "文件系统",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "vfs.dentry.count",
+      "label": "dentry 缓存",
+      "category": "文件系统",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "filesys.avail",
+      "label": "非 root 可用空间",
+      "category": "文件系统",
+      "polarity": "better_up"
+    },
+    {
+      "metric": "network.interface.in.bytes",
+      "label": "入向流量",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.interface.out.bytes",
+      "label": "出向流量",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.interface.in.packets",
+      "label": "入向包速率",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.interface.out.packets",
+      "label": "出向包速率",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.interface.in.errors",
+      "label": "入向错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.interface.out.errors",
+      "label": "出向错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.interface.in.drops",
+      "label": "入向丢包",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.interface.out.drops",
+      "label": "出向丢包",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.interface.collisions",
+      "label": "冲突",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.insegs",
+      "label": "TCP 入段",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.outsegs",
+      "label": "TCP 出段",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.retranssegs",
+      "label": "TCP 重传",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.inerrs",
+      "label": "TCP 入错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.outrsts",
+      "label": "TCP 出 RST",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.timeouts",
+      "label": "TCP 超时",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.currestab",
+      "label": "TCP 已建立连接",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.activeopens",
+      "label": "TCP 主动建连",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.passiveopens",
+      "label": "TCP 被动建连",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.estabresets",
+      "label": "TCP 连接重置",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.attemptfails",
+      "label": "TCP 建连失败",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.listendrops",
+      "label": "TCP 监听丢弃",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.listenoverflows",
+      "label": "TCP 半连接队列溢出",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.syncookiessent",
+      "label": "SYN Cookie 发送",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.syncookiesrecv",
+      "label": "SYN Cookie 验证",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.syncookiesfailed",
+      "label": "SYN Cookie 失败",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.udp.indatagrams",
+      "label": "UDP 入报文",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.udp.outdatagrams",
+      "label": "UDP 出报文",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.udp.inerrors",
+      "label": "UDP 入错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.udp.noports",
+      "label": "UDP 无监听端口",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.udp.recvbuferrors",
+      "label": "UDP 收缓冲错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.udp.sndbuferrors",
+      "label": "UDP 发缓冲错误",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.sockstat.tcp.inuse",
+      "label": "TCP socket 使用",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.sockstat.tcp.alloc",
+      "label": "TCP socket 分配",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.sockstat.tcp.tw",
+      "label": "TIME-WAIT 连接",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.sockstat.tcp.orphan",
+      "label": "孤儿连接",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.sockstat.udp.inuse",
+      "label": "UDP socket 使用",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.softnet.dropped",
+      "label": "软中断收包丢弃",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.softnet.time_squeeze",
+      "label": "软中断时间片挤压",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.softnet.processed",
+      "label": "软中断处理包量",
+      "category": "网络",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.tcp.prunecalled",
+      "label": "接收缓冲修剪",
+      "category": "网络",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.tcp.rcvcollapsed",
+      "label": "接收队列折叠",
+      "category": "网络",
+      "polarity": "worse_up"
+    }
+  ],
+  "presets": {
+    "cpu": {
+      "label": "CPU 使用(ms/s)",
+      "metrics": [
+        "kernel.all.cpu.user",
+        "kernel.all.cpu.sys",
+        "kernel.all.cpu.wait.total",
+        "kernel.all.cpu.steal"
+      ]
+    },
+    "disk": {
+      "label": "磁盘吞吐",
+      "metrics": [
+        "disk.all.read_bytes",
+        "disk.all.write_bytes"
+      ]
+    },
+    "fs": {
+      "label": "文件系统使用率(%)",
+      "metrics": [
+        "filesys.full"
+      ]
+    },
+    "load": {
+      "label": "系统负载",
+      "metrics": [
+        "kernel.all.load"
+      ]
+    },
+    "mem": {
+      "label": "可用内存",
+      "metrics": [
+        "mem.util.available"
+      ]
+    },
+    "net": {
+      "label": "网卡流量",
+      "metrics": [
+        "network.interface.in.bytes",
+        "network.interface.out.bytes"
+      ]
+    },
+    "psi": {
+      "label": "压力 PSI (some)",
+      "metrics": [
+        "kernel.all.pressure.cpu.some.avg",
+        "kernel.all.pressure.memory.some.avg",
+        "kernel.all.pressure.io.some.avg"
+      ]
+    },
+    "sock": {
+      "label": "TCP 连接状态",
+      "metrics": [
+        "network.sockstat.tcp.alloc",
+        "network.sockstat.tcp.tw",
+        "network.sockstat.tcp.orphan"
+      ]
+    },
+    "syn": {
+      "label": "SYN 压力",
+      "metrics": [
+        "network.tcp.syncookiessent",
+        "network.tcp.listendrops",
+        "network.tcp.listenoverflows"
+      ]
+    },
+    "tcp": {
+      "label": "TCP 重传/连接",
+      "metrics": [
+        "network.tcp.retranssegs",
+        "network.tcp.currestab"
+      ]
+    }
+  }
+}

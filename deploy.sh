@@ -36,6 +36,48 @@ fi
 systemctl enable --now pmlogger_daily.timer 2>/dev/null || true
 systemctl enable --now pmlogger_check.timer 2>/dev/null || true
 
+echo "==> [2.5/6] 写入分层采样配置 (热 10s / 温 60s / 冷 5min)"
+cat > /etc/pcp/pmlogger/deltascope.config <<'PMCFG'
+log mandatory on every 10 seconds {
+    kernel.all
+    mem.util
+    mem.vmstat
+    swap
+    network.tcp
+    network.softnet
+    network.sockstat
+}
+log mandatory on every 60 seconds {
+    disk.all
+    disk.dev
+    disk.dm
+    disk.md
+    network.interface
+    network.tcpconn
+    network.udp
+    kernel.percpu.cpu
+}
+log mandatory on every 5 minutes {
+    filesys
+    vfs
+    network.icmp
+    network.ip
+    hinv
+}
+[access]
+disallow .* : all;
+disallow :* : all;
+allow local:* : enquire;
+PMCFG
+CTRL=/etc/pcp/pmlogger/control.d/local
+if [[ -f "$CTRL" ]] && grep -q 'config.default' "$CTRL"; then
+    sed -i 's|-c config.default|-c /etc/pcp/pmlogger/deltascope.config|' "$CTRL"
+    systemctl restart pmlogger
+    echo "    已切换 pmlogger 至分层采样配置"
+else
+    echo "    未找到默认 control 行, 请手动将 pmlogger -c 指向 /etc/pcp/pmlogger/deltascope.config"
+fi
+
 echo "==> [3/6] 安装二进制与数据目录"
 install -m 0755 ./deltascope "$INSTALL_BIN"
 id "$SVC_USER" &>/dev/null || useradd --system --home-dir "$DATA_DIR" --shell /sbin/nologin "$SVC_USER"

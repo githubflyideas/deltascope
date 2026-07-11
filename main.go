@@ -38,6 +38,8 @@ func main() {
 		cmdUser(os.Args[2:])
 	case "catalog":
 		cmdCatalog(os.Args[2:])
+	case "rules":
+		cmdRules(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -53,6 +55,7 @@ func usage() {
   deltascope user del <name>   删除用户
   deltascope user list          列出用户
   deltascope catalog export     导出内置指标目录 (编辑后经 serve -catalog 加载)
+  deltascope rules export       导出内置诊断规则 (编辑后经 serve -rules 加载)
 
 serve flags:
   -listen   监听地址 (默认 127.0.0.1:8080)
@@ -105,6 +108,7 @@ func cmdServe(args []string) {
 	tlsKey := fs.String("tls-key", "", "TLS 私钥 (可选)")
 	ttl := fs.Duration("session-ttl", 12*time.Hour, "会话有效期")
 	catalogPath := fs.String("catalog", "", "自定义指标目录 JSON (可选)")
+	rulesPath := fs.String("rules", "", "自定义诊断规则 JSON (可选)")
 	fs.Parse(args)
 
 	if *catalogPath != "" {
@@ -112,6 +116,12 @@ func cmdServe(args []string) {
 			log.Fatalf("加载指标目录失败: %v", err)
 		}
 		log.Printf("已加载自定义指标目录 %s (%d 项)", *catalogPath, len(pcp.Catalog))
+	}
+	if *rulesPath != "" {
+		if err := pcp.LoadRulesFile(*rulesPath); err != nil {
+			log.Fatalf("加载诊断规则失败: %v", err)
+		}
+		log.Printf("已加载自定义诊断规则 %s (%d 条)", *rulesPath, len(pcp.Rules))
 	}
 
 	if _, err := os.Stat(*archive); err != nil {
@@ -159,6 +169,19 @@ func cmdCatalog(args []string) {
 		os.Exit(2)
 	}
 	data, err := pcp.ExportCatalog()
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Stdout.Write(data)
+	fmt.Println()
+}
+
+func cmdRules(args []string) {
+	if len(args) == 0 || args[0] != "export" {
+		fmt.Fprintln(os.Stderr, "用法: deltascope rules export > rules.json")
+		os.Exit(2)
+	}
+	data, err := pcp.ExportRules()
 	if err != nil {
 		log.Fatal(err)
 	}

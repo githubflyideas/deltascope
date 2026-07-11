@@ -19,7 +19,7 @@ import (
 
 const (
 	sessionCookie = "ds_session"
-	execTimeout   = 30 * time.Second
+	execTimeout   = 60 * time.Second
 )
 
 type Server struct {

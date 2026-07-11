@@ -65,7 +65,7 @@
         <input type="number" id="threshold" value="15" min="0" max="10000" step="1"> %
       </label>
       <label class="check-label">
-        <input type="checkbox" id="onlyExceeded" checked> 只看显著变化
+        <input type="checkbox" id="onlyExceeded"> 聚焦模式(隐藏平稳行)
       </label>
       <button class="btn btn-primary" id="runDiff">开始比对</button>
     </div>
@@ -73,7 +73,9 @@
     <div class="notice hidden" id="diffError"></div>
 
     <div id="diffResult" class="hidden">
+      <div id="findings"></div>
       <div class="verdict-strip" id="verdictStrip"></div>
+      <div class="top5" id="top5"></div>
       <div id="reportTables"></div>
       <details class="warn-box" id="warnBox">
         <summary>PCP 告警输出</summary>

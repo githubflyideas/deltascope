@@ -107,10 +107,13 @@ deploy.sh:安装/校验 PCP → 启用 pmcd/pmlogger → 配置 `pmlogger_daily 
 - 极性:`worse_up`(CPU、重传,升=恶化)/ `better_up`(可用内存,升=改善)/
   `neutral`(吞吐量,显著变化仅标 🟡 关注)
 - A=0 → B≠0 记 ∞ 按方向判定;单侧无数据标 🟡
-- 内置 **94 项指标 · 5 大分类**(CPU / 内存 / 磁盘 I/O / 文件系统 / 网络),含 TCP 监听
-  队列溢出、SYN Cookie、OOM Kill、孤儿连接等深水区信号;磁盘分盘、网卡分卡独立成行判定
-- 指标目录可完全自定义:`deltascope catalog export > catalog.json` 导出内置目录,
-  编辑后 `serve -catalog catalog.json` 加载;归档中不存在的指标自动跳过,不产生噪音
+- 内置 **146 项指标 · 5 大分类**,含 PSI 压力、软中断丢包、每核热点(自动聚合折叠)、
+  TCP 连接状态分布、直接回收/内存规整、LVM/MD 设备等深水区信号;分盘分卡独立成行
+- **诊断规则引擎(医生意见)**:16 条内置跨指标经验规则(换页螺旋、磁盘饱和、
+  accept 队列溢出、OOM、单核热点、SYN 压力…),命中即在报告顶部输出一句结论 +
+  依据 + 下一步排查命令;规则与指标目录一样可 `export` 后自定义并经 `-rules` 加载
+- 报告默认全量渲染:平稳行灰显作背景,指标位置固定,行底色深浅 ∝ |Δ|,
+  新出现 ⊕ / 消失 ⊖ 独立标记,Top 5 恶化锚点直达;`profiles/` 提供 full/core 两档目录
 
 ### 安全设计
 
@@ -167,11 +170,16 @@ and installs a hardened systemd unit.
 - Polarity: `worse_up` (CPU, TCP retrans — up is bad), `better_up`
   (available memory — up is good), `neutral` (throughput — flagged 🟡 only)
 - A=0 → B≠0 is reported as ∞ and judged by direction; one-sided gaps get 🟡
-- **94 built-in metrics across 5 categories** (CPU / memory / disk I/O / filesystem /
-  network) incl. TCP listen overflows, SYN cookies, OOM kills, orphan sockets, with
-  per-device and per-NIC instance rows
-- Fully customizable catalog: `deltascope catalog export > catalog.json`, edit, then
-  `serve -catalog catalog.json`; metrics absent from the archive are skipped silently
+- **146 built-in metrics across 5 categories**, incl. PSI pressure, softnet drops,
+  per-core hotspots (auto-folded), TCP connection-state distribution, direct reclaim,
+  LVM/MD devices; per-device and per-NIC instance rows
+- **Diagnosis rule engine ("doctor's notes")**: 16 built-in cross-metric rules (swap
+  spiral, disk saturation, accept-queue overflow, OOM, single-core hotspot, SYN
+  pressure…) — each hit renders a plain-language conclusion + evidence + next commands
+  at the top of the report; rules are exportable and swappable via `-rules`
+- Full-data report by default: flat rows dimmed in place, stable row order, row tint
+  scales with |Δ|, appeared ⊕ / vanished ⊖ marked distinctly, Top-5 anchors; see
+  `profiles/` for full/core catalog tiers
 
 ### Security
 
@@ -225,11 +233,13 @@ DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='強いパスワード' ./deploy.sh
 - 極性:`worse_up`(CPU・TCP 再送 — 上昇=悪化)/ `better_up`(空きメモリ —
   上昇=改善)/ `neutral`(スループット — 変化は 🟡 のみ)
 - A=0 → B≠0 は ∞ として方向で判定。片側欠損は 🟡
-- **94 メトリクス・5 カテゴリ**を内蔵(TCP リッスンキュー溢れ、SYN Cookie、OOM Kill、
-  オーファンソケット等の深層シグナルを含む)。デバイス別・NIC 別に個別判定
-- カタログは完全カスタマイズ可能:`deltascope catalog export > catalog.json` で
-  エクスポートし、編集後 `serve -catalog catalog.json` で読み込み。アーカイブに
-  存在しないメトリクスは自動スキップ
+- **146 メトリクス・5 カテゴリ**を内蔵。PSI、softnet ドロップ、コア別ホットスポット
+  (自動折りたたみ)、TCP 状態分布、直接回収、LVM/MD デバイス等の深層シグナルを含む
+- **診断ルールエンジン(医師の所見)**:16 の組み込みクロスメトリクスルール(スワップ
+  スパイラル、ディスク飽和、accept キュー溢れ、OOM、SYN 圧力…)。命中すると結論 +
+  根拠 + 次の調査コマンドをレポート上部に表示。`-rules` で差し替え可能
+- レポートは全量表示が既定:変化なし行は灰色で保持、行位置固定、行の濃淡は |Δ| に
+  比例、新規 ⊕ / 消失 ⊖ を区別表示、Top-5 アンカー付き。`profiles/` に full/core 二档
 
 ### セキュリティ
 

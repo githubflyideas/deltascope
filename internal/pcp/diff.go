@@ -32,6 +32,7 @@ type DiffRow struct {
 type DiffReport struct {
 	Window   Windows   `json:"window"`
 	Rows     []DiffRow `json:"rows"`
+	Findings []Finding `json:"findings"`
 	Warnings []string  `json:"warnings"`
 }
 
@@ -57,6 +58,7 @@ func Compare(ctx context.Context, r Runner, archive string, w Windows) (*DiffRep
 
 	report := &DiffReport{Window: w, Warnings: dedupe(append(warnA, warnB...))}
 	report.Rows = buildRows(a, b, w.ThresholdPct)
+	report.Findings = EvaluateRules(report.Rows)
 	return report, nil
 }
 
@@ -105,26 +107,13 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 		if ci != cj {
 			return ci < cj
 		}
-		di, dj := absDelta(rows[i]), absDelta(rows[j])
-		if di != dj {
-			return di > dj
-		}
-		if rows[i].Metric != rows[j].Metric {
-			return rows[i].Metric < rows[j].Metric
+		oi, oj := OrderIndex(rows[i].Metric), OrderIndex(rows[j].Metric)
+		if oi != oj {
+			return oi < oj
 		}
 		return rows[i].Instance < rows[j].Instance
 	})
 	return rows
-}
-
-func absDelta(r DiffRow) float64 {
-	if r.DeltaPct != nil {
-		return math.Abs(*r.DeltaPct)
-	}
-	if r.A != nil && r.B != nil {
-		return 0
-	}
-	return math.Inf(1)
 }
 
 func judge(a, b *float64, pol Polarity, thresholdPct float64) (*float64, bool, Verdict) {
