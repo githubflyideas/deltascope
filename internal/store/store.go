@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 type Store struct{ db *sql.DB }
@@ -14,7 +12,7 @@ type Store struct{ db *sql.DB }
 var ErrNotFound = errors.New("用户不存在")
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+	db, err := sql.Open(driverName, path+dsnParams)
 	if err != nil {
 		return nil, err
 	}

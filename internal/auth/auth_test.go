@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -72,5 +73,21 @@ func TestRateLimiter(t *testing.T) {
 	rl.Reset(ip)
 	if ok, _ := rl.Allow(ip); !ok {
 		t.Error("Reset 后应恢复")
+	}
+}
+
+func TestPBKDF2Vectors(t *testing.T) {
+	cases := []struct {
+		iter int
+		want string
+	}{
+		{1, "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"},
+		{4096, "c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"},
+	}
+	for _, c := range cases {
+		got := fmt.Sprintf("%x", pbkdf2SHA256([]byte("password"), []byte("salt"), c.iter, 32))
+		if got != c.want {
+			t.Errorf("iter=%d got %s want %s", c.iter, got, c.want)
+		}
 	}
 }

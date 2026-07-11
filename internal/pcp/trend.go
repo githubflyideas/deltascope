@@ -12,8 +12,8 @@ import (
 )
 
 type Series struct {
-	Name   string      `json:"name"`
-	Points [][2]any    `json:"points"`
+	Name   string   `json:"name"`
+	Points [][2]any `json:"points"`
 }
 
 func TrendStep(start, end time.Time) time.Duration {

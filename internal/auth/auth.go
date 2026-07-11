@@ -2,7 +2,6 @@ package auth
 
 import (
 	"crypto/hmac"
-	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -15,12 +14,11 @@ import (
 	"time"
 )
 
-
 const (
-	pbkdf2Iters  = 600_000
-	saltLen      = 16
-	keyLen       = 32
-	hashVersion  = "pbkdf2-sha256"
+	pbkdf2Iters = 600_000
+	saltLen     = 16
+	keyLen      = 32
+	hashVersion = "pbkdf2-sha256"
 )
 
 func HashPassword(password string) (string, error) {
@@ -28,10 +26,7 @@ func HashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	dk, err := pbkdf2.Key(sha256.New, password, salt, pbkdf2Iters, keyLen)
-	if err != nil {
-		return "", err
-	}
+	dk := pbkdf2SHA256([]byte(password), salt, pbkdf2Iters, keyLen)
 	return strings.Join([]string{
 		hashVersion,
 		strconv.Itoa(pbkdf2Iters),
@@ -57,13 +52,9 @@ func VerifyPassword(stored, password string) bool {
 	if err != nil {
 		return false
 	}
-	got, err := pbkdf2.Key(sha256.New, password, salt, iters, len(want))
-	if err != nil {
-		return false
-	}
+	got := pbkdf2SHA256([]byte(password), salt, iters, len(want))
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
-
 
 type Sessions struct {
 	secret []byte
@@ -112,7 +103,6 @@ func (s *Sessions) sign(body string) string {
 	m.Write([]byte(body))
 	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
 }
-
 
 type RateLimiter struct {
 	mu       sync.Mutex

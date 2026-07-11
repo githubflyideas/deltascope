@@ -247,7 +247,7 @@ async function trendInit() {
 
   const cat = await api("/api/catalog");
   const seg = $("#presetSeg");
-  const order = ["cpu", "load", "mem", "disk", "net", "tcp"];
+  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "fs"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");

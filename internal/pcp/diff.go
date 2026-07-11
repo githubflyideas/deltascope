@@ -36,11 +36,11 @@ type DiffReport struct {
 }
 
 type Windows struct {
-	AStart time.Time `json:"a_start"`
-	AEnd   time.Time `json:"a_end"`
-	BStart time.Time `json:"b_start"`
-	BEnd   time.Time `json:"b_end"`
-	ThresholdPct float64 `json:"threshold_pct"`
+	AStart       time.Time `json:"a_start"`
+	AEnd         time.Time `json:"a_end"`
+	BStart       time.Time `json:"b_start"`
+	BEnd         time.Time `json:"b_end"`
+	ThresholdPct float64   `json:"threshold_pct"`
 }
 
 func Compare(ctx context.Context, r Runner, archive string, w Windows) (*DiffReport, error) {

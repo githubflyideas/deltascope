@@ -51,7 +51,6 @@ func (s *Server) Routes() http.Handler {
 	return securityHeaders(mux)
 }
 
-
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -104,7 +103,6 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.Handler {
 }
 
 type ctxUser struct{}
-
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
@@ -164,7 +162,6 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		"archive": s.Archive,
 	})
 }
-
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	presets := make(map[string]any, len(pcp.TrendPresets))
@@ -244,7 +241,6 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
 	writeJSON(w, map[string]any{"series": series})
 }
-
 
 func parseLocal(s string) (time.Time, error) {
 	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.Local); err == nil {

@@ -14,6 +14,8 @@
 
 [中文](#-中文) · [English](#-english) · [日本語](#-日本語)
 
+**[⬇ 预编译二进制 / Prebuilt binaries / ビルド済みバイナリ → `dist/`](dist/)**
+
 </div>
 
 ---
