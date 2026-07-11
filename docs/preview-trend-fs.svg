@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" font-family="-apple-system,'Segoe UI','PingFang SC',sans-serif">
+  <defs><pattern id="g5" width="28" height="28" patternUnits="userSpaceOnUse">
+    <path d="M28 0H0V28" fill="none" stroke="#7a98d2" stroke-opacity="0.07"/></pattern></defs>
+  <rect width="1200" height="500" fill="#0d1322"/><rect width="1200" height="500" fill="url(#g5)"/>
+  <rect x="24" y="16" width="1152" height="468" rx="10" fill="#141c30" stroke="#263354"/>
+  <rect x="46" y="36" width="130" height="30" rx="8" fill="#4cc9f0" fill-opacity="0.12" stroke="#4cc9f0"/>
+  <text x="111" y="56" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#4cc9f0">文件系统使用率(%)</text>
+  <rect x="196" y="36" width="140" height="30" rx="8" fill="none" stroke="#263354"/>
+  <text x="231" y="56" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#8391ad">24h</text>
+  <rect x="266" y="36" width="70" height="30" fill="#4cc9f0" fill-opacity="0.12"/>
+  <text x="301" y="56" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#4cc9f0">7d</text>
+  <rect x="380" y="82" width="14" height="8" rx="3" fill="#4cc9f0"/>
+  <text x="400" y="91" font-family="Menlo,monospace" font-size="11" fill="#8391ad">/dev/sda1 /</text>
+  <rect x="520" y="82" width="14" height="8" rx="3" fill="#e8a33d"/>
+  <text x="540" y="91" font-family="Menlo,monospace" font-size="11" fill="#8391ad">/dev/sdb1 /data</text>
+  <rect x="690" y="82" width="14" height="8" rx="3" fill="#3ddc97"/>
+  <text x="710" y="91" font-family="Menlo,monospace" font-size="11" fill="#8391ad">/dev/sda2 /var</text>
+  <line x1="110" y1="130" x2="1130" y2="130" stroke="#7a98d2" stroke-opacity="0.1"/>
+  <line x1="110" y1="200" x2="1130" y2="200" stroke="#7a98d2" stroke-opacity="0.1"/>
+  <line x1="110" y1="270" x2="1130" y2="270" stroke="#7a98d2" stroke-opacity="0.1"/>
+  <line x1="110" y1="340" x2="1130" y2="340" stroke="#7a98d2" stroke-opacity="0.1"/>
+  <line x1="110" y1="410" x2="1130" y2="410" stroke="#263354"/>
+  <text x="100" y="134" text-anchor="end" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">100</text>
+  <text x="100" y="204" text-anchor="end" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">75</text>
+  <text x="100" y="274" text-anchor="end" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">50</text>
+  <text x="100" y="344" text-anchor="end" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">25</text>
+  <text x="100" y="414" text-anchor="end" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">0</text>
+  <text x="110" y="432" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">07-04</text>
+  <text x="450" y="432" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">07-07</text>
+  <text x="790" y="432" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">07-09</text>
+  <text x="1104" y="432" font-family="Menlo,monospace" font-size="10.5" fill="#8391ad">07-10</text>
+  <path d="M110 292 L280 291 L450 290 L620 289 L790 288 L960 287 L1130 286" fill="none" stroke="#4cc9f0" stroke-width="2"/>
+  <path d="M110 330 L200 322 L290 312 L380 300 L470 286 L560 270 L650 252 L740 230 L830 206 L920 182 L1010 160 L1100 144 L1130 138" fill="none" stroke="#e8a33d" stroke-width="2.2"/>
+  <path d="M110 372 L280 370 L450 371 L620 369 L790 370 L960 368 L1130 369" fill="none" stroke="#3ddc97" stroke-width="2"/>
+  <line x1="110" y1="147" x2="1130" y2="147" stroke="#ff5d6c" stroke-opacity="0.55" stroke-dasharray="5 4"/>
+  <text x="1126" y="142" text-anchor="end" font-family="Menlo,monospace" font-size="10" fill="#ff5d6c">95%</text>
+  <text x="600" y="466" text-anchor="middle" font-size="11.5" fill="#8391ad">/data 七天爬升曲线,按当前斜率两天内触顶 —— 这就是趋势页存在的意义</text>
+</svg>

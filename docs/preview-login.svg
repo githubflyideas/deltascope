@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 540" font-family="-apple-system,'Segoe UI','PingFang SC',sans-serif">
+  <defs>
+    <pattern id="g" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#7a98d2" stroke-opacity="0.07"/>
+    </pattern>
+    <linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4cc9f0"/><stop offset="1" stop-color="#e8a33d"/>
+    </linearGradient>
+  </defs>
+  <rect width="460" height="540" fill="#0d1322"/><rect width="460" height="540" fill="url(#g)"/>
+  <rect x="50" y="70" width="360" height="400" rx="12" fill="#141c30" stroke="#263354"/>
+  <rect x="196" y="102" width="30" height="28" rx="6" fill="url(#m)"/>
+  <text x="211" y="122" text-anchor="middle" font-family="Menlo,monospace" font-size="17" font-weight="700" fill="#0d1322">Δ</text>
+  <text x="233" y="122" font-family="Menlo,monospace" font-size="16" font-weight="700" fill="#dbe4f5">deltascope</text>
+  <text x="230" y="152" text-anchor="middle" font-size="12" fill="#8391ad">单机性能倒退体检台 · 本地认证</text>
+  <text x="82" y="196" font-size="12.5" fill="#8391ad">用户名</text>
+  <rect x="82" y="206" width="296" height="34" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="94" y="228" font-size="13" fill="#dbe4f5">admin</text>
+  <text x="82" y="272" font-size="12.5" fill="#8391ad">密码</text>
+  <rect x="82" y="282" width="296" height="34" rx="6" fill="#0d1322" stroke="#4cc9f0" stroke-width="2"/>
+  <text x="94" y="304" font-family="Menlo,monospace" font-size="13" fill="#dbe4f5">••••••••••••</text>
+  <rect x="82" y="344" width="296" height="38" rx="7" fill="#4cc9f0"/>
+  <text x="230" y="368" text-anchor="middle" font-size="14" font-weight="700" fill="#06121f">登录</text>
+  <text x="230" y="426" text-anchor="middle" font-size="11" fill="#8391ad">凭证仅存于本机 SQLite,不与任何外部服务通信</text>
+</svg>

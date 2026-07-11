@@ -32,14 +32,39 @@ PCP side: pmcd + pmlogger record archives, pmlogger_daily -k N ring-style cleanu
 <div align="center">
 
 <img src="docs/preview-diff.svg" width="100%" alt="A/B regression report">
-<sub>倒退比对报告 · A/B regression report · リグレッション比較レポート — <i>UI preview</i></sub>
+<sub>倒退比对报告 · A/B regression report · リグレッション比較レポート</sub>
 
 <br><br>
 
 <img src="docs/preview-trend.svg" width="100%" alt="History trends">
-<sub>历史趋势 · History trends · 履歴トレンド — <i>UI preview</i></sub>
+<sub>历史趋势 · History trends · 履歴トレンド</sub>
 
 </div>
+
+<details>
+<summary><b>更多界面 · More views · その他の画面 (8)</b></summary>
+<br>
+<table>
+<tr>
+<td width="50%"><img src="docs/preview-login.svg" width="100%"><br><sub align="center">登录 · Login · ログイン</sub></td>
+<td width="50%"><img src="docs/preview-diff-empty.svg" width="100%"><br><sub>窗口选择与快捷预设 · Window presets · プリセット</sub></td>
+</tr>
+<tr>
+<td><img src="docs/preview-diff-network.svg" width="100%"><br><sub>网络分类·分网卡 · Per-NIC rows · NIC 別行</sub></td>
+<td><img src="docs/preview-diff-disk-fs.svg" width="100%"><br><sub>磁盘分盘与文件系统 · Per-device & filesystem · デバイス別</sub></td>
+</tr>
+<tr>
+<td><img src="docs/preview-diff-all.svg" width="100%"><br><sub>全量视图与 PCP 告警框 · Full view & warnings · 全量表示</sub></td>
+<td><img src="docs/preview-trend-fs.svg" width="100%"><br><sub>文件系统使用率趋势 · Filesystem trend · FS 使用率</sub></td>
+</tr>
+<tr>
+<td><img src="docs/preview-trend-mem-7d.svg" width="100%"><br><sub>7 天窗口与断线呈现 · 7-day window & gaps · 7日間表示</sub></td>
+<td><img src="docs/preview-mobile.svg" width="60%"><br><sub>移动端 · Mobile · モバイル</sub></td>
+</tr>
+</table>
+
+<sub><i>以上为按实际样式绘制的 UI preview;部署后可替换为真实截图 · Faithful UI previews, replace with real screenshots after deployment · 実際のスタイルに基づく UI プレビュー</i></sub>
+</details>
 
 ---
 
@@ -82,7 +107,8 @@ deploy.sh:安装/校验 PCP → 启用 pmcd/pmlogger → 配置 `pmlogger_daily 
 - 极性:`worse_up`(CPU、重传,升=恶化)/ `better_up`(可用内存,升=改善)/
   `neutral`(吞吐量,显著变化仅标 🟡 关注)
 - A=0 → B≠0 记 ∞ 按方向判定;单侧无数据标 🟡
-- 指标白名单集中在 `internal/pcp/catalog.go`,增删指标只改这一个文件
+- 内置 **59 项指标 · 5 大分类**(CPU / 内存 / 磁盘 I/O / 文件系统 / 网络),磁盘分盘、
+  网卡分卡独立成行判定;白名单集中在 `internal/pcp/catalog.go`,增删只改这一个文件
 
 ### 安全设计
 
@@ -139,7 +165,9 @@ and installs a hardened systemd unit.
 - Polarity: `worse_up` (CPU, TCP retrans — up is bad), `better_up`
   (available memory — up is good), `neutral` (throughput — flagged 🟡 only)
 - A=0 → B≠0 is reported as ∞ and judged by direction; one-sided gaps get 🟡
-- The metric whitelist lives in `internal/pcp/catalog.go` — one file to extend
+- **59 built-in metrics across 5 categories** (CPU / memory / disk I/O / filesystem /
+  network) with per-device and per-NIC instance rows; the whitelist lives in
+  `internal/pcp/catalog.go` — one file to extend
 
 ### Security
 
@@ -193,7 +221,9 @@ DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='強いパスワード' ./deploy.sh
 - 極性:`worse_up`(CPU・TCP 再送 — 上昇=悪化)/ `better_up`(空きメモリ —
   上昇=改善)/ `neutral`(スループット — 変化は 🟡 のみ)
 - A=0 → B≠0 は ∞ として方向で判定。片側欠損は 🟡
-- メトリクスのホワイトリストは `internal/pcp/catalog.go` に集約 — 追加はこの 1 ファイルのみ
+- **59 メトリクス・5 カテゴリ**(CPU / メモリ / ディスク I/O / ファイルシステム /
+  ネットワーク)を内蔵。デバイス別・NIC 別のインスタンス行で個別判定。
+  ホワイトリストは `internal/pcp/catalog.go` に集約 — 追加はこの 1 ファイルのみ
 
 ### セキュリティ
 

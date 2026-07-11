@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 760" font-family="-apple-system,'Segoe UI','PingFang SC',sans-serif">
+  <defs><pattern id="g8" width="28" height="28" patternUnits="userSpaceOnUse">
+    <path d="M28 0H0V28" fill="none" stroke="#7a98d2" stroke-opacity="0.07"/></pattern>
+  <linearGradient id="m8" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#4cc9f0"/><stop offset="1" stop-color="#e8a33d"/>
+  </linearGradient></defs>
+  <rect width="400" height="760" rx="18" fill="#0d1322"/><rect width="400" height="760" rx="18" fill="url(#g8)"/>
+  <line x1="0" y1="52" x2="400" y2="52" stroke="#263354"/>
+  <rect x="16" y="13" width="27" height="26" rx="6" fill="url(#m8)"/>
+  <text x="29" y="31" text-anchor="middle" font-family="Menlo,monospace" font-size="15" font-weight="700" fill="#0d1322">Δ</text>
+  <text x="52" y="32" font-family="Menlo,monospace" font-size="14.5" font-weight="700" fill="#dbe4f5">deltascope</text>
+  <rect x="272" y="15" width="58" height="22" rx="11" fill="none" stroke="#263354"/>
+  <text x="301" y="30" text-anchor="middle" font-family="Menlo,monospace" font-size="10.5" fill="#dbe4f5">admin</text>
+  <text x="344" y="30" font-size="11.5" fill="#dbe4f5">退出</text>
+  <path d="M16 92 v-18 a7 7 0 0 1 7-7 h68 a7 7 0 0 1 7 7 v18" fill="#141c30" stroke="#263354"/>
+  <text x="57" y="84" text-anchor="middle" font-size="12" fill="#dbe4f5">倒退比对</text>
+  <text x="146" y="84" text-anchor="middle" font-size="12" fill="#8391ad">历史趋势</text>
+  <rect x="10" y="92" width="380" height="654" rx="10" fill="#141c30" stroke="#263354"/>
+  <rect x="24" y="108" width="352" height="104" rx="10" fill="#1a2440" stroke="#263354"/>
+  <rect x="24" y="108" width="352" height="2.5" fill="#4cc9f0"/>
+  <text x="40" y="134" font-family="Menlo,monospace" font-size="15" font-weight="700" fill="#4cc9f0">[A</text>
+  <text x="64" y="134" font-size="12.5" font-weight="600" fill="#dbe4f5">基线周期</text>
+  <rect x="40" y="146" width="320" height="24" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="50" y="162" font-family="Menlo,monospace" font-size="11" fill="#dbe4f5">2026-07-09 14:00 → 15:00</text>
+  <rect x="24" y="224" width="352" height="104" rx="10" fill="#1a2440" stroke="#263354"/>
+  <rect x="24" y="224" width="352" height="2.5" fill="#e8a33d"/>
+  <text x="40" y="250" font-family="Menlo,monospace" font-size="15" font-weight="700" fill="#e8a33d">B]</text>
+  <text x="66" y="250" font-size="12.5" font-weight="600" fill="#dbe4f5">对比周期</text>
+  <rect x="40" y="262" width="320" height="24" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="50" y="278" font-family="Menlo,monospace" font-size="11" fill="#dbe4f5">2026-07-10 14:00 → 15:00</text>
+  <rect x="24" y="344" width="352" height="34" rx="7" fill="#4cc9f0"/>
+  <text x="200" y="366" text-anchor="middle" font-size="13" font-weight="700" fill="#06121f">开始比对</text>
+  <rect x="24" y="396" width="106" height="32" rx="8" fill="#ff5d6c" fill-opacity="0.12" stroke="#ff5d6c"/>
+  <circle cx="42" cy="412" r="4" fill="#ff5d6c"/>
+  <text x="52" y="417" font-family="Menlo,monospace" font-size="11.5" fill="#ff5d6c">恶化 <tspan font-weight="700" font-size="14">4</tspan></text>
+  <rect x="140" y="396" width="106" height="32" rx="8" fill="#3ddc97" fill-opacity="0.12" stroke="#3ddc97"/>
+  <circle cx="158" cy="412" r="4" fill="#3ddc97"/>
+  <text x="168" y="417" font-family="Menlo,monospace" font-size="11.5" fill="#3ddc97">改善 <tspan font-weight="700" font-size="14">2</tspan></text>
+  <rect x="256" y="396" width="106" height="32" rx="8" fill="#e8c547" fill-opacity="0.12" stroke="#e8c547"/>
+  <circle cx="274" cy="412" r="4" fill="#e8c547"/>
+  <text x="284" y="417" font-family="Menlo,monospace" font-size="11.5" fill="#e8c547">关注 <tspan font-weight="700" font-size="14">1</tspan></text>
+  <text x="24" y="466" font-family="Menlo,monospace" font-size="10" letter-spacing="2" fill="#8391ad">CPU</text>
+  <line x1="24" y1="474" x2="376" y2="474" stroke="#263354"/>
+  <circle cx="32" cy="496" r="4.5" fill="#ff5d6c"/>
+  <text x="44" y="501" font-size="11.5" fill="#dbe4f5">用户态 CPU</text>
+  <text x="290" y="501" text-anchor="end" font-family="Menlo,monospace" font-size="11.5" font-weight="700" fill="#ff5d6c">+498.5%</text>
+  <text x="376" y="501" text-anchor="end" font-size="10.5" fill="#dbe4f5">恶化</text>
+  <text x="44" y="518" font-family="Menlo,monospace" font-size="9.5" fill="#8391ad">245.92 → 1.47k ms/s</text>
+  <line x1="24" y1="530" x2="376" y2="530" stroke="#263354" stroke-opacity="0.5"/>
+  <circle cx="32" cy="552" r="4.5" fill="#ff5d6c"/>
+  <text x="44" y="557" font-size="11.5" fill="#dbe4f5">系统负载 <tspan font-family="Menlo,monospace" font-size="10" fill="#4cc9f0">[1 minute]</tspan></text>
+  <text x="290" y="557" text-anchor="end" font-family="Menlo,monospace" font-size="11.5" font-weight="700" fill="#ff5d6c">+212.7%</text>
+  <text x="376" y="557" text-anchor="end" font-size="10.5" fill="#dbe4f5">恶化</text>
+  <text x="44" y="574" font-family="Menlo,monospace" font-size="9.5" fill="#8391ad">1.54 → 4.83</text>
+  <line x1="24" y1="586" x2="376" y2="586" stroke="#263354" stroke-opacity="0.5"/>
+  <circle cx="32" cy="608" r="4.5" fill="#3ddc97"/>
+  <text x="44" y="613" font-size="11.5" fill="#dbe4f5">空闲 CPU</text>
+  <text x="290" y="613" text-anchor="end" font-family="Menlo,monospace" font-size="11.5" font-weight="700" fill="#3ddc97">-17.6%</text>
+  <text x="376" y="613" text-anchor="end" font-size="10.5" fill="#dbe4f5">恶化</text>
+  <text x="44" y="630" font-family="Menlo,monospace" font-size="9.5" fill="#8391ad">7.21k → 5.94k ms/s</text>
+  <line x1="24" y1="642" x2="376" y2="642" stroke="#263354" stroke-opacity="0.5"/>
+  <text x="24" y="678" font-family="Menlo,monospace" font-size="10" letter-spacing="2" fill="#8391ad">内存</text>
+  <line x1="24" y1="686" x2="376" y2="686" stroke="#263354"/>
+  <circle cx="32" cy="708" r="4.5" fill="#ff5d6c"/>
+  <text x="44" y="713" font-size="11.5" fill="#dbe4f5">可用内存</text>
+  <text x="290" y="713" text-anchor="end" font-family="Menlo,monospace" font-size="11.5" font-weight="700" fill="#ff5d6c">-60.0%</text>
+  <text x="376" y="713" text-anchor="end" font-size="10.5" fill="#dbe4f5">恶化</text>
+  <text x="44" y="730" font-family="Menlo,monospace" font-size="9.5" fill="#8391ad">10.49M → 4.19M Kbyte</text>
+</svg>
