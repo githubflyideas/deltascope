@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" font-family="-apple-system,'Segoe UI','PingFang SC','Noto Sans CJK SC',sans-serif">
+  <defs>
+    <pattern id="gp" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#7a98d2" stroke-opacity="0.07"/>
+    </pattern>
+    <linearGradient id="mk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4cc9f0"/><stop offset="1" stop-color="#e8a33d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="780" fill="#0d1322"/>
+  <rect width="1200" height="780" fill="url(#gp)"/>
+
+  <!-- topbar -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="#263354"/>
+  <rect x="22" y="14" width="30" height="28" rx="6" fill="url(#mk)"/>
+  <text x="37" y="34" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="17" font-weight="700" fill="#0d1322">Δ</text>
+  <text x="62" y="34" font-family="Menlo,Consolas,monospace" font-size="16" font-weight="700" fill="#dbe4f5">deltascope</text>
+  <text x="168" y="33" font-size="11.5" fill="#8391ad">单机性能倒退体检 · Performance Co-Pilot</text>
+  <rect x="758" y="17" width="268" height="24" rx="12" fill="none" stroke="#263354"/>
+  <text x="892" y="33" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">/var/log/pcp/pmlogger/rocky9-prod</text>
+  <rect x="1036" y="17" width="66" height="24" rx="12" fill="none" stroke="#263354"/>
+  <text x="1069" y="33" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#dbe4f5">admin</text>
+  <text x="1136" y="33" font-size="12.5" fill="#dbe4f5">退出</text>
+
+  <!-- tabs -->
+  <path d="M24 100 v-22 a8 8 0 0 1 8-8 h96 a8 8 0 0 1 8 8 v22" fill="#141c30" stroke="#263354"/>
+  <text x="80" y="91" text-anchor="middle" font-size="13.5" fill="#dbe4f5">倒退比对</text>
+  <text x="196" y="91" text-anchor="middle" font-size="13.5" fill="#8391ad">历史趋势</text>
+
+  <!-- panel -->
+  <rect x="24" y="100" width="1152" height="656" rx="10" fill="#141c30" stroke="#263354"/>
+
+  <!-- window card A -->
+  <rect x="46" y="122" width="436" height="140" rx="10" fill="#1a2440" stroke="#263354"/>
+  <rect x="46" y="122" width="436" height="2.5" fill="#4cc9f0"/>
+  <text x="64" y="152" font-family="Menlo,Consolas,monospace" font-size="17" font-weight="700" fill="#4cc9f0">[A</text>
+  <text x="92" y="152" font-size="13.5" font-weight="600" fill="#dbe4f5">基线周期</text>
+  <text x="464" y="151" text-anchor="end" font-size="11" fill="#8391ad">作为分母的参照窗口</text>
+  <text x="64" y="185" font-size="12" fill="#8391ad">开始</text>
+  <rect x="100" y="168" width="364" height="28" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="112" y="187" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#dbe4f5">2026-07-09  14:00</text>
+  <text x="64" y="223" font-size="12" fill="#8391ad">结束</text>
+  <rect x="100" y="206" width="364" height="28" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="112" y="225" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#dbe4f5">2026-07-09  15:00</text>
+
+  <!-- vs + presets -->
+  <text x="600" y="150" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="14" font-style="italic" fill="#8391ad">vs</text>
+  <rect x="516" y="164" width="168" height="24" rx="7" fill="#1a2440" stroke="#263354"/>
+  <text x="600" y="180" text-anchor="middle" font-size="11.5" fill="#8391ad">昨日同时段</text>
+  <rect x="516" y="194" width="168" height="24" rx="7" fill="#1a2440" stroke="#263354"/>
+  <text x="600" y="210" text-anchor="middle" font-size="11.5" fill="#8391ad">上一小时</text>
+  <rect x="516" y="224" width="168" height="24" rx="7" fill="#1a2440" stroke="#263354"/>
+  <text x="600" y="240" text-anchor="middle" font-size="11.5" fill="#8391ad">昨天全天 vs 今天</text>
+
+  <!-- window card B -->
+  <rect x="718" y="122" width="436" height="140" rx="10" fill="#1a2440" stroke="#263354"/>
+  <rect x="718" y="122" width="436" height="2.5" fill="#e8a33d"/>
+  <text x="736" y="152" font-family="Menlo,Consolas,monospace" font-size="17" font-weight="700" fill="#e8a33d">B]</text>
+  <text x="766" y="152" font-size="13.5" font-weight="600" fill="#dbe4f5">对比周期</text>
+  <text x="1136" y="151" text-anchor="end" font-size="11" fill="#8391ad">怀疑发生倒退的窗口</text>
+  <text x="736" y="185" font-size="12" fill="#8391ad">开始</text>
+  <rect x="772" y="168" width="364" height="28" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="784" y="187" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#dbe4f5">2026-07-10  14:00</text>
+  <text x="736" y="223" font-size="12" fill="#8391ad">结束</text>
+  <rect x="772" y="206" width="364" height="28" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="784" y="225" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#dbe4f5">2026-07-10  15:00</text>
+
+  <!-- run row -->
+  <text x="46" y="298" font-size="12.5" fill="#8391ad">显著阈值 |Δ| ≥</text>
+  <rect x="146" y="281" width="64" height="26" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="178" y="299" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#dbe4f5">15</text>
+  <text x="218" y="298" font-size="12.5" fill="#8391ad">%</text>
+  <rect x="262" y="284" width="14" height="14" rx="3" fill="#4cc9f0"/>
+  <path d="M265 291 l3 3 l6 -6" stroke="#0d1322" stroke-width="2" fill="none"/>
+  <text x="284" y="298" font-size="12.5" fill="#8391ad">只看显著变化</text>
+  <rect x="1006" y="277" width="148" height="34" rx="7" fill="#4cc9f0"/>
+  <text x="1080" y="299" text-anchor="middle" font-size="13.5" font-weight="700" fill="#06121f">开始比对</text>
+
+  <!-- verdict strip -->
+  <rect x="46" y="330" width="118" height="36" rx="8" fill="#ff5d6c" fill-opacity="0.12" stroke="#ff5d6c"/>
+  <circle cx="66" cy="348" r="5" fill="#ff5d6c"/>
+  <text x="78" y="353" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#ff5d6c">恶化 <tspan font-size="16" font-weight="700">4</tspan></text>
+  <rect x="176" y="330" width="118" height="36" rx="8" fill="#3ddc97" fill-opacity="0.12" stroke="#3ddc97"/>
+  <circle cx="196" cy="348" r="5" fill="#3ddc97"/>
+  <text x="208" y="353" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#3ddc97">改善 <tspan font-size="16" font-weight="700">2</tspan></text>
+  <rect x="306" y="330" width="118" height="36" rx="8" fill="#e8c547" fill-opacity="0.12" stroke="#e8c547"/>
+  <circle cx="326" cy="348" r="5" fill="#e8c547"/>
+  <text x="338" y="353" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8c547">关注 <tspan font-size="16" font-weight="700">1</tspan></text>
+  <rect x="436" y="330" width="106" height="36" rx="8" fill="none" stroke="#263354"/>
+  <text x="452" y="353" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#8391ad">平稳 <tspan font-size="16" font-weight="700">20</tspan></text>
+  <text x="1154" y="353" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad"><tspan fill="#4cc9f0">[A 07-09 14:00 → 15:00]</tspan> vs <tspan fill="#e8a33d">[B 07-10 14:00 → 15:00]</tspan> · 阈值 15%</text>
+
+  <!-- CPU category -->
+  <text x="46" y="404" font-family="Menlo,Consolas,monospace" font-size="11" letter-spacing="2" fill="#8391ad">CPU</text>
+  <text x="1154" y="404" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">3 项</text>
+  <line x1="46" y1="412" x2="1154" y2="412" stroke="#263354"/>
+  <text x="46" y="432" font-size="11" fill="#8391ad">指标</text>
+  <text x="640" y="432" text-anchor="end" font-size="11" fill="#8391ad">A 均值</text>
+  <text x="740" y="432" text-anchor="end" font-size="11" fill="#8391ad">B 均值</text>
+  <text x="930" y="432" text-anchor="end" font-size="11" fill="#8391ad">Δ</text>
+  <text x="1010" y="432" text-anchor="end" font-size="11" fill="#8391ad">结论</text>
+  <text x="1154" y="432" text-anchor="end" font-size="11" fill="#8391ad">单位</text>
+  <line x1="46" y1="440" x2="1154" y2="440" stroke="#263354"/>
+
+  <!-- row 1 -->
+  <circle cx="54" cy="461" r="5" fill="#ff5d6c"/>
+  <text x="68" y="466" font-size="12.5" fill="#dbe4f5">用户态 CPU</text>
+  <text x="68" y="481" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">kernel.all.cpu.user</text>
+  <text x="640" y="468" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#4cc9f0">245.92</text>
+  <text x="740" y="468" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8a33d">1.47k</text>
+  <text x="828" y="468" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" font-weight="700" fill="#ff5d6c">+498.5%</text>
+  <rect x="838" y="458" width="90" height="8" rx="4" fill="#0d1322"/><line x1="883" y1="458" x2="883" y2="466" stroke="#263354"/>
+  <rect x="883" y="458" width="45" height="8" fill="#ff5d6c"/>
+  <text x="1010" y="468" text-anchor="end" font-size="12" fill="#dbe4f5">恶化</text>
+  <text x="1154" y="468" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">millisec / second</text>
+  <line x1="46" y1="492" x2="1154" y2="492" stroke="#263354" stroke-opacity="0.5"/>
+
+  <!-- row 2 -->
+  <circle cx="54" cy="513" r="5" fill="#ff5d6c"/>
+  <text x="68" y="518" font-size="12.5" fill="#dbe4f5">系统负载 <tspan font-family="Menlo,Consolas,monospace" font-size="11" fill="#4cc9f0">[1 minute]</tspan></text>
+  <text x="68" y="533" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">kernel.all.load</text>
+  <text x="640" y="520" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#4cc9f0">1.54</text>
+  <text x="740" y="520" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8a33d">4.83</text>
+  <text x="828" y="520" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" font-weight="700" fill="#ff5d6c">+212.7%</text>
+  <rect x="838" y="510" width="90" height="8" rx="4" fill="#0d1322"/><line x1="883" y1="510" x2="883" y2="518" stroke="#263354"/>
+  <rect x="883" y="510" width="19" height="8" fill="#ff5d6c"/>
+  <text x="1010" y="520" text-anchor="end" font-size="12" fill="#dbe4f5">恶化</text>
+  <text x="1154" y="520" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">none</text>
+  <line x1="46" y1="544" x2="1154" y2="544" stroke="#263354" stroke-opacity="0.5"/>
+
+  <!-- row 3 -->
+  <circle cx="54" cy="565" r="5" fill="#3ddc97"/>
+  <text x="68" y="570" font-size="12.5" fill="#dbe4f5">空闲 CPU</text>
+  <text x="68" y="585" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">kernel.all.cpu.idle</text>
+  <text x="640" y="572" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#4cc9f0">7.21k</text>
+  <text x="740" y="572" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8a33d">5.94k</text>
+  <text x="828" y="572" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" font-weight="700" fill="#3ddc97">-17.6%</text>
+  <rect x="838" y="562" width="90" height="8" rx="4" fill="#0d1322"/><line x1="883" y1="562" x2="883" y2="570" stroke="#263354"/>
+  <rect x="881.5" y="562" width="1.5" height="8" fill="#3ddc97"/><rect x="879" y="562" width="4" height="8" fill="#3ddc97"/>
+  <text x="1010" y="572" text-anchor="end" font-size="12" fill="#dbe4f5">恶化</text>
+  <text x="1154" y="572" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">millisec / second</text>
+
+  <!-- 内存 category -->
+  <text x="46" y="632" font-family="Menlo,Consolas,monospace" font-size="11" letter-spacing="2" fill="#8391ad">内存</text>
+  <text x="1154" y="632" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">2 项</text>
+  <line x1="46" y1="640" x2="1154" y2="640" stroke="#263354"/>
+
+  <!-- row 4 -->
+  <circle cx="54" cy="663" r="5" fill="#ff5d6c"/>
+  <text x="68" y="668" font-size="12.5" fill="#dbe4f5">可用内存</text>
+  <text x="68" y="683" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">mem.util.available</text>
+  <text x="640" y="670" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#4cc9f0">10.49M</text>
+  <text x="740" y="670" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8a33d">4.19M</text>
+  <text x="828" y="670" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" font-weight="700" fill="#ff5d6c">-60.0%</text>
+  <rect x="838" y="660" width="90" height="8" rx="4" fill="#0d1322"/><line x1="883" y1="660" x2="883" y2="668" stroke="#263354"/>
+  <rect x="877.6" y="660" width="5.4" height="8" fill="#ff5d6c"/>
+  <text x="1010" y="670" text-anchor="end" font-size="12" fill="#dbe4f5">恶化</text>
+  <text x="1154" y="670" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">Kbyte</text>
+  <line x1="46" y1="694" x2="1154" y2="694" stroke="#263354" stroke-opacity="0.5"/>
+
+  <!-- row 5 -->
+  <circle cx="54" cy="715" r="5" fill="#e8c547"/>
+  <text x="68" y="720" font-size="12.5" fill="#dbe4f5">页缓存</text>
+  <text x="68" y="735" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">mem.util.cached</text>
+  <text x="640" y="722" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#4cc9f0">18.34M</text>
+  <text x="740" y="722" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8a33d">24.87M</text>
+  <text x="828" y="722" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#e8c547">+35.6%</text>
+  <rect x="838" y="712" width="90" height="8" rx="4" fill="#0d1322"/><line x1="883" y1="712" x2="883" y2="720" stroke="#263354"/>
+  <rect x="883" y="712" width="3.2" height="8" fill="#e8c547"/>
+  <text x="1010" y="722" text-anchor="end" font-size="12" fill="#dbe4f5">关注</text>
+  <text x="1154" y="722" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10" fill="#8391ad">Kbyte</text>
+</svg>

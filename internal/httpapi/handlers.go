@@ -1,4 +1,3 @@
-// Package httpapi 装配全部 HTTP 路由:静态页面、登录会话、对比与趋势 API。
 package httpapi
 
 import (
@@ -28,12 +27,11 @@ type Server struct {
 	Sessions *auth.Sessions
 	Limiter  *auth.RateLimiter
 	Runner   pcp.Runner
-	Archive  string // PCP 归档目录
-	WebFS    fs.FS  // 内嵌前端
-	SecureCk bool   // TLS 下为 Cookie 加 Secure
+	Archive  string
+	WebFS    fs.FS
+	SecureCk bool
 }
 
-// Routes 构建路由。
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -53,7 +51,6 @@ func (s *Server) Routes() http.Handler {
 	return securityHeaders(mux)
 }
 
-// ---- 页面与中间件 ----
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +58,6 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		// 全部资源同源内嵌,无任何外链,CSP 可以收得很紧。
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'")
 		next.ServeHTTP(w, r)
@@ -109,7 +105,6 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.Handler {
 
 type ctxUser struct{}
 
-// ---- 登录 ----
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
@@ -131,7 +126,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := s.Store.PasswordHash(req.Username)
 	if errors.Is(err, store.ErrNotFound) {
-		// 用户不存在时也走一次哈希,拉平时间侧信道。
 		auth.VerifyPassword("pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", req.Password)
 		s.Limiter.Fail(ip)
 		writeErr(w, http.StatusUnauthorized, "用户名或密码错误")
@@ -171,7 +165,6 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ---- 业务 API ----
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	presets := make(map[string]any, len(pcp.TrendPresets))
@@ -252,9 +245,7 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"series": series})
 }
 
-// ---- 工具函数 ----
 
-// parseLocal 解析前端 datetime-local 的 "2006-01-02T15:04",按服务器本地时区。
 func parseLocal(s string) (time.Time, error) {
 	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.Local); err == nil {
 		return t, nil

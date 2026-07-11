@@ -1,21 +1,13 @@
 #!/usr/bin/env bash
-# deltascope 一键部署 — Rocky Linux 9(离线环境友好)
-#
-# 用法(root):
-#   DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='ChangeMe!2026' ./deploy.sh
-#
-# 离线 RPM:目标机不能上外网时,先在同版本联网 Rocky 9 上执行
-#   dnf download --resolve --alldeps pcp pcp-system-tools
-# 把 rpm 放进本目录 rpms/ 子目录,本脚本会优先本地安装。
+# usage: DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='...' ./deploy.sh
+# offline: put pre-downloaded pcp rpms into ./rpms/
 set -euo pipefail
 
-# ======== 可调参数 ========
 RETENTION_DAYS="${RETENTION_DAYS:-7}"        # 归档保留天数(环形清理)
 LISTEN_ADDR="${LISTEN_ADDR:-0.0.0.0:8080}"   # Web 监听地址
 INSTALL_BIN="/usr/local/bin/deltascope"
 DATA_DIR="/var/lib/deltascope"
 SVC_USER="deltascope"
-# =========================
 
 [[ $EUID -eq 0 ]] || { echo "请以 root 运行"; exit 1; }
 cd "$(dirname "$0")"
@@ -34,7 +26,6 @@ command -v pmrep >/dev/null || { echo "缺少 pmrep(pcp-system-tools), 终止"; 
 
 echo "==> [2/6] 启用 pmcd / pmlogger 并配置 ${RETENTION_DAYS} 天环形清理"
 systemctl enable --now pmcd pmlogger
-# pmlogger_daily 负责每日切卷 + 按 -k 天数丢弃旧归档(环形空间控制)
 TIMERS=/etc/sysconfig/pmlogger_timers
 touch "$TIMERS"
 if grep -q '^PMLOGGER_DAILY_PARAMS=' "$TIMERS"; then
@@ -78,7 +69,6 @@ ExecStart=${INSTALL_BIN} serve -listen ${LISTEN_ADDR} -data ${DATA_DIR}
 Restart=on-failure
 RestartSec=3
 
-# 加固
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

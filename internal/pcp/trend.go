@@ -11,14 +11,11 @@ import (
 	"time"
 )
 
-// Series 是趋势图中的一条曲线。Points 为 [unix 毫秒, 值];
-// 缺采样点的值以 NaN 表示,JSON 层转为 null(ECharts 支持断线)。
 type Series struct {
 	Name   string      `json:"name"`
 	Points [][2]any    `json:"points"`
 }
 
-// TrendStep 根据窗口长度选择采样步长,控制前端点数在 ~600 以内。
 func TrendStep(start, end time.Time) time.Duration {
 	step := end.Sub(start) / 600
 	switch {
@@ -30,8 +27,6 @@ func TrendStep(start, end time.Time) time.Duration {
 	return step.Round(time.Second)
 }
 
-// RunTrend 通过 pmrep 导出 CSV 并解析为序列。
-// preset 必须是 TrendPresets 的键(白名单)。
 func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end time.Time) ([]Series, error) {
 	p, ok := TrendPresets[preset]
 	if !ok {
@@ -56,8 +51,6 @@ func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end 
 	return ParseTrendCSV(bytes.NewReader(stdout))
 }
 
-// ParseTrendCSV 解析 pmrep -o csv 输出。
-// 首行: Time,"metric-instance",...   首列时间格式: 2026-07-03 14:00:00
 func ParseTrendCSV(r io.Reader) ([]Series, error) {
 	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = -1

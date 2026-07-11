@@ -27,6 +27,18 @@ Browser ──HTTP(S)── deltascope (Go, one static binary)
 PCP side: pmcd + pmlogger record archives, pmlogger_daily -k N ring-style cleanup
 ```
 
+<div align="center">
+
+<img src="docs/preview-diff.svg" width="100%" alt="A/B regression report">
+<sub>倒退比对报告 · A/B regression report · リグレッション比較レポート — <i>UI preview</i></sub>
+
+<br><br>
+
+<img src="docs/preview-trend.svg" width="100%" alt="History trends">
+<sub>历史趋势 · History trends · 履歴トレンド — <i>UI preview</i></sub>
+
+</div>
+
 ---
 
 ## 🇨🇳 中文

@@ -65,7 +65,7 @@ func TestJudge(t *testing.T) {
 		pol      Polarity
 		wantV    Verdict
 		wantExc  bool
-		wantDpct *float64 // nil 表示不校验具体值
+		wantDpct *float64
 	}{
 		{"CPU 上涨 500% 恶化", f(100), f(600), WorseUp, VWorse, true, f(500)},
 		{"CPU 下降改善", f(100), f(60), WorseUp, VBetter, true, f(-40)},
@@ -92,7 +92,6 @@ func TestJudge(t *testing.T) {
 	}
 }
 
-// fakeRunner 按调用顺序返回预置输出,验证 Compare 全链路。
 type fakeRunner struct {
 	outs [][]byte
 	i    int
@@ -141,7 +140,6 @@ network.tcp.retranssegs  1.050 count / second
 	if r := got["network.tcp.retranssegs"]; r.Verdict != VFlat || r.Exceeded {
 		t.Errorf("retranssegs 应为 flat: %+v", r)
 	}
-	// CPU 分类应排在最前,且同类内 |Δ| 最大在前
 	if rep.Rows[0].Metric != "kernel.all.cpu.user" {
 		t.Errorf("排序错误, 首行=%s", rep.Rows[0].Metric)
 	}

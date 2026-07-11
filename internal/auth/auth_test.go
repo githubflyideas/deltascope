@@ -40,17 +40,14 @@ func TestSessions(t *testing.T) {
 	if _, ok := s.Verify(tok + "x"); ok {
 		t.Error("篡改签名应失败")
 	}
-	// 篡改 payload
 	body, sig, _ := strings.Cut(tok, ".")
 	if _, ok := s.Verify(body + "A." + sig); ok {
 		t.Error("篡改 payload 应失败")
 	}
-	// 过期
 	sExp := NewSessions(secret, -time.Minute)
 	if _, ok := sExp.Verify(sExp.Issue("admin")); ok {
 		t.Error("过期会话应失败")
 	}
-	// 不同密钥
 	secret2, _ := GenerateSecret()
 	if _, ok := NewSessions(secret2, time.Hour).Verify(tok); ok {
 		t.Error("异密钥校验应失败")

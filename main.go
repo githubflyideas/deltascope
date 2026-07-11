@@ -1,11 +1,3 @@
-// deltascope: 单机 PCP 性能倒退对比与可视化 Web 系统。
-// 单一静态二进制,前端资源内嵌,凭证存本地 SQLite,零外部服务依赖。
-//
-// 用法:
-//   deltascope serve   [-listen :8080] [-archive DIR] [-data DIR] [-tls-cert F -tls-key F]
-//   deltascope user add <name>     (口令从 DSCOPE_PASSWORD 环境变量或交互输入)
-//   deltascope user del <name>
-//   deltascope user list
 package main
 
 import (
@@ -29,7 +21,6 @@ import (
 //go:embed web
 var webFS embed.FS
 
-// version 由构建时 -ldflags "-X main.version=..." 注入。
 var version = "dev"
 
 func main() {
@@ -87,7 +78,6 @@ func openStore(dataDir string) *store.Store {
 	return st
 }
 
-// loadOrCreateSecret 读取或首启生成会话签名密钥(0600)。
 func loadOrCreateSecret(dataDir string) []byte {
 	p := filepath.Join(dataDir, "session.key")
 	if b, err := os.ReadFile(p); err == nil && len(b) >= 32 {
@@ -155,7 +145,6 @@ func cmdServe(args []string) {
 func cmdUser(args []string) {
 	fs := flag.NewFlagSet("user", flag.ExitOnError)
 	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
-	// 允许 flag 出现在子命令动词之后: user add -data /x name
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-data" || args[i] == "--data" {
@@ -218,7 +207,6 @@ func cmdUser(args []string) {
 	}
 }
 
-// promptPassword 交互式读取口令,通过 stty 关闭回显(仅 Linux,避免引入 x/term 依赖)。
 func promptPassword() string {
 	read := func(prompt string) string {
 		fmt.Fprint(os.Stderr, prompt)

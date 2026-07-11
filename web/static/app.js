@@ -1,10 +1,8 @@
-/* deltascope 前端逻辑(无框架,零外部依赖,ECharts 已本地内嵌) */
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
 const page = document.body.dataset.page;
 
-/* ---------- 公共 ---------- */
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -21,7 +19,6 @@ async function api(path, opts = {}) {
   return body;
 }
 
-// Date → datetime-local 控件值(本地时区)
 function toLocalInput(d) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -39,7 +36,6 @@ function fmtNum(v) {
   return v.toPrecision(3);
 }
 
-/* ---------- 登录页 ---------- */
 
 if (page === "login") {
   $("#loginForm").addEventListener("submit", async (e) => {
@@ -62,7 +58,6 @@ if (page === "login") {
   });
 }
 
-/* ---------- 主页面 ---------- */
 
 if (page === "main") {
   main().catch((e) => console.error(e));
@@ -77,7 +72,6 @@ async function main() {
     location.href = "/login";
   });
 
-  // 标签切换
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === t));
@@ -90,7 +84,6 @@ async function main() {
   diffInit();
 }
 
-/* ---------- 倒退比对 ---------- */
 
 function setWindows(aS, aE, bS, bE) {
   $("#aStart").value = toLocalInput(aS);
@@ -105,11 +98,10 @@ function diffInit() {
   const dayMs = 86400e3, hourMs = 3600e3;
 
   const presetYesterday = () => {
-    // B = 今天最近一个完整小时, A = 昨天同时段
     const bS = new Date(hourStart - hourMs), bE = hourStart;
     setWindows(new Date(bS - dayMs), new Date(bE - dayMs), bS, bE);
   };
-  presetYesterday(); // 默认即典型场景
+  presetYesterday();
 
   $("#presetYesterday").addEventListener("click", presetYesterday);
   $("#presetPrevHour").addEventListener("click", () => {
@@ -187,7 +179,6 @@ function renderReport(rep) {
     byCat.get(r.category).push(r);
   });
 
-  // Δ 条的满刻度: 取本次报告中有限 Δ 的最大绝对值(至少 100%)
   const maxAbs = Math.max(100, ...rep.rows.filter((r) => r.delta_pct !== null).map((r) => Math.abs(r.delta_pct)));
 
   const blocks = [];
@@ -200,7 +191,6 @@ function renderReport(rep) {
       } else {
         deltaTxt = (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
         const pct = Math.min(50, Math.abs(r.delta_pct) / maxAbs * 50);
-        // 宽度经 data 属性 + CSSOM 赋值, 兼容 style-src 'self' 的严格 CSP
         barHtml = `<span class="delta-bar-wrap"><span class="delta-bar ${r.delta_pct >= 0 ? "up" : "down"}" data-w="${pct.toFixed(2)}"></span></span>`;
       }
       const inst = r.instance ? ` <code>[${escapeHtml(r.instance)}]</code>` : "";
@@ -246,7 +236,6 @@ function escapeHtml(s) {
   }[c]));
 }
 
-/* ---------- 历史趋势 ---------- */
 
 let chart = null;
 let trendReady = false;

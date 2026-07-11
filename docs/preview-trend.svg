@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="-apple-system,'Segoe UI','PingFang SC','Noto Sans CJK SC',sans-serif">
+  <defs>
+    <pattern id="gp2" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#7a98d2" stroke-opacity="0.07"/>
+    </pattern>
+    <linearGradient id="mk2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4cc9f0"/><stop offset="1" stop-color="#e8a33d"/>
+    </linearGradient>
+    <linearGradient id="fa" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4cc9f0" stop-opacity="0.18"/><stop offset="1" stop-color="#4cc9f0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="fb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8a33d" stop-opacity="0.16"/><stop offset="1" stop-color="#e8a33d" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="700" fill="#0d1322"/>
+  <rect width="1200" height="700" fill="url(#gp2)"/>
+
+  <!-- topbar -->
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="#263354"/>
+  <rect x="22" y="14" width="30" height="28" rx="6" fill="url(#mk2)"/>
+  <text x="37" y="34" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="17" font-weight="700" fill="#0d1322">Δ</text>
+  <text x="62" y="34" font-family="Menlo,Consolas,monospace" font-size="16" font-weight="700" fill="#dbe4f5">deltascope</text>
+  <text x="168" y="33" font-size="11.5" fill="#8391ad">单机性能倒退体检 · Performance Co-Pilot</text>
+  <rect x="758" y="17" width="268" height="24" rx="12" fill="none" stroke="#263354"/>
+  <text x="892" y="33" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">/var/log/pcp/pmlogger/rocky9-prod</text>
+  <rect x="1036" y="17" width="66" height="24" rx="12" fill="none" stroke="#263354"/>
+  <text x="1069" y="33" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#dbe4f5">admin</text>
+  <text x="1136" y="33" font-size="12.5" fill="#dbe4f5">退出</text>
+
+  <!-- tabs -->
+  <text x="80" y="91" text-anchor="middle" font-size="13.5" fill="#8391ad">倒退比对</text>
+  <path d="M140 100 v-22 a8 8 0 0 1 8-8 h96 a8 8 0 0 1 8 8 v22" fill="#141c30" stroke="#263354"/>
+  <text x="196" y="91" text-anchor="middle" font-size="13.5" fill="#dbe4f5">历史趋势</text>
+
+  <!-- panel -->
+  <rect x="24" y="100" width="1152" height="576" rx="10" fill="#141c30" stroke="#263354"/>
+
+  <!-- preset seg -->
+  <rect x="46" y="120" width="520" height="30" rx="8" fill="none" stroke="#263354"/>
+  <rect x="46" y="120" width="112" height="30" rx="8" fill="#4cc9f0" fill-opacity="0.12"/>
+  <text x="102" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#4cc9f0">CPU 使用(ms/s)</text>
+  <line x1="158" y1="120" x2="158" y2="150" stroke="#263354"/>
+  <text x="196" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">系统负载</text>
+  <line x1="234" y1="120" x2="234" y2="150" stroke="#263354"/>
+  <text x="272" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">可用内存</text>
+  <line x1="310" y1="120" x2="310" y2="150" stroke="#263354"/>
+  <text x="348" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">磁盘吞吐</text>
+  <line x1="386" y1="120" x2="386" y2="150" stroke="#263354"/>
+  <text x="424" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">网卡流量</text>
+  <line x1="462" y1="120" x2="462" y2="150" stroke="#263354"/>
+  <text x="514" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">TCP 重传/连接</text>
+
+  <!-- range seg -->
+  <rect x="590" y="120" width="180" height="30" rx="8" fill="none" stroke="#263354"/>
+  <text x="612" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">1h</text>
+  <line x1="634" y1="120" x2="634" y2="150" stroke="#263354"/>
+  <rect x="634" y="120" width="46" height="30" fill="#4cc9f0" fill-opacity="0.12"/>
+  <text x="657" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#4cc9f0">6h</text>
+  <line x1="680" y1="120" x2="680" y2="150" stroke="#263354"/>
+  <text x="703" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">24h</text>
+  <line x1="726" y1="120" x2="726" y2="150" stroke="#263354"/>
+  <text x="748" y="140" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#8391ad">7d</text>
+
+  <!-- custom range -->
+  <rect x="792" y="122" width="150" height="26" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="802" y="140" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#dbe4f5">07-10  09:00</text>
+  <text x="952" y="140" fill="#8391ad" font-size="12">→</text>
+  <rect x="970" y="122" width="150" height="26" rx="6" fill="#0d1322" stroke="#263354"/>
+  <text x="980" y="140" font-family="Menlo,Consolas,monospace" font-size="11.5" fill="#dbe4f5">07-10  15:00</text>
+  <text x="1140" y="140" font-size="12" fill="#dbe4f5">应用</text>
+
+  <!-- legend -->
+  <rect x="380" y="172" width="14" height="8" rx="3" fill="#4cc9f0"/>
+  <text x="400" y="181" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">kernel.all.cpu.user</text>
+  <rect x="560" y="172" width="14" height="8" rx="3" fill="#e8a33d"/>
+  <text x="580" y="181" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">kernel.all.cpu.sys</text>
+  <rect x="726" y="172" width="14" height="8" rx="3" fill="#3ddc97"/>
+  <text x="746" y="181" font-family="Menlo,Consolas,monospace" font-size="11" fill="#8391ad">kernel.all.cpu.wait.total</text>
+
+  <!-- chart area -->
+  <g>
+    <line x1="110" y1="220" x2="1130" y2="220" stroke="#7a98d2" stroke-opacity="0.1"/>
+    <line x1="110" y1="290" x2="1130" y2="290" stroke="#7a98d2" stroke-opacity="0.1"/>
+    <line x1="110" y1="360" x2="1130" y2="360" stroke="#7a98d2" stroke-opacity="0.1"/>
+    <line x1="110" y1="430" x2="1130" y2="430" stroke="#7a98d2" stroke-opacity="0.1"/>
+    <line x1="110" y1="500" x2="1130" y2="500" stroke="#7a98d2" stroke-opacity="0.1"/>
+    <line x1="110" y1="570" x2="1130" y2="570" stroke="#263354"/>
+    <text x="100" y="224" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">2.0k</text>
+    <text x="100" y="294" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">1.5k</text>
+    <text x="100" y="364" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">1.0k</text>
+    <text x="100" y="434" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">500</text>
+    <text x="100" y="504" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">250</text>
+    <text x="100" y="574" text-anchor="end" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">0</text>
+    <text x="110" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">09:00</text>
+    <text x="280" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">10:00</text>
+    <text x="450" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">11:00</text>
+    <text x="620" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">12:00</text>
+    <text x="790" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">13:00</text>
+    <text x="960" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">14:00</text>
+    <text x="1106" y="592" font-family="Menlo,Consolas,monospace" font-size="10.5" fill="#8391ad">15:00</text>
+
+    <!-- cpu.user: 稳态后在 13:20 抬升 -->
+    <path d="M110 512 L150 508 L190 514 L230 505 L270 512 L310 506 L350 510 L390 502 L430 508 L470 500 L510 507 L550 498 L590 505 L630 497 L670 503 L710 494 L750 500 L790 468
+             L830 380 L860 330 L890 302 L920 288 L950 278 L980 284 L1010 272 L1040 280 L1070 268 L1100 276 L1130 264"
+          fill="none" stroke="#4cc9f0" stroke-width="2"/>
+    <path d="M110 512 L150 508 L190 514 L230 505 L270 512 L310 506 L350 510 L390 502 L430 508 L470 500 L510 507 L550 498 L590 505 L630 497 L670 503 L710 494 L750 500 L790 468
+             L830 380 L860 330 L890 302 L920 288 L950 278 L980 284 L1010 272 L1040 280 L1070 268 L1100 276 L1130 264 L1130 570 L110 570 Z"
+          fill="url(#fa)" stroke="none"/>
+    <!-- cpu.sys -->
+    <path d="M110 546 L170 543 L230 547 L290 542 L350 545 L410 540 L470 544 L530 539 L590 543 L650 538 L710 542 L770 534
+             L830 508 L880 496 L930 488 L980 492 L1030 484 L1080 488 L1130 480"
+          fill="none" stroke="#e8a33d" stroke-width="2"/>
+    <path d="M110 546 L170 543 L230 547 L290 542 L350 545 L410 540 L470 544 L530 539 L590 543 L650 538 L710 542 L770 534
+             L830 508 L880 496 L930 488 L980 492 L1030 484 L1080 488 L1130 480 L1130 570 L110 570 Z"
+          fill="url(#fb)" stroke="none"/>
+    <!-- cpu.wait.total -->
+    <path d="M110 560 L200 558 L290 561 L380 557 L470 560 L560 556 L650 559 L740 555 L800 548 L860 540 L920 544 L980 538 L1040 542 L1100 536 L1130 538"
+          fill="none" stroke="#3ddc97" stroke-width="1.8"/>
+
+    <!-- tooltip -->
+    <line x1="920" y1="200" x2="920" y2="570" stroke="#8391ad" stroke-opacity="0.35" stroke-dasharray="3 3"/>
+    <rect x="936" y="230" width="200" height="86" rx="8" fill="#1a2440" stroke="#263354"/>
+    <text x="950" y="252" font-family="Menlo,Consolas,monospace" font-size="11" fill="#dbe4f5">2026-07-10 13:42</text>
+    <circle cx="956" cy="270" r="4" fill="#4cc9f0"/>
+    <text x="968" y="274" font-family="Menlo,Consolas,monospace" font-size="11" fill="#dbe4f5">cpu.user   1.41k</text>
+    <circle cx="956" cy="290" r="4" fill="#e8a33d"/>
+    <text x="968" y="294" font-family="Menlo,Consolas,monospace" font-size="11" fill="#dbe4f5">cpu.sys    412.6</text>
+    <circle cx="956" cy="310" r="4" fill="#3ddc97"/>
+    <text x="968" y="314" font-family="Menlo,Consolas,monospace" font-size="11" fill="#dbe4f5">cpu.wait   96.20</text>
+  </g>
+
+  <!-- dataZoom slider -->
+  <rect x="110" y="614" width="1020" height="30" rx="6" fill="#141c30" stroke="#263354"/>
+  <path d="M116 638 L200 634 L300 637 L400 632 L500 636 L600 631 L700 634 L780 626 L860 620 L940 618 L1020 620 L1124 616"
+        fill="none" stroke="#4cc9f0" stroke-opacity="0.5" stroke-width="1.5"/>
+  <rect x="320" y="614" width="620" height="30" fill="#4cc9f0" fill-opacity="0.12" stroke="#4cc9f0" stroke-opacity="0.6"/>
+  <rect x="314" y="618" width="8" height="22" rx="3" fill="#4cc9f0"/>
+  <rect x="936" y="618" width="8" height="22" rx="3" fill="#4cc9f0"/>
+</svg>
