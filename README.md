@@ -67,7 +67,7 @@ PCP side: pmcd + pmlogger record archives, pmlogger_daily -k N ring-style cleanu
 
 ---
 
-## 🇨🇳 中文
+##  中文
 
 选定两个时间窗口——**基线 A** 与 **对比 B**——deltascope 对 PCP(Performance
 Co-Pilot)归档各执行一次 `pmlogsummary`,按指标极性生成性能体检报告:
@@ -127,7 +127,7 @@ deploy.sh:安装/校验 PCP → 启用 pmcd/pmlogger → 配置 `pmlogger_daily 
 
 ---
 
-## 🇬🇧 English
+## English
 
 Pick two time windows — **baseline A** vs **suspect B** — and deltascope runs
 `pmlogsummary` against the PCP (Performance Co-Pilot) archives once per window,
@@ -190,7 +190,7 @@ inline script/style · hardened systemd unit (non-root, ProtectSystem=strict).
 
 ---
 
-## 🇯🇵 日本語
+## 日本語
 
 **ベースライン A** と **比較対象 B** の 2 つの時間帯を選ぶと、deltascope が
 PCP(Performance Co-Pilot)アーカイブに対して各ウィンドウで `pmlogsummary`
