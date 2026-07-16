@@ -261,3 +261,17 @@ func TestRulesRoundTrip(t *testing.T) {
 		t.Error("非法 severity 应被拒绝")
 	}
 }
+
+func TestPerMetricThreshold(t *testing.T) {
+	a := map[string]Value{"network.icmp.inmsgs\x00": {Metric: "network.icmp.inmsgs", Val: 10}}
+	b := map[string]Value{"network.icmp.inmsgs\x00": {Metric: "network.icmp.inmsgs", Val: 25}}
+	rows := buildRows(a, b, 15)
+	if len(rows) != 1 || rows[0].Verdict != VFlat {
+		t.Fatalf("icmp +150%% 应被 300%% 专属阈值判为平稳: %+v", rows)
+	}
+	b2 := map[string]Value{"network.icmp.inmsgs\x00": {Metric: "network.icmp.inmsgs", Val: 60}}
+	rows = buildRows(a, b2, 15)
+	if rows[0].Verdict == VFlat {
+		t.Fatalf("icmp +500%% 应超过专属阈值: %+v", rows[0])
+	}
+}

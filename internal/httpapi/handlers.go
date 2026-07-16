@@ -210,7 +210,7 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("diff: %v", err)
-		writeErr(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusBadGateway, "归档数据查询失败, 请检查服务端日志或确认所选窗口内存在数据")
 		return
 	}
 	writeJSON(w, rep)
@@ -235,7 +235,7 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	series, err := pcp.RunTrend(ctx, s.Runner, s.Archive, preset, start, end)
 	if err != nil {
 		log.Printf("trend: %v", err)
-		writeErr(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusBadGateway, "归档数据查询失败, 请检查服务端日志或确认所选窗口内存在数据")
 		return
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })

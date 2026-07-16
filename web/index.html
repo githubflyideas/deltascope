@@ -84,8 +84,8 @@
     </div>
 
     <div class="empty-hint" id="diffEmpty">
-      选择两个时间窗口,点击「开始比对」。后端会对两个窗口各执行一次
-      <code>pmlogsummary</code>,按指标极性判定 🔴 恶化 / 🟢 改善 / 🟡 关注。
+      选择两个时间窗口,点击「开始比对」。系统将计算两个窗口内各项指标的均值,
+      按指标极性判定 🔴 恶化 / 🟢 改善 / 🟡 关注,并在顶部给出诊断结论。
     </div>
   </section>
 
@@ -111,7 +111,7 @@
   </section>
 </main>
 
-<footer class="foot">数据来源: 本机 pmlogger 归档 · pmlogsummary / pmrep · 保留期由 pmlogger_daily 环形清理控制</footer>
+<footer class="foot">基于本机历史归档的离线对比 · 归档保留期默认 7 天,可配置</footer>
 
 <script src="/static/echarts.min.js"></script>
 <script src="/static/app.js"></script>

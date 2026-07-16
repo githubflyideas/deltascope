@@ -10,7 +10,7 @@ async function api(path, opts = {}) {
     ...opts,
   });
   let body = null;
-  try { body = await res.json(); } catch { /* 非 JSON */ }
+  try { body = await res.json(); } catch {}
   if (res.status === 401 && page === "main") {
     location.href = "/login";
     throw new Error("未登录");

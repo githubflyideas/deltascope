@@ -94,7 +94,11 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 			x := vb.Val
 			row.B = &x
 		}
-		row.DeltaPct, row.Exceeded, row.Verdict = judge(row.A, row.B, info.Polarity, thresholdPct)
+		eff := thresholdPct
+		if info.ThresholdPct > 0 {
+			eff = info.ThresholdPct
+		}
+		row.DeltaPct, row.Exceeded, row.Verdict = judge(row.A, row.B, info.Polarity, eff)
 		rows = append(rows, row)
 	}
 

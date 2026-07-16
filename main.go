@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -38,6 +40,8 @@ func main() {
 		cmdUser(os.Args[2:])
 	case "catalog":
 		cmdCatalog(os.Args[2:])
+	case "compare":
+		cmdCompare(os.Args[2:])
 	case "rules":
 		cmdRules(os.Args[2:])
 	case "-h", "--help", "help":
@@ -56,6 +60,8 @@ func usage() {
   deltascope user list          列出用户
   deltascope catalog export     导出内置指标目录 (编辑后经 serve -catalog 加载)
   deltascope rules export       导出内置诊断规则 (编辑后经 serve -rules 加载)
+  deltascope compare            无头比对: -a-start/-a-end/-b-start/-b-end
+                                [-format text|json] [-all] [-threshold N], 发现恶化退出码 2
 
 serve flags:
   -listen   监听地址 (默认 127.0.0.1:8080)
@@ -174,6 +180,74 @@ func cmdCatalog(args []string) {
 	}
 	os.Stdout.Write(data)
 	fmt.Println()
+}
+
+func parseWhen(s string) (time.Time, error) {
+	for _, layout := range []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("时间格式无效: %q (期望 2006-01-02T15:04)", s)
+}
+
+func cmdCompare(args []string) {
+	fs := flag.NewFlagSet("compare", flag.ExitOnError)
+	aStart := fs.String("a-start", "", "基线开始")
+	aEnd := fs.String("a-end", "", "基线结束")
+	bStart := fs.String("b-start", "", "对比开始")
+	bEnd := fs.String("b-end", "", "对比结束")
+	archive := fs.String("archive", defaultArchive(), "归档目录")
+	threshold := fs.Float64("threshold", 15, "显著阈值 %")
+	catalogPath := fs.String("catalog", "", "自定义指标目录 JSON")
+	rulesPath := fs.String("rules", "", "自定义诊断规则 JSON")
+	format := fs.String("format", "text", "输出格式: text|json")
+	showAll := fs.Bool("all", false, "文本模式包含平稳行")
+	noColor := fs.Bool("no-color", false, "关闭 ANSI 颜色")
+	fs.Parse(args)
+
+	if *catalogPath != "" {
+		if err := pcp.LoadCatalogFile(*catalogPath); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if *rulesPath != "" {
+		if err := pcp.LoadRulesFile(*rulesPath); err != nil {
+			log.Fatal(err)
+		}
+	}
+	var w pcp.Windows
+	var err error
+	if w.AStart, err = parseWhen(*aStart); err != nil {
+		log.Fatal(err)
+	}
+	if w.AEnd, err = parseWhen(*aEnd); err != nil {
+		log.Fatal(err)
+	}
+	if w.BStart, err = parseWhen(*bStart); err != nil {
+		log.Fatal(err)
+	}
+	if w.BEnd, err = parseWhen(*bEnd); err != nil {
+		log.Fatal(err)
+	}
+	w.ThresholdPct = *threshold
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	rep, err := pcp.Compare(ctx, pcp.ExecRunner{}, *archive, w)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *format == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rep); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		renderText(os.Stdout, rep, *showAll, !*noColor)
+	}
+	os.Exit(worstExit(rep))
 }
 
 func cmdRules(args []string) {
