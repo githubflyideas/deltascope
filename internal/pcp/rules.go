@@ -76,7 +76,7 @@ var Rules = []Rule{
 		[]RuleCond{{Metric: "filesys.usedfiles", Verdict: "worse", DeltaGte: fp(50)}}},
 	{"mem-leak", "warn", "疑似进程内存泄漏:可用内存持续下行且匿名页同步上行",
 		[]string{"ps aux --sort=-rss | head -15", "smem -rk | head"},
-		[]RuleCond{{Metric: "mem.util.available", Verdict: "worse"}, {Metric: "mem.util.anonpages", Verdict: "worse", DeltaGte: fp(30)}}},
+		[]RuleCond{{Metric: "mem.util.available", Verdict: "worse"}, {Metric: "mem.util.anonpages", DeltaGte: fp(30)}}},
 	{"orphan-pileup", "warn", "孤儿 TCP 连接堆积:连接未正常收尾,常见于对端异常断开或应用未关闭 socket",
 		[]string{"ss -s", "ss -o state fin-wait-1"},
 		[]RuleCond{{Metric: "network.sockstat.tcp.orphan", Verdict: "worse", BGtZero: true}}},

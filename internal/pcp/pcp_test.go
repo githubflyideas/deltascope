@@ -2,6 +2,7 @@ package pcp
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -273,5 +274,48 @@ func TestPerMetricThreshold(t *testing.T) {
 	rows = buildRows(a, b2, 15)
 	if rows[0].Verdict == VFlat {
 		t.Fatalf("icmp +500%% 应超过专属阈值: %+v", rows[0])
+	}
+}
+
+type flakyRunner struct{ calls int }
+
+func (fr *flakyRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+	fr.calls++
+	for _, a := range args {
+		if a == "network.tcp.syncookiessent" {
+			return nil, []byte("pmrep: Invalid metric network.tcp.syncookiessent : Unknown metric name"), fmt.Errorf("exit status 1")
+		}
+	}
+	return []byte(sampleCSV), nil, nil
+}
+
+func TestRunTrendSelfHeal(t *testing.T) {
+	fr := &flakyRunner{}
+	series, missing, err := RunTrend(context.Background(), fr, "/a", "syn", time.Now().Add(-time.Hour), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0] != "network.tcp.syncookiessent" {
+		t.Fatalf("missing 应记录被剔除指标: %+v", missing)
+	}
+	if fr.calls != 2 || len(series) == 0 {
+		t.Fatalf("应重试一次并返回序列: calls=%d series=%d", fr.calls, len(series))
+	}
+}
+
+type allBadRunner struct{}
+
+func (allBadRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+	last := args[len(args)-1]
+	return nil, []byte("pmrep: Invalid metric " + last + " : Unknown metric name"), fmt.Errorf("exit status 1")
+}
+
+func TestRunTrendAllMissing(t *testing.T) {
+	_, missing, err := RunTrend(context.Background(), allBadRunner{}, "/a", "load", time.Now().Add(-time.Hour), time.Now())
+	if err == nil {
+		t.Fatal("全部指标缺失应报错")
+	}
+	if len(missing) != 1 {
+		t.Fatalf("missing=%v", missing)
 	}
 }

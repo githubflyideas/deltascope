@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,28 +28,54 @@ func TrendStep(start, end time.Time) time.Duration {
 	return step.Round(time.Second)
 }
 
-func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end time.Time) ([]Series, error) {
+var invalidMetricRe = regexp.MustCompile(`Invalid metric ([A-Za-z][A-Za-z0-9._]*)`)
+
+func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end time.Time) ([]Series, []string, error) {
 	p, ok := TrendPresets[preset]
 	if !ok {
-		return nil, fmt.Errorf("未知的指标组: %q", preset)
+		return nil, nil, fmt.Errorf("未知的指标组: %q", preset)
 	}
 	if !end.After(start) {
-		return nil, fmt.Errorf("时间窗无效: 结束时间必须晚于开始时间")
+		return nil, nil, fmt.Errorf("时间窗无效: 结束时间必须晚于开始时间")
 	}
 	step := TrendStep(start, end)
-	args := append([]string{
-		"-a", archive,
-		"-S", PCPTime(start),
-		"-T", PCPTime(end),
-		"-t", fmt.Sprintf("%ds", int(step.Seconds())),
-		"-o", "csv",
-	}, p.Metrics...)
+	metrics := append([]string{}, p.Metrics...)
+	var missing []string
 
-	stdout, stderr, err := r.Run(ctx, "pmrep", args...)
-	if err != nil {
-		return nil, fmt.Errorf("pmrep 执行失败: %w (%s)", err, firstLine(string(stderr)))
+	for len(metrics) > 0 {
+		args := append([]string{
+			"-a", archive,
+			"-S", PCPTime(start),
+			"-T", PCPTime(end),
+			"-t", fmt.Sprintf("%ds", int(step.Seconds())),
+			"-o", "csv",
+		}, metrics...)
+
+		stdout, stderr, err := r.Run(ctx, "pmrep", args...)
+		if err == nil {
+			series, perr := ParseTrendCSV(bytes.NewReader(stdout))
+			return series, missing, perr
+		}
+		m := invalidMetricRe.FindStringSubmatch(string(stderr))
+		if m == nil {
+			return nil, missing, fmt.Errorf("趋势查询失败: %w (%s)", err, firstLine(string(stderr)))
+		}
+		removed := false
+		next := metrics[:0]
+		for _, mt := range metrics {
+			if mt == m[1] && !removed {
+				removed = true
+				missing = append(missing, mt)
+				continue
+			}
+			next = append(next, mt)
+		}
+		if !removed {
+			return nil, missing, fmt.Errorf("趋势查询失败: %w (%s)", err, firstLine(string(stderr)))
+		}
+		metrics = next
 	}
-	return ParseTrendCSV(bytes.NewReader(stdout))
+	return nil, missing, fmt.Errorf("该指标组的所有指标均未被归档记录")
 }
 
 func ParseTrendCSV(r io.Reader) ([]Series, error) {

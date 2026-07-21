@@ -407,6 +407,13 @@ async function loadTrend() {
     });
     const data = await api("/api/trend?" + q.toString());
     drawChart(data.series);
+    const note = $("#trendNote");
+    if (data.missing && data.missing.length) {
+      note.textContent = `${data.missing.length} 项指标未被归档记录,已跳过: ${data.missing.join(", ")}`;
+      note.classList.remove("hidden");
+    } else {
+      note.classList.add("hidden");
+    }
   } catch (err) {
     chart.hideLoading();
     errBox.textContent = err.message;

@@ -232,14 +232,14 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
 	defer cancel()
-	series, err := pcp.RunTrend(ctx, s.Runner, s.Archive, preset, start, end)
+	series, missing, err := pcp.RunTrend(ctx, s.Runner, s.Archive, preset, start, end)
 	if err != nil {
 		log.Printf("trend: %v", err)
 		writeErr(w, http.StatusBadGateway, "归档数据查询失败, 请检查服务端日志或确认所选窗口内存在数据")
 		return
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
-	writeJSON(w, map[string]any{"series": series})
+	writeJSON(w, map[string]any{"series": series, "missing": missing})
 }
 
 func parseLocal(s string) (time.Time, error) {
