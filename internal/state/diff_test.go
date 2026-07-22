@@ -47,3 +47,16 @@ func TestSysctlSkip(t *testing.T) {
 		t.Error("somaxconn 不应被跳过")
 	}
 }
+
+func TestMarkerRoundTrip(t *testing.T) {
+	// 用内存态验证 marker 逻辑不依赖真实 DB —— 仅测 Compare 语义闭环
+	base := snap(map[string]string{"vm.swappiness": "60", "net.core.somaxconn": "4096"})
+	after := snap(map[string]string{"vm.swappiness": "10", "net.core.somaxconn": "4096"})
+	d := Compare(base, after)
+	if d.Total != 1 {
+		t.Fatalf("发布只改 1 项,影响面应为 1 处, 得到 %d", d.Total)
+	}
+	if d.Sections[0].Changes[0].Old != "60" || d.Sections[0].Changes[0].New != "10" {
+		t.Errorf("影响面报告值不对: %+v", d.Sections[0].Changes[0])
+	}
+}

@@ -74,6 +74,7 @@
     <div class="notice hidden" id="diffError"></div>
 
     <div id="diffResult" class="hidden">
+      <div class="triage-board" id="triageBoard"></div>
       <div id="findings"></div>
       <div class="verdict-strip" id="verdictStrip"></div>
       <div class="top5" id="top5"></div>
@@ -106,6 +107,9 @@
         <input type="datetime-local" id="tEnd" step="60">
         <button class="btn btn-ghost" id="applyRange">应用</button>
       </div>
+      <label class="trend-overlay-label">
+        <input type="checkbox" id="overlayYesterday"> 叠加昨天同时段
+      </label>
     </div>
     <div class="notice hidden" id="trendError"></div>
     <div class="trend-note hidden" id="trendNote"></div>

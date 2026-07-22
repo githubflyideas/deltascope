@@ -75,3 +75,66 @@ func RenderSummaryLine(d Diff) string {
 	return fmt.Sprintf("[%s] %d 处变更: +%d 新增 ~%d 修改 -%d 移除",
 		time.Now().Format("2006-01-02"), d.Total, a, m, r)
 }
+
+// RenderMarkdown 把 diff 渲染为 Markdown,便于贴进 PR / Slack / 工单。
+func RenderMarkdown(w io.Writer, d Diff, title string) {
+	if title == "" {
+		title = "变更影响面报告"
+	}
+	fmt.Fprintf(w, "## %s\n\n", title)
+	fmt.Fprintf(w, "- 基线 A: `%s`\n- 对比 B: `%s`\n\n",
+		d.A.Taken.Local().Format("2006-01-02 15:04:05"),
+		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
+
+	if d.Total == 0 {
+		fmt.Fprintln(w, "✅ **未检出任何配置或环境变更** — 本次改动未触及系统状态。")
+		return
+	}
+
+	var a, m, r int
+	for _, sd := range d.Sections {
+		for _, ch := range sd.Changes {
+			switch ch.Kind {
+			case Added:
+				a++
+			case Modified:
+				m++
+			case Removed:
+				r++
+			}
+		}
+	}
+	fmt.Fprintf(w, "⚠️ **共 %d 处变更** — 🟢 新增 %d · 🟡 修改 %d · ⚪ 移除 %d\n\n", d.Total, a, m, r)
+
+	for _, sd := range d.Sections {
+		fmt.Fprintf(w, "### %s (%d)\n\n", sd.Title, len(sd.Changes))
+		fmt.Fprintln(w, "| | 项 | 变化 |")
+		fmt.Fprintln(w, "|---|---|---|")
+		for _, ch := range sd.Changes {
+			switch ch.Kind {
+			case Added:
+				fmt.Fprintf(w, "| 🟢 | `%s` | 新增 = `%s` |\n", ch.Key, mdEsc(ch.New))
+			case Removed:
+				fmt.Fprintf(w, "| ⚪ | `%s` | 移除 (原 `%s`) |\n", ch.Key, mdEsc(ch.Old))
+			case Modified:
+				fmt.Fprintf(w, "| 🟡 | `%s` | `%s` → `%s` |\n", ch.Key, mdEsc(ch.Old), mdEsc(ch.New))
+			}
+		}
+		fmt.Fprintln(w)
+	}
+}
+
+func mdEsc(s string) string {
+	if len(s) > 60 {
+		s = s[:57] + "..."
+	}
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r == '|' || r == '`' {
+			out = append(out, ' ')
+			continue
+		}
+		out = append(out, r)
+	}
+	return string(out)
+}

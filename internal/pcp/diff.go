@@ -32,8 +32,9 @@ type DiffRow struct {
 type DiffReport struct {
 	Window   Windows   `json:"window"`
 	Rows     []DiffRow `json:"rows"`
-	Findings []Finding `json:"findings"`
-	Warnings []string  `json:"warnings"`
+	Findings []Finding     `json:"findings"`
+	Triage   []TriageBlock `json:"triage"`
+	Warnings []string      `json:"warnings"`
 }
 
 type Windows struct {
@@ -59,6 +60,7 @@ func Compare(ctx context.Context, r Runner, archive string, w Windows) (*DiffRep
 	report := &DiffReport{Window: w, Warnings: dedupe(append(warnA, warnB...))}
 	report.Rows = buildRows(a, b, w.ThresholdPct)
 	report.Findings = EvaluateRules(report.Rows)
+	report.Triage = Triage(report.Rows)
 	return report, nil
 }
 

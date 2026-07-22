@@ -319,3 +319,31 @@ func TestRunTrendAllMissing(t *testing.T) {
 		t.Fatalf("missing=%v", missing)
 	}
 }
+
+func TestTriage(t *testing.T) {
+	rows := []DiffRow{
+		{Metric: "kernel.all.cpu.user", Category: "CPU", Verdict: VWorse, DeltaPct: f(520)},
+		{Metric: "mem.util.available", Category: "内存", Verdict: VWorse, DeltaPct: f(-60)},
+		// 磁盘只有非核心指标关注 -> 应为 warn 不是 bad
+		{Metric: "disk.dev.read", Category: "磁盘 I/O", Verdict: VWatch, DeltaPct: f(40)},
+		// 网络无变化 -> ok
+		{Metric: "network.tcp.insegs", Category: "网络", Verdict: VFlat, DeltaPct: f(2)},
+	}
+	blocks := Triage(rows)
+	got := map[string]TriageStatus{}
+	for _, b := range blocks {
+		got[b.Key] = b.Status
+	}
+	if got["cpu"] != TriageBad {
+		t.Errorf("CPU 核心指标恶化应为 bad, 得到 %s", got["cpu"])
+	}
+	if got["mem"] != TriageBad {
+		t.Errorf("内存核心指标恶化应为 bad, 得到 %s", got["mem"])
+	}
+	if got["disk"] != TriageWarn {
+		t.Errorf("磁盘仅非核心关注应为 warn, 得到 %s", got["disk"])
+	}
+	if got["net"] != TriageOK {
+		t.Errorf("网络无变化应为 ok, 得到 %s", got["net"])
+	}
+}

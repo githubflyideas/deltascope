@@ -176,7 +176,70 @@ function absD(r) {
 
 const SEV = { crit: "严重", warn: "警告", info: "提示" };
 
+const TRIAGE_ICON = {
+  cpu: "\u{1F5A5}\uFE0F", mem: "\u{1F9E0}", disk: "\u{1F4BE}", net: "\u{1F310}", ghost: "\u{1F47B}",
+};
+const TRIAGE_STATUS = {
+  bad:  { cls: "t-bad",  dot: "\u{1F534}" },
+  warn: { cls: "t-warn", dot: "\u{1F7E1}" },
+  ok:   { cls: "t-ok",   dot: "\u{1F7E2}" },
+};
+
+function renderTriage(triage, rows) {
+  const board = $("#triageBoard");
+  if (!triage || !triage.length) { board.innerHTML = ""; return; }
+
+  const cards = triage.map((b) => {
+    const st = TRIAGE_STATUS[b.status] || TRIAGE_STATUS.ok;
+    const jump = b.status !== "ok"
+      ? `<button class="triage-jump" data-res="${b.key}">查看明细 \u2193</button>` : "";
+    return `<div class="triage-card ${st.cls}" data-res="${b.key}">
+      <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key]||""}</span>
+        <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
+      <div class="tc-headline">${escapeHtml(b.headline)}</div>
+      ${jump}
+    </div>`;
+  });
+
+  // 第五卡:软件的鬼 —— 汇总诊断规则命中数,并给出去处
+  const findings = window._lastFindings || [];
+  const ghostBits = [];
+  let ghostStatus = "ok";
+  if (findings.length) {
+    const crit = findings.filter((f) => f.severity === "crit").length;
+    ghostStatus = crit ? "bad" : "warn";
+    ghostBits.push(`${findings.length} 条诊断命中`);
+  }
+  const ghostSt = TRIAGE_STATUS[ghostStatus];
+  const ghostHead = ghostBits.length ? ghostBits.join(" · ") : "未见配置/进程异常";
+  cards.push(`<div class="triage-card ${ghostSt.cls}" data-res="ghost">
+    <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON.ghost}</span>
+      <span class="tc-label">软件的鬼</span><span class="tc-dot">${ghostSt.dot}</span></div>
+    <div class="tc-headline">${escapeHtml(ghostHead)}</div>
+    <div class="tc-ghost-links">
+      <button class="triage-jump" data-tab-jump="proc">查进程 \u2192</button>
+    </div>
+  </div>`);
+
+  board.innerHTML = cards.join("");
+
+  board.querySelectorAll(".triage-jump[data-res]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const res = btn.dataset.res;
+      const cat = { cpu: "CPU", mem: "内存", disk: "磁盘 I/O", net: "网络" }[res];
+      const el = [...document.querySelectorAll(".cat-block summary .cat-head")]
+        .find((h) => h.textContent.includes(cat));
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+  board.querySelectorAll(".triage-jump[data-tab-jump]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const tab = [...document.querySelectorAll(".tab")].find((t) => t.dataset.tab === btn.dataset.tabJump);
+      if (tab) tab.click();
+    }));
+}
+
 function renderFindings(findings) {
+  window._lastFindings = findings || [];
   const box = $("#findings");
   if (!findings || !findings.length) {
     box.innerHTML = `<div class="no-finding">未命中已知诊断模式 — 请查看下方明细与趋势曲线。</div>`;
@@ -247,6 +310,8 @@ function renderReport(rep) {
   $("#diffResult").classList.remove("hidden");
 
   rep.rows.forEach((r, i) => { r._id = "row-" + i; });
+  window._lastFindings = rep.findings || [];
+  renderTriage(rep.triage, rep.rows);
   renderFindings(rep.findings);
 
   const counts = { worse: 0, better: 0, watch: 0, flat: 0, new: 0, gone: 0 };
@@ -385,6 +450,7 @@ async function trendInit() {
     })
   );
   $("#applyRange").addEventListener("click", loadTrend);
+  $("#overlayYesterday").addEventListener("change", loadTrend);
 
   const end = new Date();
   $("#tStart").value = toLocalInput(new Date(end - 6 * 3600e3));
@@ -408,7 +474,22 @@ async function loadTrend() {
       end: $("#tEnd").value,
     });
     const data = await api("/api/trend?" + q.toString());
-    drawChart(data.series);
+    let yesterday = null;
+    if ($("#overlayYesterday").checked) {
+      const dayMs = 86400e3;
+      const ys = new Date(new Date($("#tStart").value) - dayMs);
+      const ye = new Date(new Date($("#tEnd").value) - dayMs);
+      const qy = new URLSearchParams({ preset: curPreset, start: toLocalInput(ys), end: toLocalInput(ye) });
+      try {
+        const yd = await api("/api/trend?" + qy.toString());
+        // 把昨天的时间戳整体平移一天,与今天对齐叠画
+        yesterday = yd.series.map((s) => ({
+          name: s.name,
+          points: s.points.map((p) => [p[0] + dayMs, p[1]]),
+        }));
+      } catch (e) { /* 昨天无数据则忽略 */ }
+    }
+    drawChart(data.series, yesterday);
     const note = $("#trendNote");
     if (data.missing && data.missing.length) {
       note.textContent = `${data.missing.length} 项指标未被归档记录,已跳过: ${data.missing.join(", ")}`;
@@ -423,7 +504,7 @@ async function loadTrend() {
   }
 }
 
-function drawChart(series) {
+function drawChart(series, yesterday) {
   chart.hideLoading();
   const opt = {
     backgroundColor: "transparent",
@@ -459,11 +540,29 @@ function drawChart(series) {
       showSymbol: false,
       connectNulls: false,
       lineStyle: { width: 1.6 },
-      areaStyle: series.length <= 2 ? { opacity: 0.12 } : undefined,
+      areaStyle: series.length <= 2 && !yesterday ? { opacity: 0.12 } : undefined,
       emphasis: { focus: "series" },
       data: s.points,
     })),
   };
+  if (yesterday && yesterday.length) {
+    const idxByName = {};
+    series.forEach((s, i) => { idxByName[s.name] = i; });
+    yesterday.forEach((y) => {
+      const i = idxByName[y.name] ?? 0;
+      opt.series.push({
+        name: y.name + " (昨天)",
+        type: "line",
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { width: 1.4, type: "dashed", opacity: 0.7, color: PALETTE[i % PALETTE.length] },
+        itemStyle: { color: PALETTE[i % PALETTE.length] },
+        emphasis: { focus: "series" },
+        data: y.points,
+      });
+    });
+    opt.legend.data = [...series.map((s) => s.name), ...yesterday.map((y) => y.name + " (昨天)")];
+  }
   chart.setOption(opt, true);
 }
 

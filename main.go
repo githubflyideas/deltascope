@@ -51,6 +51,8 @@ func main() {
 		cmdStatediff(os.Args[2:])
 	case "proc-diff":
 		cmdProcDiff(os.Args[2:])
+	case "verify":
+		cmdVerify(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -70,6 +72,7 @@ func usage() {
   deltascope snapshot           采集当前整机状态并存档
   deltascope statediff          对账两个时刻的状态, 只输出差异
   deltascope proc-diff          进程级 CPU/内存对账 (需 hotproc 归档)
+  deltascope verify start       发布前打基线; verify report 发布后出影响面报告
   deltascope compare            无头比对: -a-start/-a-end/-b-start/-b-end
                                 [-format text|json] [-all] [-threshold N], 发现恶化退出码 2
 
@@ -271,6 +274,65 @@ func cmdRules(args []string) {
 	}
 	os.Stdout.Write(data)
 	fmt.Println()
+}
+
+func cmdVerify(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: deltascope verify start|report [-name <发布名>] [-format text|md]")
+		os.Exit(2)
+	}
+	sub := args[0]
+	fs := flag.NewFlagSet("verify", flag.ExitOnError)
+	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
+	name := fs.String("name", "release", "发布基线名 (多条发布线可区分)")
+	format := fs.String("format", "text", "report 输出格式: text | md")
+	title := fs.String("title", "", "报告标题 (md 格式用)")
+	noColor := fs.Bool("no-color", false, "关闭彩色输出")
+	fs.Parse(args[1:])
+
+	st := openStore(*dataDir)
+	defer st.Close()
+	ss, err := state.NewStore(st.DB())
+	if err != nil {
+		log.Fatalf("初始化快照存储失败: %v", err)
+	}
+	host, _ := os.Hostname()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	switch sub {
+	case "start":
+		snap := state.Capture(ctx, host)
+		if err := ss.SaveMarker(*name, snap); err != nil {
+			log.Fatalf("保存基线失败: %v", err)
+		}
+		total := 0
+		for _, sec := range snap.Sections {
+			total += len(sec.Items)
+		}
+		fmt.Printf("已记录发布基线 %q — %s · %d 项事实\n", *name, snap.Taken.Local().Format("15:04:05"), total)
+		fmt.Println("完成发布后运行: deltascope verify report -name " + *name)
+
+	case "report":
+		base, err := ss.LoadMarker(*name)
+		if err != nil {
+			log.Fatal(err)
+		}
+		after := state.Capture(ctx, host)
+		diff := state.Compare(base, after)
+		if *format == "md" {
+			state.RenderMarkdown(os.Stdout, diff, *title)
+		} else {
+			state.RenderText(os.Stdout, diff, !*noColor)
+		}
+		if diff.Total > 0 {
+			os.Exit(3)
+		}
+
+	default:
+		fmt.Fprintln(os.Stderr, "未知子命令, 用 start 或 report")
+		os.Exit(2)
+	}
 }
 
 func cmdSnapshot(args []string) {

@@ -18,10 +18,42 @@ CREATE TABLE IF NOT EXISTS snapshots (
     host   TEXT NOT NULL,
     body   TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_snapshots_taken ON snapshots(taken);`); err != nil {
+CREATE INDEX IF NOT EXISTS idx_snapshots_taken ON snapshots(taken);
+CREATE TABLE IF NOT EXISTS markers (
+    name    TEXT PRIMARY KEY,
+    taken   TEXT NOT NULL,
+    body    TEXT NOT NULL
+);`); err != nil {
 		return nil, err
 	}
 	return &Store{db: db}, nil
+}
+
+// SaveMarker 以名字保存一份基线快照(用于 verify 发布前后对账)。
+func (s *Store) SaveMarker(name string, snap Snapshot) error {
+	body, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT OR REPLACE INTO markers (name, taken, body) VALUES (?, ?, ?)`,
+		name, snap.Taken.UTC().Format(time.RFC3339), string(body))
+	return err
+}
+
+// LoadMarker 取回命名基线快照。
+func (s *Store) LoadMarker(name string) (Snapshot, error) {
+	var body string
+	if err := s.db.QueryRow(`SELECT body FROM markers WHERE name = ?`, name).Scan(&body); err != nil {
+		if err == sql.ErrNoRows {
+			return Snapshot{}, fmt.Errorf("找不到基线 %q, 请先运行 deltascope verify start -name %s", name, name)
+		}
+		return Snapshot{}, err
+	}
+	var snap Snapshot
+	if err := json.Unmarshal([]byte(body), &snap); err != nil {
+		return Snapshot{}, err
+	}
+	return snap, nil
 }
 
 func (s *Store) Save(snap Snapshot) error {
