@@ -49,6 +49,8 @@ func main() {
 		cmdSnapshot(os.Args[2:])
 	case "statediff":
 		cmdStatediff(os.Args[2:])
+	case "proc-diff":
+		cmdProcDiff(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -67,6 +69,7 @@ func usage() {
   deltascope rules export       导出内置诊断规则 (编辑后经 serve -rules 加载)
   deltascope snapshot           采集当前整机状态并存档
   deltascope statediff          对账两个时刻的状态, 只输出差异
+  deltascope proc-diff          进程级 CPU/内存对账 (需 hotproc 归档)
   deltascope compare            无头比对: -a-start/-a-end/-b-start/-b-end
                                 [-format text|json] [-all] [-threshold N], 发现恶化退出码 2
 
@@ -372,6 +375,42 @@ func cmdStatediff(args []string) {
 	if diff.Total > 0 {
 		os.Exit(3)
 	}
+}
+
+func cmdProcDiff(args []string) {
+	fs := flag.NewFlagSet("proc-diff", flag.ExitOnError)
+	archive := fs.String("archive", defaultArchive(), "归档目录")
+	aStart := fs.String("a-start", "", "基线开始 2006-01-02T15:04")
+	aEnd := fs.String("a-end", "", "基线结束")
+	bStart := fs.String("b-start", "", "对比开始")
+	bEnd := fs.String("b-end", "", "对比结束")
+	threshold := fs.Float64("threshold", 20, "显著阈值 %")
+	noColor := fs.Bool("no-color", false, "关闭彩色输出")
+	fs.Parse(args)
+
+	parse := func(v, name string) time.Time {
+		t, err := time.ParseInLocation("2006-01-02T15:04", v, time.Local)
+		if err != nil {
+			log.Fatalf("时刻 %s 格式错误 (期望 2006-01-02T15:04): %v", name, err)
+		}
+		return t
+	}
+	if *aStart == "" || *aEnd == "" || *bStart == "" || *bEnd == "" {
+		log.Fatal("需提供 -a-start -a-end -b-start -b-end")
+	}
+	w := pcp.Windows{
+		AStart: parse(*aStart, "a-start"), AEnd: parse(*aEnd, "a-end"),
+		BStart: parse(*bStart, "b-start"), BEnd: parse(*bEnd, "b-end"),
+		ThresholdPct: *threshold,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	rep, err := pcp.CompareProc(ctx, pcp.ExecRunner{}, *archive, w)
+	if err != nil {
+		log.Fatalf("进程对账失败: %v\n提示: 需先在 pmlogger 中启用 hotproc 采集 (见 hotproc.config)", err)
+	}
+	renderProcReport(os.Stdout, rep, !*noColor)
 }
 
 func cmdUser(args []string) {

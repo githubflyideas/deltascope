@@ -85,13 +85,13 @@ var sysctlVolatile = []string{
 
 // sysctlSecurityOwned 已由 security 采集器单列,sysctl 中去重避免重复告警。
 var sysctlSecurityOwned = map[string]bool{
-	"net.ipv4.ip_forward":                  true,
-	"net.ipv4.conf.all.rp_filter":          true,
-	"net.ipv4.conf.all.accept_redirects":   true,
-	"net.ipv4.tcp_syncookies":              true,
-	"kernel.randomize_va_space":            true,
-	"kernel.kptr_restrict":                 true,
-	"kernel.dmesg_restrict":                true,
+	"net.ipv4.ip_forward":                true,
+	"net.ipv4.conf.all.rp_filter":        true,
+	"net.ipv4.conf.all.accept_redirects": true,
+	"net.ipv4.tcp_syncookies":            true,
+	"kernel.randomize_va_space":          true,
+	"kernel.kptr_restrict":               true,
+	"kernel.dmesg_restrict":              true,
 }
 
 func sysctlSkip(key string) bool {
