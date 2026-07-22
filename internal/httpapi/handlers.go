@@ -47,6 +47,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/catalog", s.requireAuth(s.handleCatalog))
 	mux.Handle("GET /api/diff", s.requireAuth(s.handleDiff))
 	mux.Handle("GET /api/trend", s.requireAuth(s.handleTrend))
+	mux.Handle("GET /api/procdiff", s.requireAuth(s.handleProcDiff))
 
 	return securityHeaders(mux)
 }
@@ -240,6 +241,67 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
 	writeJSON(w, map[string]any{"series": series, "missing": missing})
+}
+
+func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	aStart, err1 := parseLocal(q.Get("a_start"))
+	aEnd, err2 := parseLocal(q.Get("a_end"))
+	bStart, err3 := parseLocal(q.Get("b_start"))
+	bEnd, err4 := parseLocal(q.Get("b_end"))
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
+		writeErr(w, http.StatusBadRequest, "时间参数格式错误, 期望 2026-07-03T14:00")
+		return
+	}
+	threshold := 20.0
+	if t := q.Get("threshold"); t != "" {
+		if v, err := strconv.ParseFloat(t, 64); err == nil && v >= 0 && v <= 10000 {
+			threshold = v
+		}
+	}
+	if err := checkWindow(aStart, aEnd); err != nil {
+		writeErr(w, http.StatusBadRequest, "时间段 A: "+err.Error())
+		return
+	}
+	if err := checkWindow(bStart, bEnd); err != nil {
+		writeErr(w, http.StatusBadRequest, "时间段 B: "+err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
+	defer cancel()
+	rep, err := pcp.CompareProc(ctx, s.Runner, s.Archive, pcp.Windows{
+		AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd, ThresholdPct: threshold,
+	})
+	if err != nil {
+		log.Printf("procdiff: %v", err)
+		writeErr(w, http.StatusBadGateway, err.Error()+" (需在 pmlogger 启用 hotproc 采集)")
+		return
+	}
+	writeJSON(w, procReportJSON(rep))
+}
+
+func procReportJSON(rep *pcp.ProcReport) map[string]any {
+	conv := func(rows []pcp.ProcRow) []map[string]any {
+		out := make([]map[string]any, 0, len(rows))
+		for _, r := range rows {
+			m := map[string]any{
+				"name": r.Name, "verdict": string(r.Verdict),
+				"a": r.A, "b": r.B, "delta_pct": r.DeltaPct,
+				"restarted": r.Restarted, "unit": r.Unit,
+			}
+			if r.Restarted {
+				m["restart_text"] = pcp.FormatStartDelta(r.StartA, r.StartB)
+			}
+			out = append(out, m)
+		}
+		return out
+	}
+	return map[string]any{
+		"cpu":      conv(rep.CPURows),
+		"mem":      conv(rep.MemRows),
+		"restarts": conv(rep.Restarts),
+		"warnings": rep.Warnings,
+	}
 }
 
 func parseLocal(s string) (time.Time, error) {

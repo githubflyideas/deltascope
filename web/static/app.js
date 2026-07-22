@@ -82,7 +82,9 @@ async function main() {
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === t));
       $("#view-diff").classList.toggle("hidden", t.dataset.tab !== "diff");
       $("#view-trend").classList.toggle("hidden", t.dataset.tab !== "trend");
+      $("#view-proc").classList.toggle("hidden", t.dataset.tab !== "proc");
       if (t.dataset.tab === "trend") trendInit();
+      if (t.dataset.tab === "proc") procInit();
     })
   );
 
@@ -463,4 +465,97 @@ function drawChart(series) {
     })),
   };
   chart.setOption(opt, true);
+}
+
+
+let procReady = false;
+
+function procInit() {
+  if (procReady) return;
+  procReady = true;
+
+  const now = new Date();
+  const hourStart = new Date(now); hourStart.setMinutes(0, 0, 0);
+  const dayMs = 86400e3, hourMs = 3600e3;
+  const fmt = (d) => {
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const setWin = () => {
+    const bS = new Date(hourStart - hourMs), bE = hourStart;
+    $("#pcAStart").value = fmt(new Date(bS - dayMs));
+    $("#pcAEnd").value = fmt(new Date(bE - dayMs));
+    $("#pcBStart").value = fmt(bS);
+    $("#pcBEnd").value = fmt(bE);
+  };
+  setWin();
+  $("#pcYesterday").addEventListener("click", setWin);
+  $("#pcRun").addEventListener("click", runProcDiff);
+}
+
+async function runProcDiff() {
+  const btn = $("#pcRun");
+  const err = $("#procError");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "对账中…";
+  try {
+    const q = new URLSearchParams({
+      a_start: $("#pcAStart").value, a_end: $("#pcAEnd").value,
+      b_start: $("#pcBStart").value, b_end: $("#pcBEnd").value,
+    });
+    const rep = await api("/api/procdiff?" + q.toString());
+    renderProcDiff(rep);
+    $("#procHint").classList.add("hidden");
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove("hidden");
+    $("#procResult").innerHTML = "";
+  } finally {
+    btn.disabled = false; btn.textContent = "开始对账";
+  }
+}
+
+const PV = {
+  worse:    { icon: "\u{1F534}", text: "恶化", cls: "v-worse" },
+  better:   { icon: "\u{1F7E2}", text: "改善", cls: "v-better" },
+  appeared: { icon: "\u2295", text: "新出现", cls: "v-new" },
+  gone:     { icon: "\u2296", text: "已消失", cls: "v-gone" },
+  flat:     { icon: "\u00B7", text: "平稳", cls: "v-flat" },
+};
+
+function procDelta(r) {
+  if (r.verdict === "appeared") return "\u2295";
+  if (r.verdict === "gone") return "\u2296";
+  if (r.delta_pct === null || r.delta_pct === undefined) return "\u221E";
+  return (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
+}
+
+function procTable(rows, unit) {
+  const active = rows.filter((r) => r.verdict !== "flat");
+  if (!active.length) return `<div class="empty-hint">无显著变化</div>`;
+  const trs = active.map((r) => {
+    const v = PV[r.verdict] || PV.flat;
+    const mark = r.restarted ? ` <span class="restart-tag" title="${escapeHtml(r.restart_text||"")}">\u27F3</span>` : "";
+    return `<tr class="${v.cls}">
+      <td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}</td>
+      <td>${fmtNum(r.a)}</td><td>${fmtNum(r.b)}</td>
+      <td class="delta-cell">${procDelta(r)}</td>
+      <td>${v.text}</td><td class="units-cell">${unit}</td>
+    </tr>`;
+  }).join("");
+  return `<table class="report"><thead><tr>
+    <th>进程</th><th>A</th><th>B</th><th>\u0394</th><th>结论</th><th>单位</th>
+    </tr></thead><tbody>${trs}</tbody></table>`;
+}
+
+function renderProcDiff(rep) {
+  let html = "";
+  if (rep.restarts && rep.restarts.length) {
+    html += `<div class="restart-banner"><b>\u27F3 期间发生重启</b> ` +
+      rep.restarts.map((r) => `<span class="restart-chip">${escapeHtml(r.name)} <em>${escapeHtml(r.restart_text||"")}</em></span>`).join("") +
+      `</div>`;
+  }
+  html += `<div class="cat-block"><div class="cat-head"><span>进程 CPU 对账</span><span>占用升高 = 变差</span></div>${procTable(rep.cpu, "ms/s")}</div>`;
+  html += `<div class="cat-block"><div class="cat-head"><span>进程内存对账</span><span>RSS</span></div>${procTable(rep.mem, "KB")}</div>`;
+  $("#procResult").innerHTML = html;
 }

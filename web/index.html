@@ -24,6 +24,7 @@
 <nav class="tabs">
   <button class="tab is-active" data-tab="diff">倒退比对</button>
   <button class="tab" data-tab="trend">历史趋势</button>
+  <button class="tab" data-tab="proc">进程对账</button>
 </nav>
 
 <main>
@@ -110,6 +111,28 @@
     <div class="trend-note hidden" id="trendNote"></div>
     <div id="chart"></div>
   </section>
+  <section class="view hidden" id="view-proc">
+    <div class="proc-controls">
+      <div class="pc-windows">
+        <label>基线 A <input type="datetime-local" id="pcAStart" step="60"></label>
+        <span>~</span>
+        <input type="datetime-local" id="pcAEnd" step="60">
+      </div>
+      <div class="pc-windows">
+        <label>对比 B <input type="datetime-local" id="pcBStart" step="60"></label>
+        <span>~</span>
+        <input type="datetime-local" id="pcBEnd" step="60">
+      </div>
+      <div class="pc-presets">
+        <button class="btn btn-small" id="pcYesterday">昨日同时段</button>
+        <button class="btn btn-small" id="pcRun">开始对账</button>
+      </div>
+    </div>
+    <div class="notice hidden" id="procError"></div>
+    <div id="procResult"></div>
+    <div class="proc-hint" id="procHint">进程对账需要 pmlogger 启用 hotproc 采集。选择两个时间窗口,查看哪些进程的 CPU / 内存占用发生了变化 —— 谁变胖了、谁重启了。</div>
+  </section>
+
 </main>
 
 <footer class="foot">基于本机历史归档的离线对比 · 归档保留期默认 7 天,可配置</footer>
