@@ -76,3 +76,6 @@ func (s *Store) ListUsers() ([]string, error) {
 	}
 	return out, rows.Err()
 }
+
+// DB 暴露底层连接,供同库的状态快照存储复用同一个数据库文件。
+func (s *Store) DB() *sql.DB { return s.db }

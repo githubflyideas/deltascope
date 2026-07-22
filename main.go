@@ -17,6 +17,7 @@ import (
 	"github.com/githubflyideas/deltascope/internal/auth"
 	"github.com/githubflyideas/deltascope/internal/httpapi"
 	"github.com/githubflyideas/deltascope/internal/pcp"
+	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
 )
 
@@ -44,6 +45,10 @@ func main() {
 		cmdCompare(os.Args[2:])
 	case "rules":
 		cmdRules(os.Args[2:])
+	case "snapshot":
+		cmdSnapshot(os.Args[2:])
+	case "statediff":
+		cmdStatediff(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -60,6 +65,8 @@ func usage() {
   deltascope user list          列出用户
   deltascope catalog export     导出内置指标目录 (编辑后经 serve -catalog 加载)
   deltascope rules export       导出内置诊断规则 (编辑后经 serve -rules 加载)
+  deltascope snapshot           采集当前整机状态并存档
+  deltascope statediff          对账两个时刻的状态, 只输出差异
   deltascope compare            无头比对: -a-start/-a-end/-b-start/-b-end
                                 [-format text|json] [-all] [-threshold N], 发现恶化退出码 2
 
@@ -261,6 +268,110 @@ func cmdRules(args []string) {
 	}
 	os.Stdout.Write(data)
 	fmt.Println()
+}
+
+func cmdSnapshot(args []string) {
+	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
+	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
+	keep := fs.Int("keep-days", 7, "快照保留天数")
+	quiet := fs.Bool("quiet", false, "只输出摘要")
+	fs.Parse(args)
+
+	st := openStore(*dataDir)
+	defer st.Close()
+	ss, err := state.NewStore(st.DB())
+	if err != nil {
+		log.Fatalf("初始化快照存储失败: %v", err)
+	}
+
+	host, _ := os.Hostname()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	snap := state.Capture(ctx, host)
+	if err := ss.Save(snap); err != nil {
+		log.Fatalf("保存快照失败: %v", err)
+	}
+	if n, _ := ss.Prune(*keep); n > 0 && !*quiet {
+		log.Printf("清理过期快照 %d 份", n)
+	}
+
+	total := 0
+	skipped := 0
+	for _, sec := range snap.Sections {
+		total += len(sec.Items)
+		if sec.Skipped != "" {
+			skipped++
+		}
+	}
+	if *quiet {
+		fmt.Printf("snapshot %s: %d 项 / %d 类\n", snap.Taken.Format("2006-01-02 15:04:05"), total, len(snap.Sections))
+		return
+	}
+	fmt.Printf("已采集快照 %s\n  主机 %s · %d 项事实 · %d 个类别\n",
+		snap.Taken.Local().Format("2006-01-02 15:04:05"), host, total, len(snap.Sections))
+	for _, sec := range snap.Sections {
+		if sec.Skipped != "" {
+			fmt.Printf("  - %-12s 跳过: %s\n", sec.Name, sec.Skipped)
+		} else {
+			fmt.Printf("  - %-12s %d 项\n", sec.Name, len(sec.Items))
+		}
+	}
+}
+
+func cmdStatediff(args []string) {
+	fs := flag.NewFlagSet("statediff", flag.ExitOnError)
+	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
+	since := fs.Duration("since", 24*time.Hour, "基线相对现在的回溯时长 (与 -a/-b 二选一)")
+	aAt := fs.String("a", "", "基线时刻 2006-01-02T15:04 (默认取 -since 之前最近快照)")
+	bAt := fs.String("b", "", "对比时刻 2006-01-02T15:04 (默认取最新快照)")
+	noColor := fs.Bool("no-color", false, "关闭彩色输出")
+	summary := fs.Bool("summary", false, "只输出单行摘要 (适合 cron)")
+	fs.Parse(args)
+
+	st := openStore(*dataDir)
+	defer st.Close()
+	ss, err := state.NewStore(st.DB())
+	if err != nil {
+		log.Fatalf("初始化快照存储失败: %v", err)
+	}
+
+	var a, b state.Snapshot
+	if *bAt != "" {
+		t, err := time.ParseInLocation("2006-01-02T15:04", *bAt, time.Local)
+		if err != nil {
+			log.Fatalf("时刻 -b 格式错误: %v", err)
+		}
+		if b, err = ss.Before(t); err != nil {
+			log.Fatalf("找不到 -b 对应快照: %v", err)
+		}
+	} else {
+		if b, err = ss.Latest(); err != nil {
+			log.Fatalf("没有任何快照, 先运行 deltascope snapshot")
+		}
+	}
+	if *aAt != "" {
+		t, err := time.ParseInLocation("2006-01-02T15:04", *aAt, time.Local)
+		if err != nil {
+			log.Fatalf("时刻 -a 格式错误: %v", err)
+		}
+		if a, err = ss.Before(t); err != nil {
+			log.Fatalf("找不到 -a 对应快照: %v", err)
+		}
+	} else {
+		if a, err = ss.NearestBefore(b.Taken.Add(-*since)); err != nil {
+			log.Fatalf("找不到基线快照: %v", err)
+		}
+	}
+
+	diff := state.Compare(a, b)
+	if *summary {
+		fmt.Println(state.RenderSummaryLine(diff))
+	} else {
+		state.RenderText(os.Stdout, diff, !*noColor)
+	}
+	if diff.Total > 0 {
+		os.Exit(3)
+	}
 }
 
 func cmdUser(args []string) {
