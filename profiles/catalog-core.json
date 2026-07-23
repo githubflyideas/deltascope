@@ -11,19 +11,22 @@
       "metric": "kernel.all.cpu.user",
       "label": "user CPU",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.sys",
       "label": "system CPU",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.nice",
       "label": "nice CPU",
       "category": "CPU",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.idle",
@@ -35,49 +38,57 @@
       "metric": "kernel.all.cpu.wait.total",
       "label": "I/O wait",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.irq.hard",
       "label": "hard IRQ CPU",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.irq.soft",
       "label": "softirq CPU",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.steal",
       "label": "CPU steal",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.cpu.guest",
       "label": "Guest CPU",
       "category": "CPU",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.load",
       "label": "System load",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 0.5
     },
     {
       "metric": "kernel.all.runnable",
       "label": "runnable tasks",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 2
     },
     {
       "metric": "kernel.all.blocked",
       "label": "I/O blocked tasks",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "kernel.all.nprocs",
@@ -115,7 +126,8 @@
       "metric": "kernel.all.pressure.cpu.some.avg",
       "label": "CPU pressure (PSI some)",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.util.available",
@@ -145,13 +157,15 @@
       "metric": "mem.util.dirty",
       "label": "dirty pages",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 51200
     },
     {
       "metric": "mem.util.writeback",
       "label": "writeback pages",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 51200
     },
     {
       "metric": "mem.util.slab",
@@ -175,7 +189,8 @@
       "metric": "mem.util.shmem",
       "label": "shared memory",
       "category": "Memory",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 51200
     },
     {
       "metric": "mem.util.swapCached",
@@ -205,19 +220,22 @@
       "metric": "swap.pagesin",
       "label": "pages swapped in",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "swap.pagesout",
       "label": "pages swapped out",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.vmstat.pgmajfault",
       "label": "major faults",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.vmstat.pgfault",
@@ -236,7 +254,8 @@
       "metric": "mem.vmstat.pgscan_direct",
       "label": "direct reclaim scans",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.vmstat.pgscan_kswapd",
@@ -260,55 +279,64 @@
       "metric": "kernel.all.pressure.memory.some.avg",
       "label": "memory pressure (PSI some)",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "kernel.all.pressure.memory.full.avg",
       "label": "memory pressure (PSI full)",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "disk.all.read",
       "label": "read IOPS · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.all.write",
       "label": "write IOPS · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.all.read_bytes",
       "label": "read throughput · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 512
     },
     {
       "metric": "disk.all.write_bytes",
       "label": "write throughput · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 512
     },
     {
       "metric": "disk.all.total",
       "label": "total IOPS · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.all.read_merge",
       "label": "read merges · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.all.write_merge",
       "label": "write merges · all disks",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.all.avactive",
@@ -326,31 +354,36 @@
       "metric": "disk.dev.read",
       "label": "read IOPS · per-disk",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.dev.write",
       "label": "write IOPS · per-disk",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.dev.read_bytes",
       "label": "read throughput · per-disk",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 512
     },
     {
       "metric": "disk.dev.write_bytes",
       "label": "write throughput · per-disk",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 512
     },
     {
       "metric": "disk.dev.total",
       "label": "total IOPS · per-disk",
       "category": "Disk I/O",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "disk.dev.avactive",
@@ -368,13 +401,15 @@
       "metric": "kernel.all.pressure.io.some.avg",
       "label": "I/O pressure (PSI some)",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "kernel.all.pressure.io.full.avg",
       "label": "I/O pressure (PSI full)",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "filesys.full",
@@ -422,25 +457,29 @@
       "metric": "network.interface.in.bytes",
       "label": "inbound traffic",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10240
     },
     {
       "metric": "network.interface.out.bytes",
       "label": "outbound traffic",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10240
     },
     {
       "metric": "network.interface.in.packets",
       "label": "inbound packet rate",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 50
     },
     {
       "metric": "network.interface.out.packets",
       "label": "outbound packet rate",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 50
     },
     {
       "metric": "network.interface.in.errors",
@@ -477,20 +516,23 @@
       "label": "TCP in segments",
       "category": "Network",
       "polarity": "neutral",
-      "threshold_pct": 150
+      "threshold_pct": 150,
+      "min_abs": 50
     },
     {
       "metric": "network.tcp.outsegs",
       "label": "TCP out segments",
       "category": "Network",
       "polarity": "neutral",
-      "threshold_pct": 150
+      "threshold_pct": 150,
+      "min_abs": 50
     },
     {
       "metric": "network.tcp.retranssegs",
       "label": "TCP retransmits",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.inerrs",
@@ -502,7 +544,8 @@
       "metric": "network.tcp.outrsts",
       "label": "TCP out RST",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.timeouts",
@@ -514,31 +557,36 @@
       "metric": "network.tcp.currestab",
       "label": "TCP established",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "network.tcp.activeopens",
       "label": "TCP active opens",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.passiveopens",
       "label": "TCP passive opens",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.estabresets",
       "label": "TCP established resets",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.attemptfails",
       "label": "TCP attempt fails",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.listendrops",
@@ -575,14 +623,16 @@
       "label": "UDP in datagrams",
       "category": "Network",
       "polarity": "neutral",
-      "threshold_pct": 150
+      "threshold_pct": 150,
+      "min_abs": 50
     },
     {
       "metric": "network.udp.outdatagrams",
       "label": "UDP out datagrams",
       "category": "Network",
       "polarity": "neutral",
-      "threshold_pct": 150
+      "threshold_pct": 150,
+      "min_abs": 50
     },
     {
       "metric": "network.udp.inerrors",
@@ -612,25 +662,29 @@
       "metric": "network.sockstat.tcp.inuse",
       "label": "TCP sockets in use",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "network.sockstat.tcp.alloc",
       "label": "TCP sockets allocated",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "network.sockstat.tcp.tw",
       "label": "TIME-WAIT connections",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 10
     },
     {
       "metric": "network.sockstat.tcp.orphan",
       "label": "orphan connections",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.sockstat.udp.inuse",
@@ -655,7 +709,8 @@
       "label": "softirq packets processed",
       "category": "Network",
       "polarity": "neutral",
-      "threshold_pct": 150
+      "threshold_pct": 150,
+      "min_abs": 100
     },
     {
       "metric": "network.tcp.prunecalled",

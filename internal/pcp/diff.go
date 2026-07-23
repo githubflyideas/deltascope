@@ -100,7 +100,7 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 		if info.ThresholdPct > 0 {
 			eff = info.ThresholdPct
 		}
-		row.DeltaPct, row.Exceeded, row.Verdict = judge(row.A, row.B, info.Polarity, eff)
+		row.DeltaPct, row.Exceeded, row.Verdict = judge(row.A, row.B, info.Polarity, eff, info.MinAbs)
 		rows = append(rows, row)
 	}
 
@@ -122,11 +122,30 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 	return rows
 }
 
-func judge(a, b *float64, pol Polarity, thresholdPct float64) (*float64, bool, Verdict) {
+// judge decides a row's verdict from its two window means.
+//
+// A change must clear two independent bars to be called significant:
+// the relative bar (thresholdPct) and the absolute bar (minAbs). The
+// second one matters because percentage change is meaningless when both
+// values are near zero -- 0.005 -> 0.097 is "+1840%" but on an idle
+// machine it is nothing at all. When neither side reaches minAbs the row
+// is flat regardless of ratio.
+func judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64, bool, Verdict) {
 	if a == nil || b == nil {
 		return nil, true, VWatch
 	}
 	av, bv := *a, *b
+	if minAbs > 0 && math.Abs(av) < minAbs && math.Abs(bv) < minAbs {
+		if av == bv {
+			z := 0.0
+			return &z, false, VFlat
+		}
+		if av == 0 {
+			return nil, false, VFlat
+		}
+		d := (bv - av) / math.Abs(av) * 100
+		return &d, false, VFlat
+	}
 	if av == 0 {
 		if bv == 0 {
 			z := 0.0

@@ -336,6 +336,18 @@ func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err.Error()+" (enable hotproc collection in pmlogger)")
 		return
 	}
+	// pmlogsummary can exit 0 while returning nothing at all for hotproc
+	// metrics: the archive simply never recorded them. Say so explicitly
+	// instead of rendering an empty table with no explanation.
+	if len(rep.CPURows) == 0 && len(rep.MemRows) == 0 {
+		writeJSON(w, map[string]any{
+			"cpu": []any{}, "mem": []any{}, "restarts": []any{},
+			"warnings":   rep.Warnings,
+			"no_data":    true,
+			"no_data_hint": "No per-process data in this archive. Process accounting needs the hotproc PMDA enabled and recorded by pmlogger -- see docs/hotproc.config. Data is recorded from that point onward, so allow time to accumulate before comparing windows.",
+		})
+		return
+	}
 	writeJSON(w, procReportJSON(rep))
 }
 

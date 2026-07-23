@@ -664,6 +664,11 @@ function procTable(rows, unit) {
 }
 
 function renderProcDiff(rep) {
+  if (rep.no_data) {
+    $("#procResult").innerHTML =
+      `<div class="no-finding" style="line-height:1.7">${escapeHtml(rep.no_data_hint || "No per-process data in this archive.")}</div>`;
+    return;
+  }
   let html = "";
   if (rep.restarts && rep.restarts.length) {
     html += `<div class="restart-banner"><b>\u27F3 restarted during this window</b> ` +

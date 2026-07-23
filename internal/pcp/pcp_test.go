@@ -81,7 +81,7 @@ func TestJudge(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			d, exc, v := judge(c.a, c.b, c.pol, 15)
+			d, exc, v := judge(c.a, c.b, c.pol, 15, 0)
 			if v != c.wantV || exc != c.wantExc {
 				t.Fatalf("judge=%v/%v, want %v/%v", v, exc, c.wantV, c.wantExc)
 			}
@@ -376,5 +376,62 @@ func TestTriageIgnoresNonCoreAppeared(t *testing.T) {
 	}
 	if !found {
 		t.Error("a core metric appearing (e.g. oom_kill) should still be flagged")
+	}
+}
+
+// TestJudgeAbsoluteFloor covers the real-world case that motivated the
+// absolute floor: on a nearly idle machine, tiny movements produce huge
+// percentages and light the whole report red.
+func TestJudgeAbsoluteFloor(t *testing.T) {
+	cases := []struct {
+		name           string
+		a, b           float64
+		minAbs         float64
+		wantV          Verdict
+	}{
+		// Reported from a live host: CPU PSI 0.005 -> 0.097 rendered as
+		// "+1840%" and turned the CPU triage card red on an idle box.
+		{"PSI micro-movement below floor stays flat", 0.005, 0.097, 1, VFlat},
+		// user CPU in ms/s: 0.006 -> 0.019 is "+216%" of nothing.
+		{"cpu ms/s micro-movement stays flat", 0.006, 0.019, 10, VFlat},
+		// load average 0.001 -> 0.015 was reported as "+1400%".
+		{"load micro-movement stays flat", 0.001, 0.015, 0.5, VFlat},
+		// dirty pages 258KB -> 427KB on a multi-GB box is not a signal.
+		{"dirty pages below floor stays flat", 258.6, 427.5, 51200, VFlat},
+		// But real load must still be caught: half a core -> three cores.
+		{"real cpu load still worse", 500, 3000, 10, VWorse},
+		// And a genuine PSI stall must still register.
+		{"real PSI stall still worse", 2, 40, 1, VWorse},
+		// One side above the floor is enough to judge normally.
+		{"crossing the floor upward is judged", 0.5, 80, 10, VWorse},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, v := judge(&c.a, &c.b, WorseUp, 15, c.minAbs)
+			if v != c.wantV {
+				t.Errorf("judge(%v -> %v, minAbs=%v) = %v, want %v",
+					c.a, c.b, c.minAbs, v, c.wantV)
+			}
+		})
+	}
+}
+
+// TestCatalogMinAbsWired verifies the defaults actually reach the catalog,
+// so the floor is live without any user configuration.
+func TestCatalogMinAbsWired(t *testing.T) {
+	for _, m := range []string{
+		"kernel.all.cpu.user",
+		"kernel.all.load",
+		"kernel.all.pressure.cpu.some.avg",
+		"mem.util.dirty",
+		"network.tcp.insegs",
+	} {
+		info, ok := Lookup(m)
+		if !ok {
+			t.Fatalf("%s missing from catalog", m)
+		}
+		if info.MinAbs <= 0 {
+			t.Errorf("%s has no absolute floor set (MinAbs=%v)", m, info.MinAbs)
+		}
 	}
 }
