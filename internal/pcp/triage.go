@@ -96,6 +96,7 @@ func Triage(rows []DiffRow) []TriageBlock {
 			continue
 		}
 		core := coreMetrics[r.Metric]
+		appeared := r.A == nil || r.B == nil
 		switch r.Verdict {
 		case VWorse:
 			if core {
@@ -103,11 +104,19 @@ func Triage(rows []DiffRow) []TriageBlock {
 					rr := r
 					a.worstBad = &rr
 				}
-			} else if a.worstWarn == nil {
+			} else if a.worstWarn == nil && !appeared {
 				rr := r
 				a.worstWarn = &rr
 			}
 		case VWatch:
+			// A metric appearing/vanishing with no prior baseline is a data-
+			// collection artifact (archive window edge, PMDA reload, etc.)
+			// far more often than a real signal. Only let it claim a block's
+			// headline when it's a core metric -- e.g. OOM kills appearing
+			// is worth flagging, entropy.avail appearing is noise.
+			if appeared && !core {
+				continue
+			}
 			if a.worstWarn == nil {
 				rr := r
 				a.worstWarn = &rr

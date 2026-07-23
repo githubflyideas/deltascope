@@ -407,7 +407,17 @@ function renderReport(rep) {
   const warnBox = $("#warnBox");
   if (rep.warnings && rep.warnings.length) {
     warnBox.classList.remove("hidden");
-    $("#warnPre").textContent = rep.warnings.join("\n");
+    const names = [...new Set(rep.warnings.map((w) => {
+      const m = w.match(/for ([\w.]+):/);
+      return m ? m[1] : w;
+    }))].sort();
+    $("#warnSummary").textContent =
+      `${names.length} metric(s) not recorded in this archive -- expand for details`;
+    $("#warnPre").innerHTML =
+      `These metrics are skipped and don't affect the rest of the report.\n` +
+      `Enable full collection: see deploy.sh's tiered sampling config, or\n` +
+      `docs/hotproc.config for process accounting.\n\n` +
+      names.map(escapeHtml).join("\n");
   } else {
     warnBox.classList.add("hidden");
   }

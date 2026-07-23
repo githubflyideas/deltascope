@@ -325,7 +325,7 @@ func TestTriage(t *testing.T) {
 		{Metric: "kernel.all.cpu.user", Category: "CPU", Verdict: VWorse, DeltaPct: f(520)},
 		{Metric: "mem.util.available", Category: "Memory", Verdict: VWorse, DeltaPct: f(-60)},
 		// disk has only a non-core metric flagged -> should be warn, not bad
-		{Metric: "disk.dev.read", Category: "Disk I/O", Verdict: VWatch, DeltaPct: f(40)},
+		{Metric: "disk.dev.read", Category: "Disk I/O", Verdict: VWatch, A: f(100), B: f(140), DeltaPct: f(40)},
 		// network unchanged -> ok
 		{Metric: "network.tcp.insegs", Category: "Network", Verdict: VFlat, DeltaPct: f(2)},
 	}
@@ -345,5 +345,36 @@ func TestTriage(t *testing.T) {
 	}
 	if got["net"] != TriageOK {
 		t.Errorf("network unchanged should be ok, got %s", got["net"])
+	}
+}
+
+func TestTriageIgnoresNonCoreAppeared(t *testing.T) {
+	// A metric appearing with no prior baseline (a==nil) and no core
+	// significance is a collection artifact, not a signal -- it must not
+	// win the block's headline. Real-world case: kernel.all.entropy.avail
+	// showing up for the first time should not make the CPU card yellow.
+	rows := []DiffRow{
+		{Metric: "kernel.all.entropy.avail", Category: "CPU", Verdict: VWatch, A: nil, B: f(256)},
+	}
+	blocks := Triage(rows)
+	for _, b := range blocks {
+		if b.Key == "cpu" && b.Status != TriageOK {
+			t.Errorf("a non-core appeared metric should not flip CPU to %s: %+v", b.Status, b)
+		}
+	}
+
+	// but an appearing CORE metric (e.g. OOM kill) must still be surfaced
+	rows2 := []DiffRow{
+		{Metric: "mem.vmstat.oom_kill", Category: "Memory", Verdict: VWatch, A: nil, B: f(3)},
+	}
+	blocks2 := Triage(rows2)
+	found := false
+	for _, b := range blocks2 {
+		if b.Key == "mem" && b.Status == TriageWarn {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a core metric appearing (e.g. oom_kill) should still be flagged")
 	}
 }
