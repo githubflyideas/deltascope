@@ -25,6 +25,7 @@
   <button class="tab is-active" data-tab="diff">Regression Diff</button>
   <button class="tab" data-tab="trend">Trends</button>
   <button class="tab" data-tab="proc">Process Accounting</button>
+  <button class="tab" data-tab="change">Change Accounting</button>
 </nav>
 
 <main>
@@ -136,6 +137,21 @@
     <div class="notice hidden" id="procError"></div>
     <div id="procResult"></div>
     <div class="proc-hint" id="procHint">Process accounting requires hotproc collection enabled in pmlogger. Pick two time windows to see which processes' CPU / memory usage changed — who grew, who restarted.</div>
+  </section>
+  <section class="view hidden" id="view-change">
+    <div class="change-controls">
+      <label class="threshold-label">Compare against
+        <select id="changeSince">
+          <option value="1h">1 hour ago</option>
+          <option value="24h" selected>24 hours ago</option>
+          <option value="168h">7 days ago</option>
+        </select>
+      </label>
+      <button class="btn btn-primary" id="changeRun">Check for changes</button>
+    </div>
+    <div class="notice hidden" id="changeError"></div>
+    <div id="changeResult"></div>
+    <div class="proc-hint" id="changeHint">Snapshots the machine now and diffs it against the nearest snapshot before the chosen time -- sysctl, packages, kernel modules, network config, listening ports, firewall, mounts, services, cron, config file fingerprints, and security posture (including net.ipv4.ip_forward). Only what changed is shown. Run <code>deltascope snapshot</code> on a schedule (see docs/statediff-cron.md) to build real history; without it, this compares against a snapshot taken just now.</div>
   </section>
 
 </main>

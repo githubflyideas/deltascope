@@ -8,12 +8,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/githubflyideas/deltascope/internal/auth"
 	"github.com/githubflyideas/deltascope/internal/pcp"
+	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
 )
 
@@ -23,13 +25,14 @@ const (
 )
 
 type Server struct {
-	Store    *store.Store
-	Sessions *auth.Sessions
-	Limiter  *auth.RateLimiter
-	Runner   pcp.Runner
-	Archive  string
-	WebFS    fs.FS
-	SecureCk bool
+	Store      *store.Store
+	StateStore *state.Store
+	Sessions   *auth.Sessions
+	Limiter    *auth.RateLimiter
+	Runner     pcp.Runner
+	Archive    string
+	WebFS      fs.FS
+	SecureCk   bool
 }
 
 func (s *Server) Routes() http.Handler {
@@ -48,6 +51,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/diff", s.requireAuth(s.handleDiff))
 	mux.Handle("GET /api/trend", s.requireAuth(s.handleTrend))
 	mux.Handle("GET /api/procdiff", s.requireAuth(s.handleProcDiff))
+	mux.Handle("GET /api/statediff", s.requireAuth(s.handleStateDiff))
 
 	return securityHeaders(mux)
 }
@@ -241,6 +245,61 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
 	writeJSON(w, map[string]any{"series": series, "missing": missing})
+}
+
+func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {
+	if s.StateStore == nil {
+		writeErr(w, http.StatusServiceUnavailable, "change accounting is not enabled on this server")
+		return
+	}
+	q := r.URL.Query()
+	sinceStr := q.Get("since")
+	if sinceStr == "" {
+		sinceStr = "24h"
+	}
+	since, err := time.ParseDuration(sinceStr)
+	if err != nil || since <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid since duration, expected e.g. 24h")
+		return
+	}
+
+	host, _ := os.Hostname()
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	after := state.Capture(ctx, host)
+	if err := s.StateStore.Save(after); err != nil {
+		log.Printf("statediff: failed to persist snapshot: %v", err)
+	}
+
+	before, err := s.StateStore.NearestBefore(after.Taken.Add(-since))
+	if err != nil {
+		// no history yet: capture a second live snapshot so the
+		// endpoint still works on a machine with zero prior snapshots.
+		before = state.Capture(ctx, host)
+	}
+
+	diff := state.Compare(before, after)
+	writeJSON(w, map[string]any{
+		"a_time":  before.Taken,
+		"b_time":  after.Taken,
+		"total":   diff.Total,
+		"sections": stateDiffJSON(diff),
+	})
+}
+
+func stateDiffJSON(d state.Diff) []map[string]any {
+	out := make([]map[string]any, 0, len(d.Sections))
+	for _, sd := range d.Sections {
+		changes := make([]map[string]any, 0, len(sd.Changes))
+		for _, ch := range sd.Changes {
+			changes = append(changes, map[string]any{
+				"key": ch.Key, "kind": string(ch.Kind), "old": ch.Old, "new": ch.New, "note": ch.Note,
+			})
+		}
+		out = append(out, map[string]any{"name": sd.Name, "title": sd.Title, "changes": changes})
+	}
+	return out
 }
 
 func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {

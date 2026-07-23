@@ -687,12 +687,6 @@
         "disk.all.write_bytes"
       ]
     },
-    "fs": {
-      "label": "Filesystem usage (%)",
-      "metrics": [
-        "filesys.full"
-      ]
-    },
     "load": {
       "label": "System load",
       "metrics": [
@@ -726,14 +720,6 @@
         "network.sockstat.tcp.alloc",
         "network.sockstat.tcp.tw",
         "network.sockstat.tcp.orphan"
-      ]
-    },
-    "syn": {
-      "label": "SYN pressure",
-      "metrics": [
-        "network.tcp.syncookiessent",
-        "network.tcp.listendrops",
-        "network.tcp.listenoverflows"
       ]
     },
     "tcp": {

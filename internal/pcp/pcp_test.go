@@ -282,8 +282,8 @@ type flakyRunner struct{ calls int }
 func (fr *flakyRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
 	fr.calls++
 	for _, a := range args {
-		if a == "network.tcp.syncookiessent" {
-			return nil, []byte("pmrep: Invalid metric network.tcp.syncookiessent : Unknown metric name"), fmt.Errorf("exit status 1")
+		if a == "network.sockstat.tcp.orphan" {
+			return nil, []byte("pmrep: Invalid metric network.sockstat.tcp.orphan : Unknown metric name"), fmt.Errorf("exit status 1")
 		}
 	}
 	return []byte(sampleCSV), nil, nil
@@ -291,11 +291,11 @@ func (fr *flakyRunner) Run(_ context.Context, _ string, args ...string) ([]byte,
 
 func TestRunTrendSelfHeal(t *testing.T) {
 	fr := &flakyRunner{}
-	series, missing, err := RunTrend(context.Background(), fr, "/a", "syn", time.Now().Add(-time.Hour), time.Now())
+	series, missing, err := RunTrend(context.Background(), fr, "/a", "sock", time.Now().Add(-time.Hour), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(missing) != 1 || missing[0] != "network.tcp.syncookiessent" {
+	if len(missing) != 1 || missing[0] != "network.sockstat.tcp.orphan" {
 		t.Fatalf("missing should record the dropped metric: %+v", missing)
 	}
 	if fr.calls != 2 || len(series) == 0 {

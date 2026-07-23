@@ -83,8 +83,10 @@ async function main() {
       $("#view-diff").classList.toggle("hidden", t.dataset.tab !== "diff");
       $("#view-trend").classList.toggle("hidden", t.dataset.tab !== "trend");
       $("#view-proc").classList.toggle("hidden", t.dataset.tab !== "proc");
+      $("#view-change").classList.toggle("hidden", t.dataset.tab !== "change");
       if (t.dataset.tab === "trend") trendInit();
       if (t.dataset.tab === "proc") procInit();
+      if (t.dataset.tab === "change") changeInit();
     })
   );
 
@@ -226,10 +228,14 @@ function renderTriage(triage, rows) {
   board.querySelectorAll(".triage-jump[data-res]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const res = btn.dataset.res;
-      const cat = { cpu: "CPU", mem: "Memory", disk: "Disk I/O", net: "Network" }[res];
-      const el = [...document.querySelectorAll(".cat-block summary .cat-head")]
-        .find((h) => h.textContent.includes(cat));
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      const cats = { cpu: ["CPU"], mem: ["Memory"], disk: ["Disk I/O", "Filesystem"], net: ["Network"] }[res];
+      const el = [...document.querySelectorAll(".cat-block summary.cat-head")]
+        .find((h) => cats.some((cat) => h.textContent.includes(cat)));
+      if (el) {
+        const details = el.closest("details");
+        if (details) details.open = true;
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }));
   board.querySelectorAll(".triage-jump[data-tab-jump]").forEach((btn) =>
     btn.addEventListener("click", () => {
@@ -424,7 +430,7 @@ async function trendInit() {
 
   const cat = CAT || (CAT = await api("/api/catalog"));
   const seg = $("#presetSeg");
-  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "sock", "syn", "psi", "fs"];
+  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "sock", "psi"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");
@@ -657,4 +663,65 @@ function renderProcDiff(rep) {
   html += `<div class="cat-block"><div class="cat-head"><span>Process CPU accounting</span><span>higher = worse</span></div>${procTable(rep.cpu, "ms/s")}</div>`;
   html += `<div class="cat-block"><div class="cat-head"><span>Process memory accounting</span><span>RSS</span></div>${procTable(rep.mem, "KB")}</div>`;
   $("#procResult").innerHTML = html;
+}
+
+let changeReady = false;
+
+function changeInit() {
+  if (changeReady) return;
+  changeReady = true;
+  $("#changeRun").addEventListener("click", runStateDiff);
+  runStateDiff();
+}
+
+async function runStateDiff() {
+  const btn = $("#changeRun");
+  const err = $("#changeError");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Checking…";
+  try {
+    const since = $("#changeSince").value;
+    const rep = await api("/api/statediff?since=" + encodeURIComponent(since));
+    renderStateDiff(rep);
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove("hidden");
+    $("#changeResult").innerHTML = "";
+  } finally {
+    btn.disabled = false; btn.textContent = "Check for changes";
+  }
+}
+
+const CHANGE_KIND = {
+  added:    { icon: "\u{1F7E2}", cls: "v-new", label: "added" },
+  modified: { icon: "\u{1F7E1}", cls: "v-watch", label: "modified" },
+  removed:  { icon: "\u26AA",   cls: "v-gone", label: "removed" },
+};
+
+function renderStateDiff(rep) {
+  const box = $("#changeResult");
+  const fmtT = (s) => new Date(s).toLocaleString();
+  const header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`;
+
+  if (!rep.total) {
+    box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">\u2705 State is identical between the two points in time -- no configuration or environment changes detected.</div>`;
+    return;
+  }
+
+  const sections = rep.sections.map((sec) => {
+    const rows = sec.changes.map((ch) => {
+      const k = CHANGE_KIND[ch.kind] || CHANGE_KIND.modified;
+      let detail;
+      if (ch.kind === "added") detail = `<code>${escapeHtml(ch.new)}</code>`;
+      else if (ch.kind === "removed") detail = `<span class="was">was <code>${escapeHtml(ch.old)}</code></span>`;
+      else detail = `<code>${escapeHtml(ch.old)}</code> &rarr; <code>${escapeHtml(ch.new)}</code>`;
+      return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(ch.key)}</span></td><td>${detail}</td><td>${k.label}</td></tr>`;
+    }).join("");
+    return `<details class="cat-block" open>
+      <summary class="cat-head"><span>${escapeHtml(sec.title)}</span><span>${sec.changes.length} items</span></summary>
+      <table class="report"><tbody>${rows}</tbody></table>
+    </details>`;
+  }).join("");
+
+  box.innerHTML = header + `<div class="verdict-strip" style="margin-top:10px"><span class="verdict-pill pill-warn">\u26A0\uFE0F ${rep.total} change(s)</span></div>` + sections;
 }

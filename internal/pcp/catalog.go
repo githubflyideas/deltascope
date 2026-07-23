@@ -192,9 +192,7 @@ var TrendPresets = map[string]Preset{
 	"net":  {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
 	"tcp":  {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
 	"sock": {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
-	"syn":  {"SYN pressure", []string{"network.tcp.syncookiessent", "network.tcp.listendrops", "network.tcp.listenoverflows"}},
 	"psi":  {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
-	"fs":   {"Filesystem usage (%)", []string{"filesys.full"}},
 }
 
 var thresholdDefault = map[string]float64{

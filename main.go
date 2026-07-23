@@ -158,15 +158,20 @@ func cmdServe(args []string) {
 	if users, err := st.ListUsers(); err == nil && len(users) == 0 {
 		log.Printf("note: no users yet, run deltascope user add <name> to create an admin")
 	}
+	stateStore, err := state.NewStore(st.DB())
+	if err != nil {
+		log.Printf("warning: change accounting unavailable: %v", err)
+	}
 
 	srv := &httpapi.Server{
-		Store:    st,
-		Sessions: auth.NewSessions(loadOrCreateSecret(*dataDir), *ttl),
-		Limiter:  auth.NewRateLimiter(10, 15*time.Minute),
-		Runner:   pcp.ExecRunner{},
-		Archive:  *archive,
-		WebFS:    webFS,
-		SecureCk: *tlsCert != "",
+		Store:      st,
+		StateStore: stateStore,
+		Sessions:   auth.NewSessions(loadOrCreateSecret(*dataDir), *ttl),
+		Limiter:    auth.NewRateLimiter(10, 15*time.Minute),
+		Runner:     pcp.ExecRunner{},
+		Archive:    *archive,
+		WebFS:      webFS,
+		SecureCk:   *tlsCert != "",
 	}
 
 	h := &http.Server{
