@@ -11,7 +11,7 @@ type sysInfo struct{}
 
 func (sysInfo) Name() string { return "system" }
 func (sysInfo) Collect(ctx context.Context) Section {
-	sec := Section{Name: "system", Title: "系统身份"}
+	sec := Section{Name: "system", Title: "System Identity"}
 	add := func(k, v string) {
 		if v != "" {
 			sec.Items = append(sec.Items, Item{Key: k, Value: strings.TrimSpace(v)})
@@ -74,7 +74,8 @@ func (sysInfo) Collect(ctx context.Context) Section {
 
 type sysctl struct{}
 
-// sysctlVolatile 是运行时自然波动、非配置性质的键前缀/精确名,采集时跳过。
+// sysctlVolatile lists key prefixes/exact names that fluctuate naturally at
+// runtime and are not configuration - skipped during collection.
 var sysctlVolatile = []string{
 	"kernel.random.uuid", "kernel.random.boot_id", "kernel.ns_last_pid",
 	"kernel.random.entropy_avail", "fs.dentry-state", "fs.file-nr",
@@ -83,7 +84,8 @@ var sysctlVolatile = []string{
 	"kernel.hung_task_detect_count", "kernel.tainted", "user.",
 }
 
-// sysctlSecurityOwned 已由 security 采集器单列,sysctl 中去重避免重复告警。
+// sysctlSecurityOwned are keys already surfaced individually by the security
+// collector; skipped here to avoid duplicate alerts.
 var sysctlSecurityOwned = map[string]bool{
 	"net.ipv4.ip_forward":                true,
 	"net.ipv4.conf.all.rp_filter":        true,
@@ -108,7 +110,7 @@ func sysctlSkip(key string) bool {
 
 func (sysctl) Name() string { return "sysctl" }
 func (sysctl) Collect(ctx context.Context) Section {
-	sec := Section{Name: "sysctl", Title: "内核参数 (sysctl)"}
+	sec := Section{Name: "sysctl", Title: "Kernel Parameters (sysctl)"}
 	roots := []string{
 		"/proc/sys/net", "/proc/sys/vm", "/proc/sys/kernel",
 		"/proc/sys/fs",
@@ -135,7 +137,7 @@ func (sysctl) Collect(ctx context.Context) Section {
 		})
 	}
 	if len(sec.Items) == 0 {
-		sec.Skipped = "无法读取 /proc/sys"
+		sec.Skipped = "could not read /proc/sys"
 	}
 	return sec
 }
@@ -144,7 +146,7 @@ type packages struct{}
 
 func (packages) Name() string { return "packages" }
 func (packages) Collect(ctx context.Context) Section {
-	sec := Section{Name: "packages", Title: "软件包"}
+	sec := Section{Name: "packages", Title: "Packages"}
 	if out, ok := runCmd(ctx, "rpm", "-qa", "--qf", "%{NAME} %{VERSION}-%{RELEASE}\n"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
@@ -163,7 +165,7 @@ func (packages) Collect(ctx context.Context) Section {
 		}
 		return sec
 	}
-	sec.Skipped = "未找到 rpm 或 dpkg"
+	sec.Skipped = "neither rpm nor dpkg found"
 	return sec
 }
 
@@ -171,10 +173,10 @@ type modules struct{}
 
 func (modules) Name() string { return "modules" }
 func (modules) Collect(ctx context.Context) Section {
-	sec := Section{Name: "modules", Title: "内核模块"}
+	sec := Section{Name: "modules", Title: "Kernel Modules"}
 	v, ok := readFile("/proc/modules")
 	if !ok {
-		sec.Skipped = "无法读取 /proc/modules"
+		sec.Skipped = "could not read /proc/modules"
 		return sec
 	}
 	for _, l := range lines(v) {

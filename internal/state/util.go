@@ -27,7 +27,7 @@ func fileHash(path string) (string, bool) {
 	return hashBytes(b), true
 }
 
-// runCmd 执行只读命令,带超时。返回 stdout 与是否成功。
+// runCmd runs a read-only command with a timeout. Returns stdout and success.
 func runCmd(ctx context.Context, name string, args ...string) (string, bool) {
 	if _, err := exec.LookPath(name); err != nil {
 		return "", false
@@ -61,7 +61,7 @@ func fields(line string) []string {
 
 func hasRoot() bool { return os.Geteuid() == 0 }
 
-// globFiles 展开一个 glob 清单,返回存在的普通文件路径。
+// globFiles expands a list of globs, returning existing regular file paths.
 func globFiles(patterns []string) []string {
 	seen := map[string]bool{}
 	var out []string

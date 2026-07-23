@@ -9,7 +9,7 @@ type services struct{}
 
 func (services) Name() string { return "services" }
 func (services) Collect(ctx context.Context) Section {
-	sec := Section{Name: "services", Title: "服务状态"}
+	sec := Section{Name: "services", Title: "Service Status"}
 	if out, ok := runCmd(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
@@ -27,7 +27,7 @@ func (services) Collect(ctx context.Context) Section {
 		}
 	}
 	if len(sec.Items) == 0 {
-		sec.Skipped = "未找到 systemctl"
+		sec.Skipped = "systemctl not found"
 	}
 	return sec
 }
@@ -36,7 +36,7 @@ type crontab struct{}
 
 func (crontab) Name() string { return "cron" }
 func (crontab) Collect(ctx context.Context) Section {
-	sec := Section{Name: "cron", Title: "定时任务"}
+	sec := Section{Name: "cron", Title: "Scheduled Tasks"}
 	for _, p := range globFiles([]string{
 		"/etc/crontab", "/etc/cron.d/*", "/etc/cron.hourly/*",
 		"/etc/cron.daily/*", "/etc/cron.weekly/*", "/etc/cron.monthly/*",
@@ -47,7 +47,7 @@ func (crontab) Collect(ctx context.Context) Section {
 		}
 	}
 	if len(sec.Items) == 0 {
-		sec.Skipped = "无 cron 任务或不可读"
+		sec.Skipped = "no cron jobs or unreadable"
 	}
 	return sec
 }
@@ -56,7 +56,7 @@ type configs struct{}
 
 func (configs) Name() string { return "configs" }
 func (configs) Collect(ctx context.Context) Section {
-	sec := Section{Name: "configs", Title: "配置文件指纹"}
+	sec := Section{Name: "configs", Title: "Config File Fingerprints"}
 	patterns := []string{
 		"/etc/ssh/sshd_config", "/etc/ssh/sshd_config.d/*",
 		"/etc/security/limits.conf", "/etc/security/limits.d/*",
@@ -74,7 +74,7 @@ func (configs) Collect(ctx context.Context) Section {
 		}
 	}
 	if len(sec.Items) == 0 {
-		sec.Skipped = "无匹配的配置文件"
+		sec.Skipped = "no matching config files"
 	}
 	return sec
 }
@@ -83,7 +83,7 @@ type security struct{}
 
 func (security) Name() string { return "security" }
 func (security) Collect(ctx context.Context) Section {
-	sec := Section{Name: "security", Title: "安全态"}
+	sec := Section{Name: "security", Title: "Security Posture"}
 	add := func(k, v string) {
 		if v != "" {
 			sec.Items = append(sec.Items, Item{Key: k, Value: strings.TrimSpace(v)})
@@ -117,7 +117,7 @@ func (security) Collect(ctx context.Context) Section {
 		}
 	}
 	if len(sec.Items) == 0 {
-		sec.Skipped = "无可采集的安全态项"
+		sec.Skipped = "no security posture items collectable"
 	}
 	return sec
 }

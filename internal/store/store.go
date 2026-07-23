@@ -9,7 +9,7 @@ import (
 
 type Store struct{ db *sql.DB }
 
-var ErrNotFound = errors.New("用户不存在")
+var ErrNotFound = errors.New("user not found")
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open(driverName, path+dsnParams)
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL
 );`); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("初始化 schema 失败: %w", err)
+		return nil, fmt.Errorf("failed to init schema: %w", err)
 	}
 	return &Store{db: db}, nil
 }
@@ -77,5 +77,5 @@ func (s *Store) ListUsers() ([]string, error) {
 	return out, rows.Err()
 }
 
-// DB 暴露底层连接,供同库的状态快照存储复用同一个数据库文件。
+// DB exposes the underlying connection, so the state-snapshot store can reuse the same database file.
 func (s *Store) DB() *sql.DB { return s.db }

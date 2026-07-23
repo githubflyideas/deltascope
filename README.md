@@ -1,157 +1,103 @@
-<div align="center">
-
-<img src="docs/logo.svg" alt="deltascope" width="96">
-
 # deltascope
 
-**Performance regression scope for a single Linux box — with a doctor's notes**
+**Whole-machine change & performance diff for Linux, built on PCP.**
 
-[![Go](https://img.shields.io/badge/Go-1.22%2B-4cc9f0?logo=go&logoColor=white)](https://go.dev)
-[![PCP](https://img.shields.io/badge/backend-Performance%20Co--Pilot-e8a33d)](https://pcp.io)
-[![Static Binary](https://img.shields.io/badge/deploy-single%20static%20binary-3ddc97)]()
-[![Air-gapped](https://img.shields.io/badge/network-air--gapped%20ready-8391ad)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+A single static Go binary. No internet dependency, minimal external
+requirements. Point it at two moments in time and it tells you what's
+different — not a wall of dashboards, a diagnosis.
 
-🌐 **English** · [中文](docs/i18n/README.zh-CN.md) · [日本語](docs/i18n/README.ja.md) · [한국어](docs/i18n/README.ko.md) · [Deutsch](docs/i18n/README.de.md) · [Français](docs/i18n/README.fr.md) · [Español](docs/i18n/README.es.md) · [Português](docs/i18n/README.pt.md) · [Italiano](docs/i18n/README.it.md) · [Русский](docs/i18n/README.ru.md) · [ไทย](docs/i18n/README.th.md) · [Bahasa Indonesia](docs/i18n/README.id.md) · [Tiếng Việt](docs/i18n/README.vi.md)
+## Why
 
+Most incidents are caused by a change. The usual question after "it's
+slow" is "what changed since it wasn't". deltascope answers that
+directly, across three layers:
 
-</div>
+- **Regression diff** — compare performance metrics between two windows
+  (146 built-in metrics: CPU, memory, disk, filesystem, network), with a
+  rule engine that turns raw deltas into plain-language conclusions
+  ("swap is active and available memory is falling — memory pressure")
+  plus next steps to run.
+- **Change accounting** (`statediff` / `verify`) — snapshot ~1700 facts
+  about the machine (sysctl, packages, kernel modules, routes, listening
+  ports, firewall, mounts, services, cron, config file fingerprints,
+  security posture) and diff two points in time, showing only what
+  changed. `verify` turns this into a release tool: baseline before a
+  deploy, report after, paste the Markdown into a PR.
+- **Process accounting** — per-process CPU/memory accounting between two
+  windows, with restart detection, so "today mysqld pegged the CPU and
+  nginx ate 90% of memory, yesterday both were idle" is one command away.
 
----
+A triage dashboard on top organizes all of this the way an engineer
+actually thinks about a machine: CPU / memory / disk / network, plus a
+fifth block for "the software gremlin" — process and configuration
+changes that hardware counters alone won't show you.
 
+## Install
+
+```bash
+curl -L -o deltascope https://github.com/githubflyideas/deltascope/raw/main/dist/deltascope-linux-amd64
+chmod +x deltascope
+sudo mv deltascope /usr/local/bin/
 ```
-Browser / CLI ── deltascope (one static Go binary)
-                   ├─ A/B window regression diff over local history archives
-                   ├─ 16-rule diagnosis engine → conclusion · evidence · next steps
-                   ├─ zoomable trend charts (10 metric groups)
-                   └─ everything embedded: UI, charts, credentials — zero external services
-Collection: Performance Co-Pilot archives, ring retention (default 7 days)
-```
 
-<div align="center">
+ARM64 and CentOS/RHEL 6 builds are in [`dist/`](dist/). Verify with
+`sha256sum -c dist/SHA256SUMS`.
 
-<img src="docs/preview-diff.svg" width="100%" alt="A/B regression report with diagnosis">
-<sub>A/B regression report — diagnosis first, full data below</sub>
-
-<br><br>
-
-<img src="docs/preview-trend.svg" width="100%" alt="History trends">
-<sub>History trends</sub>
-
-</div>
-
-<details>
-<summary><b>More views (8)</b></summary>
-<br>
-<table>
-<tr>
-<td width="50%"><img src="docs/preview-login.svg" width="100%"><br><sub>Login</sub></td>
-<td width="50%"><img src="docs/preview-diff-empty.svg" width="100%"><br><sub>Window presets</sub></td>
-</tr>
-<tr>
-<td><img src="docs/preview-diff-network.svg" width="100%"><br><sub>Per-NIC rows</sub></td>
-<td><img src="docs/preview-diff-disk-fs.svg" width="100%"><br><sub>Per-device & filesystem</sub></td>
-</tr>
-<tr>
-<td><img src="docs/preview-diff-all.svg" width="100%"><br><sub>Full view & warnings</sub></td>
-<td><img src="docs/preview-trend-fs.svg" width="100%"><br><sub>Filesystem trend</sub></td>
-</tr>
-<tr>
-<td><img src="docs/preview-trend-mem-7d.svg" width="100%"><br><sub>7-day window & gaps</sub></td>
-<td><img src="docs/preview-mobile.svg" width="60%"><br><sub>Mobile</sub></td>
-</tr>
-</table>
-<sub><i>Faithful UI previews — replace with real screenshots after deployment.</i></sub>
-</details>
-
-## What it does
-
-Pick two time windows — **baseline A** vs **suspect B** — and deltascope compares
-per-metric averages from local history archives, judges every change against each
-metric's polarity, and renders a three-layer report: **diagnosis → evidence → full data**.
-
-## Features
-
-- **Diagnosis rule engine** — 16 built-in cross-metric rules (swap spiral, disk
-  saturation, accept-queue overflow, OOM, single-core hotspot, SYN pressure, reboot
-  detection…). Each hit yields a plain-language conclusion, its evidence, and the
-  next commands to run. No synthetic health scores — ever.
-- **146 built-in metrics, 5 categories** — incl. PSI pressure, softnet drops,
-  per-core hotspots (auto-folded), TCP state distribution, direct reclaim, LVM/MD.
-  Per-metric noise thresholds override the global one.
-- **Full-data report** — flat rows stay visible but dimmed, row order is stable,
-  row tint scales with |Δ|, appeared ⊕ / vanished ⊖ marked distinctly, Top-5 anchors.
-- **Everything is a config file** — catalog, rules, and thresholds are exportable
-  JSON (`catalog export`, `rules export`), validated on load, swappable per run.
-  `profiles/` ships full/core tiers.
-- **Headless mode** — `deltascope compare` prints the same report as text (ANSI) or
-  JSON and exits 2 on regressions: cron it, pipe it, alert on it.
-- **Air-gapped by design** — one static binary, embedded UI and charts, local-only
-  auth, no CDN, no telemetry, no outbound traffic of any kind.
+The host needs PCP installed (`pcp` + `pcp-system-tools`). `deploy.sh`
+handles that plus a tiered sampling config, a systemd service, and a
+locked-down user.
 
 ## Quick start
 
-Prebuilt static binaries (see [`dist/`](dist/)): `linux-amd64` (kernel ≥ 3.2),
-`linux-arm64`, `linux-amd64-el6` (kernel 2.6.32).
-
-Build from source (internet-connected dev box, once):
-
 ```bash
-make vendor && make test && make build   # CGO_ENABLED=0 → ./deltascope
+sudo DSCOPE_PASSWORD='a-strong-password' deltascope user add admin -data /var/lib/deltascope
+deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope
 ```
 
-Deploy on the target (Rocky Linux 9 reference, fully offline OK):
+Open the address in a browser, sign in, pick two time windows, run a
+comparison.
+
+For change accounting without the web UI:
 
 ```bash
-# offline hosts: pre-download PCP RPMs on a matching online box
-#   dnf download --resolve --alldeps pcp pcp-system-tools   → put into ./rpms/
-RETENTION_DAYS=7 LISTEN_ADDR=0.0.0.0:8080 \
-DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='a-strong-one' ./deploy.sh
+deltascope snapshot -data /var/lib/deltascope         # capture current state
+deltascope statediff -data /var/lib/deltascope -since 24h   # diff against 24h ago
 ```
 
-deploy.sh installs collection, enables tiered sampling (hot 10s / warm 60s /
-cold 5min), configures ring retention, creates the service user and a hardened
-systemd unit.
-
-## Usage
+For release verification:
 
 ```bash
-deltascope serve   -listen :8080 -archive DIR -data DIR [-catalog F] [-rules F] [-tls-cert F -tls-key F]
-deltascope user    add|del|list <name>          # password via DSCOPE_PASSWORD or prompt
-deltascope catalog export > catalog.json        # edit → serve -catalog catalog.json
-deltascope rules   export > rules.json          # edit → serve -rules rules.json
-deltascope compare -a-start 2026-07-09T14:00 -a-end 2026-07-09T15:00 \
-                   -b-start 2026-07-10T14:00 -b-end 2026-07-10T15:00 \
-                   [-format text|json] [-all] [-no-color]   # exit 2 on regression
+deltascope verify start -name deploy-2026w30
+./your-deploy.sh
+deltascope verify report -name deploy-2026w30 -format md > impact.md
 ```
 
-## Diff semantics
+`verify report` and `statediff` exit with code 3 when changes are
+detected — useful for CI gating and cron alerting.
 
-- Counters are averaged **as rates** over each window (pmdiff semantics)
-- Δ% = (B − A) / |A| × 100; judged only when `|Δ| ≥ threshold` (global default 15%,
-  per-metric overrides for jittery counters)
-- Polarity: `worse_up` (CPU, retransmits), `better_up` (available memory),
-  `neutral` (throughput — flagged for attention only)
-- A=0 → B≠0 reported as ∞; metrics absent on both sides are skipped silently —
-  extend the catalog fearlessly
-- Appeared ⊕ / vanished ⊖ are first-class events, separate from magnitude changes
+## Design
 
-## Security
+- **Offline-first.** No telemetry, no external services. PCP archives
+  live on the host; deltascope reads them locally.
+- **Single binary.** Static builds for amd64, arm64, and el6 (Go 1.23,
+  for CentOS 6's ancient kernel). No runtime dependencies.
+- **Conclusions over data.** A diagnosis rule engine and a triage
+  dashboard sit on top of the raw metrics, because a wall of graphs
+  isn't an answer.
+- **Customizable, not hardcoded.** The metric catalog and diagnosis
+  rules are both external JSON — `deltascope catalog export` /
+  `deltascope rules export`, edit, reload with `-catalog` / `-rules`.
+  Metrics absent from an archive are skipped silently.
 
-PBKDF2-HMAC-SHA256 (600k iterations, per-user salt) · HMAC-signed stateless
-sessions (HttpOnly, SameSite=Strict) · per-IP login rate limiting with
-timing-flattened lookups · metric-name whitelisting + array-form exec (no shell,
-ever) · strict CSP `default-src 'self'`, zero inline script/style · hardened
-systemd unit (non-root, ProtectSystem=strict) · credentials never leave the host.
+## More
 
-## Notes
+- [`docs/hotproc.config`](docs/hotproc.config) — enabling per-process
+  accounting
+- [`docs/statediff-cron.md`](docs/statediff-cron.md) — scheduled change
+  watching
+- [`docs/verify.md`](docs/verify.md) — release impact verification
+- [`profiles/`](profiles/) — full and slim metric catalog presets
 
-Windows are interpreted in the server's local timezone · max window 32 days ·
-trend step auto-adapts (10s–15m, ~600 points) · charts vendored (Apache-2.0) ·
-first-day deployments need archives to accumulate before cross-day comparisons.
+## License
 
-<div align="center">
-
-`Δ` — <i>because regressions should be visible on the first sweep.</i>
-
-</div>
+MIT

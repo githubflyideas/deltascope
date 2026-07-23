@@ -75,7 +75,7 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 
 func RunSummary(ctx context.Context, r Runner, archive string, start, end time.Time, metrics []string) (map[string]Value, []string, error) {
 	if !end.After(start) {
-		return nil, nil, fmt.Errorf("时间窗无效: 结束时间必须晚于开始时间")
+		return nil, nil, fmt.Errorf("invalid time window: end must be after start")
 	}
 	args := append([]string{
 		"-a", archive,
@@ -86,7 +86,7 @@ func RunSummary(ctx context.Context, r Runner, archive string, start, end time.T
 	stdout, stderr, err := r.Run(ctx, "pmlogsummary", args...)
 	warnings := splitNonEmptyLines(string(stderr))
 	if err != nil {
-		return nil, warnings, fmt.Errorf("pmlogsummary 执行失败: %w (%s)", err, firstLine(string(stderr)))
+		return nil, warnings, fmt.Errorf("pmlogsummary failed: %w (%s)", err, firstLine(string(stderr)))
 	}
 
 	vals := ParseSummary(bytes.NewReader(stdout))

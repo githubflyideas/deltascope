@@ -1,9 +1,16 @@
-# 指标目录 Profiles
+# Catalog Profiles
 
-- catalog-full.json — 内置全量 (与二进制内嵌一致)
-- catalog-core.json — 精简档: 去掉每核/ICMP/IP 层/LVM/MD 等高基数与深水区指标, 适合低配机器或只关注主干
+- catalog-full.json — the full built-in catalog (matches what's embedded in the binary)
+- catalog-core.json — a slim profile: drops per-core / ICMP / IP-layer / LVM / MD and
+  other high-cardinality, deep-water metrics; good for low-spec hosts or a
+  main-signal-only view
 
-用法: `deltascope serve -catalog profiles/catalog-core.json`
-自定义: 从任一份复制修改, 极性 polarity 取 worse_up | better_up | neutral, fold: true 表示前端聚合折叠。
-诊断规则同理: `deltascope rules export > rules.json` 编辑后 `serve -rules rules.json`。
-归档中不存在的指标自动跳过, 放心做加法。
+Usage: `deltascope serve -catalog profiles/catalog-core.json`
+
+Customizing: copy either file and edit. `polarity` is one of
+`worse_up | better_up | neutral`; `fold: true` means the frontend
+collapses that metric's instances by default.
+
+Diagnosis rules work the same way: `deltascope rules export > rules.json`,
+edit, then `serve -rules rules.json`. Metrics absent from the archive are
+skipped automatically, so it's safe to add generously.

@@ -33,10 +33,10 @@ var invalidMetricRe = regexp.MustCompile(`Invalid metric ([A-Za-z][A-Za-z0-9._]*
 func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end time.Time) ([]Series, []string, error) {
 	p, ok := TrendPresets[preset]
 	if !ok {
-		return nil, nil, fmt.Errorf("未知的指标组: %q", preset)
+		return nil, nil, fmt.Errorf("unknown metric group: %q", preset)
 	}
 	if !end.After(start) {
-		return nil, nil, fmt.Errorf("时间窗无效: 结束时间必须晚于开始时间")
+		return nil, nil, fmt.Errorf("invalid time window: end must be after start")
 	}
 	step := TrendStep(start, end)
 	metrics := append([]string{}, p.Metrics...)
@@ -58,7 +58,7 @@ func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end 
 		}
 		m := invalidMetricRe.FindStringSubmatch(string(stderr))
 		if m == nil {
-			return nil, missing, fmt.Errorf("趋势查询失败: %w (%s)", err, firstLine(string(stderr)))
+			return nil, missing, fmt.Errorf("trend query failed: %w (%s)", err, firstLine(string(stderr)))
 		}
 		removed := false
 		next := metrics[:0]
@@ -71,11 +71,11 @@ func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end 
 			next = append(next, mt)
 		}
 		if !removed {
-			return nil, missing, fmt.Errorf("趋势查询失败: %w (%s)", err, firstLine(string(stderr)))
+			return nil, missing, fmt.Errorf("trend query failed: %w (%s)", err, firstLine(string(stderr)))
 		}
 		metrics = next
 	}
-	return nil, missing, fmt.Errorf("该指标组的所有指标均未被归档记录")
+	return nil, missing, fmt.Errorf("none of this group's metrics were found in the archive")
 }
 
 func ParseTrendCSV(r io.Reader) ([]Series, error) {
@@ -83,10 +83,10 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 	cr.FieldsPerRecord = -1
 	header, err := cr.Read()
 	if err != nil {
-		return nil, fmt.Errorf("解析 pmrep CSV 表头失败: %w", err)
+		return nil, fmt.Errorf("failed to parse pmrep CSV header: %w", err)
 	}
 	if len(header) < 2 {
-		return nil, fmt.Errorf("pmrep 输出为空(窗口内可能没有归档数据)")
+		return nil, fmt.Errorf("pmrep produced no output (the window may have no archived data)")
 	}
 
 	series := make([]Series, len(header)-1)
@@ -100,7 +100,7 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("解析 pmrep CSV 失败: %w", err)
+			return nil, fmt.Errorf("failed to parse pmrep CSV: %w", err)
 		}
 		if len(rec) < 2 {
 			continue

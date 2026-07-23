@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Store 持久化快照。复用主程序打开的 *sql.DB。
+// Store persists snapshots. Reuses the *sql.DB opened by the main program.
 type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) (*Store, error) {
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS markers (
 	return &Store{db: db}, nil
 }
 
-// SaveMarker 以名字保存一份基线快照(用于 verify 发布前后对账)。
+// SaveMarker saves a baseline snapshot under a name (used by verify start/report).
 func (s *Store) SaveMarker(name string, snap Snapshot) error {
 	body, err := json.Marshal(snap)
 	if err != nil {
@@ -40,12 +40,12 @@ func (s *Store) SaveMarker(name string, snap Snapshot) error {
 	return err
 }
 
-// LoadMarker 取回命名基线快照。
+// LoadMarker retrieves a named baseline snapshot.
 func (s *Store) LoadMarker(name string) (Snapshot, error) {
 	var body string
 	if err := s.db.QueryRow(`SELECT body FROM markers WHERE name = ?`, name).Scan(&body); err != nil {
 		if err == sql.ErrNoRows {
-			return Snapshot{}, fmt.Errorf("找不到基线 %q, 请先运行 deltascope verify start -name %s", name, name)
+			return Snapshot{}, fmt.Errorf("baseline %q not found, run deltascope verify start -name %s first", name, name)
 		}
 		return Snapshot{}, err
 	}
@@ -66,18 +66,18 @@ func (s *Store) Save(snap Snapshot) error {
 	return err
 }
 
-// Latest 返回最近一次快照。
+// Latest returns the most recent snapshot.
 func (s *Store) Latest() (Snapshot, error) {
 	return s.queryOne(`SELECT body FROM snapshots ORDER BY taken DESC LIMIT 1`)
 }
 
-// Before 返回不晚于 t 的最近一次快照。
+// Before returns the most recent snapshot at or before t.
 func (s *Store) Before(t time.Time) (Snapshot, error) {
 	return s.queryOne(`SELECT body FROM snapshots WHERE taken <= ? ORDER BY taken DESC LIMIT 1`,
 		t.UTC().Format(time.RFC3339))
 }
 
-// NearestBefore 返回不晚于 t 的最近快照;若无则返回最早的一份。
+// NearestBefore returns the most recent snapshot at or before t; if none, returns the earliest one.
 func (s *Store) NearestBefore(t time.Time) (Snapshot, error) {
 	snap, err := s.Before(t)
 	if err == nil {
@@ -90,7 +90,7 @@ func (s *Store) queryOne(q string, args ...any) (Snapshot, error) {
 	var body string
 	if err := s.db.QueryRow(q, args...).Scan(&body); err != nil {
 		if err == sql.ErrNoRows {
-			return Snapshot{}, fmt.Errorf("无匹配的快照")
+			return Snapshot{}, fmt.Errorf("no matching snapshot")
 		}
 		return Snapshot{}, err
 	}
@@ -101,7 +101,7 @@ func (s *Store) queryOne(q string, args ...any) (Snapshot, error) {
 	return snap, nil
 }
 
-// List 返回快照时间与主机,最新在前。
+// List returns snapshot times and hosts, newest first.
 func (s *Store) List(limit int) ([]Snapshot, error) {
 	rows, err := s.db.Query(`SELECT body FROM snapshots ORDER BY taken DESC LIMIT ?`, limit)
 	if err != nil {
@@ -123,7 +123,7 @@ func (s *Store) List(limit int) ([]Snapshot, error) {
 	return out, rows.Err()
 }
 
-// Prune 删除早于保留期的快照。
+// Prune deletes snapshots older than the retention period.
 func (s *Store) Prune(keepDays int) (int64, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -keepDays).Format(time.RFC3339)
 	res, err := s.db.Exec(`DELETE FROM snapshots WHERE taken < ?`, cutoff)

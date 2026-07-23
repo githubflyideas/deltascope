@@ -9,7 +9,7 @@ type network struct{}
 
 func (network) Name() string { return "network" }
 func (network) Collect(ctx context.Context) Section {
-	sec := Section{Name: "network", Title: "网络配置"}
+	sec := Section{Name: "network", Title: "Network Configuration"}
 
 	if out, ok := runCmd(ctx, "ip", "route", "show"); ok {
 		for _, l := range lines(out) {
@@ -56,11 +56,11 @@ type listen struct{}
 
 func (listen) Name() string { return "listen" }
 func (listen) Collect(ctx context.Context) Section {
-	sec := Section{Name: "listen", Title: "监听端口"}
+	sec := Section{Name: "listen", Title: "Listening Ports"}
 	out, ok := runCmd(ctx, "ss", "-lntuHp")
 	if !ok {
 		if out, ok = runCmd(ctx, "ss", "-lntu"); !ok {
-			sec.Skipped = "未找到 ss"
+			sec.Skipped = "ss not found"
 			return sec
 		}
 	}
@@ -101,7 +101,7 @@ type firewall struct{}
 
 func (firewall) Name() string { return "firewall" }
 func (firewall) Collect(ctx context.Context) Section {
-	sec := Section{Name: "firewall", Title: "防火墙"}
+	sec := Section{Name: "firewall", Title: "Firewall"}
 	if out, ok := runCmd(ctx, "nft", "list", "ruleset"); ok && strings.TrimSpace(out) != "" {
 		sec.Items = append(sec.Items, Item{Key: "nftables.ruleset.hash", Value: hashBytes([]byte(out))})
 		return sec
@@ -118,9 +118,9 @@ func (firewall) Collect(ctx context.Context) Section {
 		return sec
 	}
 	if !hasRoot() {
-		sec.Skipped = "需要 root 读取防火墙规则"
+		sec.Skipped = "root required to read firewall rules"
 	} else {
-		sec.Skipped = "未找到 nft 或 iptables"
+		sec.Skipped = "neither nft nor iptables found"
 	}
 	return sec
 }
@@ -129,7 +129,7 @@ type storage struct{}
 
 func (storage) Name() string { return "storage" }
 func (storage) Collect(ctx context.Context) Section {
-	sec := Section{Name: "storage", Title: "存储与挂载"}
+	sec := Section{Name: "storage", Title: "Storage & Mounts"}
 	if v, ok := readFile("/proc/mounts"); ok {
 		for _, l := range lines(v) {
 			f := fields(l)

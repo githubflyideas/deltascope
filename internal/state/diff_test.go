@@ -4,7 +4,7 @@ import "testing"
 
 func snap(items map[string]string) Snapshot {
 	var secs []Section
-	sec := Section{Name: "sysctl", Title: "内核参数"}
+	sec := Section{Name: "sysctl", Title: "Kernel Parameters"}
 	for k, v := range items {
 		sec.Items = append(sec.Items, Item{Key: k, Value: v})
 	}
@@ -17,7 +17,7 @@ func TestCompare(t *testing.T) {
 	b := snap(map[string]string{"vm.swappiness": "10", "added.key": "y", "same": "1"})
 	d := Compare(a, b)
 	if d.Total != 3 {
-		t.Fatalf("应有 3 处变更 (改/增/删), 得到 %d", d.Total)
+		t.Fatalf("expected 3 changes (mod/add/del), got %d", d.Total)
 	}
 	kinds := map[ChangeKind]int{}
 	for _, sd := range d.Sections {
@@ -26,37 +26,37 @@ func TestCompare(t *testing.T) {
 		}
 	}
 	if kinds[Modified] != 1 || kinds[Added] != 1 || kinds[Removed] != 1 {
-		t.Fatalf("增改删各应为 1: %+v", kinds)
+		t.Fatalf("expected 1 each of add/mod/del: %+v", kinds)
 	}
 }
 
 func TestCompareIdentical(t *testing.T) {
 	a := snap(map[string]string{"a": "1", "b": "2"})
 	if d := Compare(a, a); d.Total != 0 {
-		t.Fatalf("相同快照应无差异, 得到 %d", d.Total)
+		t.Fatalf("identical snapshots should have no diff, got %d", d.Total)
 	}
 }
 
 func TestSysctlSkip(t *testing.T) {
 	for _, k := range []string{"kernel.random.uuid", "fs.dentry-state", "user.max_user_namespaces", "net.ipv4.ip_forward"} {
 		if !sysctlSkip(k) {
-			t.Errorf("%s 应被跳过", k)
+			t.Errorf("%s should be skipped", k)
 		}
 	}
 	if sysctlSkip("net.core.somaxconn") {
-		t.Error("somaxconn 不应被跳过")
+		t.Error("somaxconn should not be skipped")
 	}
 }
 
 func TestMarkerRoundTrip(t *testing.T) {
-	// 用内存态验证 marker 逻辑不依赖真实 DB —— 仅测 Compare 语义闭环
+	// Verifies marker logic against in-memory state without a real DB - tests only the Compare semantics.
 	base := snap(map[string]string{"vm.swappiness": "60", "net.core.somaxconn": "4096"})
 	after := snap(map[string]string{"vm.swappiness": "10", "net.core.somaxconn": "4096"})
 	d := Compare(base, after)
 	if d.Total != 1 {
-		t.Fatalf("发布只改 1 项,影响面应为 1 处, 得到 %d", d.Total)
+		t.Fatalf("release changed only 1 item, impact should be 1, got %d", d.Total)
 	}
 	if d.Sections[0].Changes[0].Old != "60" || d.Sections[0].Changes[0].New != "10" {
-		t.Errorf("影响面报告值不对: %+v", d.Sections[0].Changes[0])
+		t.Errorf("impact report value wrong: %+v", d.Sections[0].Changes[0])
 	}
 }

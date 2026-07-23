@@ -1,32 +1,37 @@
-# 变更对账 · 每日巡检
+# Change Accounting · Daily Watch
 
-deltascope 每天为整机状态拍一张快照,把"今天 vs 昨天变了什么"对账出来。
-纯本地、无外部依赖、只读采集。
+deltascope snapshots the whole machine's state on a schedule and diffs
+"what changed since yesterday" for you. Local only, no external
+dependencies, read-only collection.
 
-## 采集内容
+## What it collects
 
-系统身份 · 内核参数(sysctl)· 软件包 · 内核模块 · 网络配置 · 监听端口 ·
-防火墙 · 存储挂载 · LVM/RAID · 服务状态 · 定时任务 · 配置文件指纹 · 安全态。
-单机一次采集约 1700+ 项事实。权限不足或工具缺失的项优雅跳过,不影响整体。
+System identity · kernel parameters (sysctl) · packages · kernel modules ·
+network config · listening ports · firewall · storage mounts · LVM/RAID ·
+service status · scheduled tasks · config file fingerprints · security
+posture. A single snapshot captures ~1700+ facts. Items that are
+unreadable or whose tool is missing are skipped gracefully without
+failing the rest.
 
-## 安装
+## Install
 
-每小时拍一张快照,保留 7 天:
+Snapshot every hour, retain 7 days:
 
     0 * * * * root /usr/local/bin/deltascope snapshot -data /var/lib/deltascope -quiet
 
-每天早 8 点把过去 24 小时的变更写入日志:
+Write the last 24 hours of changes to a log every morning at 8:
 
     0 8 * * * root /usr/local/bin/deltascope statediff -data /var/lib/deltascope -since 24h -no-color >> /var/log/deltascope-changes.log 2>&1
 
-接入告警(有变更时退出码为 3):
+Hook into alerting (exit code 3 when there are changes):
 
-    */30 * * * * root /usr/local/bin/deltascope statediff -data /var/lib/deltascope -since 30m -summary || /usr/local/bin/notify "$(hostname) 检出状态变更"
+    */30 * * * * root /usr/local/bin/deltascope statediff -data /var/lib/deltascope -since 30m -summary || /usr/local/bin/notify "$(hostname) has state changes"
 
-## 手动查看
+## Manual use
 
-    deltascope snapshot                      # 立即拍一张
-    deltascope statediff -since 24h          # 对比 24 小时前
+    deltascope snapshot                      # capture one now
+    deltascope statediff -since 24h          # compare against 24h ago
     deltascope statediff -a 2026-07-20T14:00 -b 2026-07-21T14:00
 
-退出码 3 表示检出变更,0 表示状态一致,便于脚本判读。
+Exit code 3 means changes were detected, 0 means state is identical --
+handy for scripting.

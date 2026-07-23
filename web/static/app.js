@@ -13,7 +13,7 @@ async function api(path, opts = {}) {
   try { body = await res.json(); } catch {}
   if (res.status === 401 && page === "main") {
     location.href = "/login";
-    throw new Error("未登录");
+    throw new Error("not logged in");
   }
   if (!res.ok) throw new Error((body && body.error) || `HTTP ${res.status}`);
   return body;
@@ -133,7 +133,7 @@ async function runDiff() {
   const errBox = $("#diffError");
   errBox.classList.add("hidden");
   btn.disabled = true;
-  btn.textContent = "比对中…";
+  btn.textContent = "Comparing…";
   try {
     const q = new URLSearchParams({
       a_start: $("#aStart").value, a_end: $("#aEnd").value,
@@ -148,17 +148,17 @@ async function runDiff() {
     errBox.classList.remove("hidden");
   } finally {
     btn.disabled = false;
-    btn.textContent = "开始比对";
+    btn.textContent = "Run comparison";
   }
 }
 
 const KIND = {
-  worse:  { icon: "\u{1F534}", text: "恶化", cls: "v-worse", rgb: "255,93,108" },
-  better: { icon: "\u{1F7E2}", text: "改善", cls: "v-better", rgb: "61,220,151" },
-  watch:  { icon: "\u{1F7E1}", text: "关注", cls: "v-watch", rgb: "232,197,71" },
-  flat:   { icon: "\u00B7",   text: "平稳", cls: "v-flat", rgb: null },
-  new:    { icon: "\u2295",   text: "新出现", cls: "v-new", rgb: "178,141,255" },
-  gone:   { icon: "\u2296",   text: "消失", cls: "v-gone", rgb: "131,145,173" },
+  worse:  { icon: "\u{1F534}", text: "worse", cls: "v-worse", rgb: "255,93,108" },
+  better: { icon: "\u{1F7E2}", text: "better", cls: "v-better", rgb: "61,220,151" },
+  watch:  { icon: "\u{1F7E1}", text: "watch", cls: "v-watch", rgb: "232,197,71" },
+  flat:   { icon: "\u00B7",   text: "flat", cls: "v-flat", rgb: null },
+  new:    { icon: "\u2295",   text: "appeared", cls: "v-new", rgb: "178,141,255" },
+  gone:   { icon: "\u2296",   text: "gone", cls: "v-gone", rgb: "131,145,173" },
 };
 const KIND_RANK = { worse: 0, new: 1, watch: 2, gone: 3, better: 4, flat: 5 };
 
@@ -174,7 +174,7 @@ function absD(r) {
   return 0;
 }
 
-const SEV = { crit: "严重", warn: "警告", info: "提示" };
+const SEV = { crit: "CRIT", warn: "WARN", info: "INFO" };
 
 const TRIAGE_ICON = {
   cpu: "\u{1F5A5}\uFE0F", mem: "\u{1F9E0}", disk: "\u{1F4BE}", net: "\u{1F310}", ghost: "\u{1F47B}",
@@ -192,7 +192,7 @@ function renderTriage(triage, rows) {
   const cards = triage.map((b) => {
     const st = TRIAGE_STATUS[b.status] || TRIAGE_STATUS.ok;
     const jump = b.status !== "ok"
-      ? `<button class="triage-jump" data-res="${b.key}">查看明细 \u2193</button>` : "";
+      ? `<button class="triage-jump" data-res="${b.key}">Details \u2193</button>` : "";
     return `<div class="triage-card ${st.cls}" data-res="${b.key}">
       <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key]||""}</span>
         <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
@@ -201,23 +201,23 @@ function renderTriage(triage, rows) {
     </div>`;
   });
 
-  // 第五卡:软件的鬼 —— 汇总诊断规则命中数,并给出去处
+  // Fifth card: "the software gremlin" -- summarizes diagnosis rule hits and links onward
   const findings = window._lastFindings || [];
   const ghostBits = [];
   let ghostStatus = "ok";
   if (findings.length) {
     const crit = findings.filter((f) => f.severity === "crit").length;
     ghostStatus = crit ? "bad" : "warn";
-    ghostBits.push(`${findings.length} 条诊断命中`);
+    ghostBits.push(`${findings.length} diagnosis hit(s)`);
   }
   const ghostSt = TRIAGE_STATUS[ghostStatus];
-  const ghostHead = ghostBits.length ? ghostBits.join(" · ") : "未见配置/进程异常";
+  const ghostHead = ghostBits.length ? ghostBits.join(" · ") : "no config/process anomalies seen";
   cards.push(`<div class="triage-card ${ghostSt.cls}" data-res="ghost">
     <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON.ghost}</span>
-      <span class="tc-label">软件的鬼</span><span class="tc-dot">${ghostSt.dot}</span></div>
+      <span class="tc-label">Software Gremlin</span><span class="tc-dot">${ghostSt.dot}</span></div>
     <div class="tc-headline">${escapeHtml(ghostHead)}</div>
     <div class="tc-ghost-links">
-      <button class="triage-jump" data-tab-jump="proc">查进程 \u2192</button>
+      <button class="triage-jump" data-tab-jump="proc">View processes \u2192</button>
     </div>
   </div>`);
 
@@ -226,7 +226,7 @@ function renderTriage(triage, rows) {
   board.querySelectorAll(".triage-jump[data-res]").forEach((btn) =>
     btn.addEventListener("click", () => {
       const res = btn.dataset.res;
-      const cat = { cpu: "CPU", mem: "内存", disk: "磁盘 I/O", net: "网络" }[res];
+      const cat = { cpu: "CPU", mem: "Memory", disk: "Disk I/O", net: "Network" }[res];
       const el = [...document.querySelectorAll(".cat-block summary .cat-head")]
         .find((h) => h.textContent.includes(cat));
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -242,7 +242,7 @@ function renderFindings(findings) {
   window._lastFindings = findings || [];
   const box = $("#findings");
   if (!findings || !findings.length) {
-    box.innerHTML = `<div class="no-finding">未命中已知诊断模式 — 请查看下方明细与趋势曲线。</div>`;
+    box.innerHTML = `<div class="no-finding">No known diagnosis pattern matched -- see the detail and trend charts below.</div>`;
     return;
   }
   const order = { crit: 0, warn: 1, info: 2 };
@@ -253,8 +253,8 @@ function renderFindings(findings) {
         <span class="sev sev-${f.severity}">${SEV[f.severity] || f.severity}</span>
         <span class="finding-conclusion">${escapeHtml(f.conclusion)}</span>
       </div>
-      <div class="finding-evidence">依据: ${f.evidence.map(escapeHtml).join(" · ")}</div>
-      ${f.next && f.next.length ? `<div class="finding-next">下一步: ${f.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
+      <div class="finding-evidence">Evidence: ${f.evidence.map(escapeHtml).join(" · ")}</div>
+      ${f.next && f.next.length ? `<div class="finding-next">Next: ${f.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
     </div>`).join("");
 }
 
@@ -319,16 +319,16 @@ function renderReport(rep) {
 
   const w = rep.window;
   const fmtW = (s, e) => `${s.slice(5, 16).replace("T", " ")} \u2192 ${e.slice(11, 16)}`;
-  const extra = (counts.new ? ` <span class="verdict-pill pill-new">\u2295 新出现 <b>${counts.new}</b></span>` : "") +
-                (counts.gone ? ` <span class="verdict-pill pill-flat">\u2296 消失 <b>${counts.gone}</b></span>` : "");
+  const extra = (counts.new ? ` <span class="verdict-pill pill-new">\u2295 appeared <b>${counts.new}</b></span>` : "") +
+                (counts.gone ? ` <span class="verdict-pill pill-flat">\u2296 gone <b>${counts.gone}</b></span>` : "");
   $("#verdictStrip").innerHTML = `
-    <span class="verdict-pill pill-bad">\u{1F534} 恶化 <b>${counts.worse}</b></span>
-    <span class="verdict-pill pill-good">\u{1F7E2} 改善 <b>${counts.better}</b></span>
-    <span class="verdict-pill pill-warn">\u{1F7E1} 关注 <b>${counts.watch}</b></span>
-    <span class="verdict-pill pill-flat">平稳 <b>${counts.flat}</b></span>${extra}
+    <span class="verdict-pill pill-bad">\u{1F534} worse <b>${counts.worse}</b></span>
+    <span class="verdict-pill pill-good">\u{1F7E2} better <b>${counts.better}</b></span>
+    <span class="verdict-pill pill-warn">\u{1F7E1} watch <b>${counts.watch}</b></span>
+    <span class="verdict-pill pill-flat">flat <b>${counts.flat}</b></span>${extra}
     <span class="verdict-window">
       <span class="wa">[A ${fmtW(w.a_start, w.a_end)}]</span> vs
-      <span class="wb">[B ${fmtW(w.b_start, w.b_end)}]</span> \u00B7 阈值 ${w.threshold_pct}%
+      <span class="wb">[B ${fmtW(w.b_start, w.b_end)}]</span> \u00B7 threshold ${w.threshold_pct}%
     </span>`;
 
   renderTop5(rep.rows);
@@ -362,7 +362,7 @@ function renderReport(rep) {
           const bMin = Math.min(...grp.map((x) => x.b ?? Infinity));
           const wd = worst.delta_pct === null ? "\u221E" : (worst.delta_pct > 0 ? "+" : "") + worst.delta_pct.toFixed(1) + "%";
           trs.push(`<tr class="fold-agg ${KIND[wk].cls}" data-fold="${escapeHtml(r.metric)}">
-            <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} 实例</code></span>
+            <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} instances</code></span>
             <span class="m-name">${escapeHtml(r.metric)} \u00B7 B \u6781\u5DEE ${fmtNum(bMin)} ~ ${fmtNum(bMax)}</span></td>
             <td class="col-a"></td><td class="col-b">${fmtNum(bMax)}</td>
             <td class="delta-cell">\u6700\u5DEE ${wd}</td><td>${KIND[wk].text}</td><td class="units-cell">${escapeHtml(r.units || "")}</td></tr>`);
@@ -375,16 +375,16 @@ function renderReport(rep) {
       i++;
     }
     blocks.push(`<details class="cat-block" open>
-      <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} 项</span></summary>
+      <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} items</span></summary>
       <table class="report">
-        <thead><tr><th>指标</th><th>A 均值</th><th>B 均值</th><th>\u0394</th><th>结论</th><th>单位</th></tr></thead>
+        <thead><tr><th>Metric</th><th>A mean</th><th>B mean</th><th>\u0394</th><th>Verdict</th><th>Unit</th></tr></thead>
         <tbody>${trs.join("")}</tbody>
       </table>
     </details>`);
   }
   $("#reportTables").innerHTML = blocks.length
     ? blocks.join("")
-    : `<div class="empty-hint">聚焦模式下没有可显示的变化行 — 可关闭聚焦查看全量 ${rep.rows.length} 行。</div>`;
+    : `<div class="empty-hint">No rows to show in focus mode -- turn it off to see all ${rep.rows.length} rows.</div>`;
 
   document.querySelectorAll(".delta-bar[data-w]").forEach((el) => { el.style.width = el.dataset.w + "%"; });
   document.querySelectorAll("tr[data-bg]").forEach((el) => { el.style.backgroundColor = el.dataset.bg; });
@@ -466,7 +466,7 @@ const PALETTE = ["#4cc9f0", "#e8a33d", "#3ddc97", "#ff5d6c", "#b28dff", "#e8c547
 async function loadTrend() {
   const errBox = $("#trendError");
   errBox.classList.add("hidden");
-  chart.showLoading({ text: "读取归档…", color: "#4cc9f0", textColor: "#8391ad", maskColor: "rgba(13,19,34,.6)" });
+  chart.showLoading({ text: "Reading archive…", color: "#4cc9f0", textColor: "#8391ad", maskColor: "rgba(13,19,34,.6)" });
   try {
     const q = new URLSearchParams({
       preset: curPreset,
@@ -482,17 +482,17 @@ async function loadTrend() {
       const qy = new URLSearchParams({ preset: curPreset, start: toLocalInput(ys), end: toLocalInput(ye) });
       try {
         const yd = await api("/api/trend?" + qy.toString());
-        // 把昨天的时间戳整体平移一天,与今天对齐叠画
+        // shift yesterday's timestamps forward one day to overlay on today's axis
         yesterday = yd.series.map((s) => ({
           name: s.name,
           points: s.points.map((p) => [p[0] + dayMs, p[1]]),
         }));
-      } catch (e) { /* 昨天无数据则忽略 */ }
+      } catch (e) { /* no data for yesterday, ignore */ }
     }
     drawChart(data.series, yesterday);
     const note = $("#trendNote");
     if (data.missing && data.missing.length) {
-      note.textContent = `${data.missing.length} 项指标未被归档记录,已跳过: ${data.missing.join(", ")}`;
+      note.textContent = `${data.missing.length} metric(s) not found in the archive, skipped: ${data.missing.join(", ")}`;
       note.classList.remove("hidden");
     } else {
       note.classList.add("hidden");
@@ -551,7 +551,7 @@ function drawChart(series, yesterday) {
     yesterday.forEach((y) => {
       const i = idxByName[y.name] ?? 0;
       opt.series.push({
-        name: y.name + " (昨天)",
+        name: y.name + " (yesterday)",
         type: "line",
         showSymbol: false,
         connectNulls: false,
@@ -561,7 +561,7 @@ function drawChart(series, yesterday) {
         data: y.points,
       });
     });
-    opt.legend.data = [...series.map((s) => s.name), ...yesterday.map((y) => y.name + " (昨天)")];
+    opt.legend.data = [...series.map((s) => s.name), ...yesterday.map((y) => y.name + " (yesterday)")];
   }
   chart.setOption(opt, true);
 }
@@ -596,7 +596,7 @@ async function runProcDiff() {
   const btn = $("#pcRun");
   const err = $("#procError");
   err.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "对账中…";
+  btn.disabled = true; btn.textContent = "Accounting…";
   try {
     const q = new URLSearchParams({
       a_start: $("#pcAStart").value, a_end: $("#pcAEnd").value,
@@ -610,16 +610,16 @@ async function runProcDiff() {
     err.classList.remove("hidden");
     $("#procResult").innerHTML = "";
   } finally {
-    btn.disabled = false; btn.textContent = "开始对账";
+    btn.disabled = false; btn.textContent = "Run accounting";
   }
 }
 
 const PV = {
-  worse:    { icon: "\u{1F534}", text: "恶化", cls: "v-worse" },
-  better:   { icon: "\u{1F7E2}", text: "改善", cls: "v-better" },
-  appeared: { icon: "\u2295", text: "新出现", cls: "v-new" },
-  gone:     { icon: "\u2296", text: "已消失", cls: "v-gone" },
-  flat:     { icon: "\u00B7", text: "平稳", cls: "v-flat" },
+  worse:    { icon: "\u{1F534}", text: "worse", cls: "v-worse" },
+  better:   { icon: "\u{1F7E2}", text: "better", cls: "v-better" },
+  appeared: { icon: "\u2295", text: "appeared", cls: "v-new" },
+  gone:     { icon: "\u2296", text: "gone", cls: "v-gone" },
+  flat:     { icon: "\u00B7", text: "flat", cls: "v-flat" },
 };
 
 function procDelta(r) {
@@ -631,7 +631,7 @@ function procDelta(r) {
 
 function procTable(rows, unit) {
   const active = rows.filter((r) => r.verdict !== "flat");
-  if (!active.length) return `<div class="empty-hint">无显著变化</div>`;
+  if (!active.length) return `<div class="empty-hint">No significant change</div>`;
   const trs = active.map((r) => {
     const v = PV[r.verdict] || PV.flat;
     const mark = r.restarted ? ` <span class="restart-tag" title="${escapeHtml(r.restart_text||"")}">\u27F3</span>` : "";
@@ -643,18 +643,18 @@ function procTable(rows, unit) {
     </tr>`;
   }).join("");
   return `<table class="report"><thead><tr>
-    <th>进程</th><th>A</th><th>B</th><th>\u0394</th><th>结论</th><th>单位</th>
+    <th>Process</th><th>A</th><th>B</th><th>\u0394</th><th>Verdict</th><th>Unit</th>
     </tr></thead><tbody>${trs}</tbody></table>`;
 }
 
 function renderProcDiff(rep) {
   let html = "";
   if (rep.restarts && rep.restarts.length) {
-    html += `<div class="restart-banner"><b>\u27F3 期间发生重启</b> ` +
+    html += `<div class="restart-banner"><b>\u27F3 restarted during this window</b> ` +
       rep.restarts.map((r) => `<span class="restart-chip">${escapeHtml(r.name)} <em>${escapeHtml(r.restart_text||"")}</em></span>`).join("") +
       `</div>`;
   }
-  html += `<div class="cat-block"><div class="cat-head"><span>进程 CPU 对账</span><span>占用升高 = 变差</span></div>${procTable(rep.cpu, "ms/s")}</div>`;
-  html += `<div class="cat-block"><div class="cat-head"><span>进程内存对账</span><span>RSS</span></div>${procTable(rep.mem, "KB")}</div>`;
+  html += `<div class="cat-block"><div class="cat-head"><span>Process CPU accounting</span><span>higher = worse</span></div>${procTable(rep.cpu, "ms/s")}</div>`;
+  html += `<div class="cat-block"><div class="cat-head"><span>Process memory accounting</span><span>RSS</span></div>${procTable(rep.mem, "KB")}</div>`;
   $("#procResult").innerHTML = html;
 }

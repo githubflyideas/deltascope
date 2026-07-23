@@ -30,14 +30,14 @@ func TestParseProcAggregation(t *testing.T) {
 	}
 	acc := parseProcSummary(vals)
 	if len(acc) != 2 {
-		t.Fatalf("应聚合成 2 个进程名, 得到 %d", len(acc))
+		t.Fatalf("should aggregate into 2 process names, got %d", len(acc))
 	}
-	// nginx: utime 30+20 + stime 10 = 60 CPU, rss 取最大 80000
+	// nginx: utime 30+20 + stime 10 = 60 CPU, rss takes the max 80000
 	if acc["nginx"].CPUms != 60 {
-		t.Errorf("nginx CPU 聚合错误: %v", acc["nginx"].CPUms)
+		t.Errorf("nginx CPU aggregation wrong: %v", acc["nginx"].CPUms)
 	}
 	if acc["nginx"].RSS != 80000 {
-		t.Errorf("nginx RSS 应取实例最大值: %v", acc["nginx"].RSS)
+		t.Errorf("nginx RSS should take the instance max: %v", acc["nginx"].RSS)
 	}
 }
 
@@ -46,14 +46,14 @@ func TestJudgeProcRestart(t *testing.T) {
 	b := f(9000.0)
 	d, exc, v := judgeProc(a, b, 20)
 	if v != PVWorse || !exc || d == nil {
-		t.Errorf("CPU 大涨应判恶化: %v %v", v, exc)
+		t.Errorf("large CPU spike should be worse: %v %v", v, exc)
 	}
 	_, _, v2 := judgeProc(nil, f(100), 20)
 	if v2 != PVAppeared {
-		t.Errorf("新出现进程应判 appeared: %v", v2)
+		t.Errorf("new process should be appeared: %v", v2)
 	}
 	_, _, v3 := judgeProc(f(100), nil, 20)
 	if v3 != PVGone {
-		t.Errorf("消失进程应判 gone: %v", v3)
+		t.Errorf("vanished process should be gone: %v", v3)
 	}
 }

@@ -27,20 +27,20 @@ func renderText(w io.Writer, rep *pcp.DiffReport, showAll, color bool) {
 	c := newPalette(color)
 
 	if len(rep.Findings) == 0 {
-		fmt.Fprintf(w, "%s[诊断] 未命中已知诊断模式,请查看下方明细。%s\n\n", c.dim, c.reset)
+		fmt.Fprintf(w, "%s[diagnosis] no known pattern matched, see the detail below.%s\n\n", c.dim, c.reset)
 	}
 	for _, f := range rep.Findings {
-		tag, tc := "提示", c.dim
+		tag, tc := "INFO", c.dim
 		switch f.Severity {
 		case "crit":
-			tag, tc = "严重", c.red
+			tag, tc = "CRIT", c.red
 		case "warn":
-			tag, tc = "警告", c.yellow
+			tag, tc = "WARN", c.yellow
 		}
 		fmt.Fprintf(w, "%s%s[%s]%s %s%s%s\n", tc, c.bold, tag, c.reset, c.bold, f.Conclusion, c.reset)
-		fmt.Fprintf(w, "  %s依据: %s%s\n", c.dim, strings.Join(f.Evidence, " · "), c.reset)
+		fmt.Fprintf(w, "  %sevidence: %s%s\n", c.dim, strings.Join(f.Evidence, " · "), c.reset)
 		if len(f.Next) > 0 {
-			fmt.Fprintf(w, "  %s下一步: %s%s\n", c.dim, strings.Join(f.Next, "  |  "), c.reset)
+			fmt.Fprintf(w, "  %snext: %s%s\n", c.dim, strings.Join(f.Next, "  |  "), c.reset)
 		}
 		fmt.Fprintln(w)
 	}
@@ -50,16 +50,16 @@ func renderText(w io.Writer, rep *pcp.DiffReport, showAll, color bool) {
 		counts[kindOf(r)]++
 	}
 	win := rep.Window
-	fmt.Fprintf(w, "%s恶化 %d%s · %s改善 %d%s · %s关注 %d%s · 平稳 %d",
+	fmt.Fprintf(w, "%sworse %d%s · %sbetter %d%s · %swatch %d%s · flat %d",
 		c.red, counts["worse"], c.reset, c.green, counts["better"], c.reset,
 		c.yellow, counts["watch"], c.reset, counts["flat"])
 	if counts["new"] > 0 {
-		fmt.Fprintf(w, " · %s新出现 %d%s", c.violet, counts["new"], c.reset)
+		fmt.Fprintf(w, " · %sappeared %d%s", c.violet, counts["new"], c.reset)
 	}
 	if counts["gone"] > 0 {
-		fmt.Fprintf(w, " · 消失 %d", counts["gone"])
+		fmt.Fprintf(w, " · gone %d", counts["gone"])
 	}
-	fmt.Fprintf(w, "\n[A %s → %s] vs [B %s → %s] · 阈值 %.0f%%\n\n",
+	fmt.Fprintf(w, "\n[A %s -> %s] vs [B %s -> %s] · threshold %.0f%%\n\n",
 		win.AStart.Format("01-02 15:04"), win.AEnd.Format("15:04"),
 		win.BStart.Format("01-02 15:04"), win.BEnd.Format("15:04"), win.ThresholdPct)
 
@@ -83,17 +83,17 @@ func renderText(w io.Writer, rep *pcp.DiffReport, showAll, color bool) {
 		var mark, delta, verdict, kc string
 		switch kind {
 		case "worse":
-			mark, verdict, kc = "×", "恶化", c.red
+			mark, verdict, kc = "x", "worse", c.red
 		case "better":
-			mark, verdict, kc = "+", "改善", c.green
+			mark, verdict, kc = "+", "better", c.green
 		case "watch":
-			mark, verdict, kc = "!", "关注", c.yellow
+			mark, verdict, kc = "!", "watch", c.yellow
 		case "new":
-			mark, verdict, kc = "⊕", "新出现", c.violet
+			mark, verdict, kc = "+", "appeared", c.violet
 		case "gone":
-			mark, verdict, kc = "⊖", "消失", c.dim
+			mark, verdict, kc = "-", "gone", c.dim
 		default:
-			mark, verdict, kc = "·", "平稳", c.dim
+			mark, verdict, kc = ".", "flat", c.dim
 		}
 		switch {
 		case kind == "new":

@@ -62,26 +62,26 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `用法:
-  deltascope serve [flags]     启动 Web 服务
-  deltascope user add <name>   创建/重置用户 (口令读 DSCOPE_PASSWORD 或交互输入)
-  deltascope user del <name>   删除用户
-  deltascope user list          列出用户
-  deltascope catalog export     导出内置指标目录 (编辑后经 serve -catalog 加载)
-  deltascope rules export       导出内置诊断规则 (编辑后经 serve -rules 加载)
-  deltascope snapshot           采集当前整机状态并存档
-  deltascope statediff          对账两个时刻的状态, 只输出差异
-  deltascope proc-diff          进程级 CPU/内存对账 (需 hotproc 归档)
-  deltascope verify start       发布前打基线; verify report 发布后出影响面报告
-  deltascope compare            无头比对: -a-start/-a-end/-b-start/-b-end
-                                [-format text|json] [-all] [-threshold N], 发现恶化退出码 2
+	fmt.Fprintln(os.Stderr, `usage:
+  deltascope serve [flags]     start the web server
+  deltascope user add <name>   create/reset a user (password via DSCOPE_PASSWORD or prompt)
+  deltascope user del <name>   delete a user
+  deltascope user list          list users
+  deltascope catalog export     export the built-in metric catalog (edit, load with serve -catalog)
+  deltascope rules export       export the built-in diagnosis rules (edit, load with serve -rules)
+  deltascope snapshot           capture current whole-machine state and store it
+  deltascope statediff          diff two points in time, showing only what changed
+  deltascope proc-diff          per-process CPU/memory accounting (needs hotproc archive)
+  deltascope verify start       baseline before a release; verify report after, for an impact report
+  deltascope compare            headless diff: -a-start/-a-end/-b-start/-b-end
+                                [-format text|json] [-all] [-threshold N], exit 2 on regressions
 
 serve flags:
-  -listen   监听地址 (默认 127.0.0.1:8080)
-  -archive  PCP 归档目录 (默认 /var/log/pcp/pmlogger/<hostname>)
-  -data     数据目录, 存放 SQLite 与会话密钥 (默认 /var/lib/deltascope)
-  -tls-cert / -tls-key  可选, 提供后直接以 HTTPS 监听
-  -session-ttl          会话有效期 (默认 12h)`)
+  -listen   listen address (default 127.0.0.1:8080)
+  -archive  PCP archive directory (default /var/log/pcp/pmlogger/<hostname>)
+  -data     data directory for SQLite and session keys (default /var/lib/deltascope)
+  -tls-cert / -tls-key  optional, serve HTTPS when provided
+  -session-ttl          session lifetime (default 12h)`)
 }
 
 func defaultArchive() string {
@@ -94,11 +94,11 @@ func defaultArchive() string {
 
 func openStore(dataDir string) *store.Store {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
-		log.Fatalf("创建数据目录失败: %v", err)
+		log.Fatalf("failed to create data directory: %v", err)
 	}
 	st, err := store.Open(filepath.Join(dataDir, "deltascope.db"))
 	if err != nil {
-		log.Fatalf("打开 SQLite 失败: %v", err)
+		log.Fatalf("failed to open SQLite: %v", err)
 	}
 	return st
 }
@@ -113,50 +113,50 @@ func loadOrCreateSecret(dataDir string) []byte {
 		log.Fatal(err)
 	}
 	if err := os.WriteFile(p, b, 0o600); err != nil {
-		log.Fatalf("写入会话密钥失败: %v", err)
+		log.Fatalf("failed to write session key: %v", err)
 	}
 	return b
 }
 
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	listen := fs.String("listen", "127.0.0.1:8080", "监听地址")
-	archive := fs.String("archive", defaultArchive(), "PCP 归档目录")
-	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
-	tlsCert := fs.String("tls-cert", "", "TLS 证书 (可选)")
-	tlsKey := fs.String("tls-key", "", "TLS 私钥 (可选)")
-	ttl := fs.Duration("session-ttl", 12*time.Hour, "会话有效期")
-	catalogPath := fs.String("catalog", "", "自定义指标目录 JSON (可选)")
-	rulesPath := fs.String("rules", "", "自定义诊断规则 JSON (可选)")
+	listen := fs.String("listen", "127.0.0.1:8080", "listen address")
+	archive := fs.String("archive", defaultArchive(), "PCP archive directory")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
+	tlsCert := fs.String("tls-cert", "", "TLS certificate (optional)")
+	tlsKey := fs.String("tls-key", "", "TLS private key (optional)")
+	ttl := fs.Duration("session-ttl", 12*time.Hour, "session lifetime")
+	catalogPath := fs.String("catalog", "", "custom metric catalog JSON (optional)")
+	rulesPath := fs.String("rules", "", "custom diagnosis rules JSON (optional)")
 	fs.Parse(args)
 
 	if *catalogPath != "" {
 		if err := pcp.LoadCatalogFile(*catalogPath); err != nil {
-			log.Fatalf("加载指标目录失败: %v", err)
+			log.Fatalf("failed to load catalog: %v", err)
 		}
-		log.Printf("已加载自定义指标目录 %s (%d 项)", *catalogPath, len(pcp.Catalog))
+		log.Printf("loaded custom catalog %s (%d metrics)", *catalogPath, len(pcp.Catalog))
 	}
 	if *rulesPath != "" {
 		if err := pcp.LoadRulesFile(*rulesPath); err != nil {
-			log.Fatalf("加载诊断规则失败: %v", err)
+			log.Fatalf("failed to load rules: %v", err)
 		}
-		log.Printf("已加载自定义诊断规则 %s (%d 条)", *rulesPath, len(pcp.Rules))
+		log.Printf("loaded custom rules %s (%d rules)", *rulesPath, len(pcp.Rules))
 	}
 
 	if _, err := os.Stat(*archive); err != nil {
-		log.Printf("警告: 归档目录 %s 不可访问 (%v), 请确认 pmlogger 已运行", *archive, err)
+		log.Printf("warning: archive directory %s is not accessible (%v), check that pmlogger is running", *archive, err)
 	}
 	if _, err := exec.LookPath("pmlogsummary"); err != nil {
-		log.Printf("警告: 未找到 pmlogsummary, 请安装 pcp 软件包")
+		log.Printf("warning: pmlogsummary not found, install the pcp package")
 	}
 	if _, err := exec.LookPath("pmrep"); err != nil {
-		log.Printf("警告: 未找到 pmrep, 请安装 pcp-system-tools 软件包")
+		log.Printf("warning: pmrep not found, install the pcp-system-tools package")
 	}
 
 	st := openStore(*dataDir)
 	defer st.Close()
 	if users, err := st.ListUsers(); err == nil && len(users) == 0 {
-		log.Printf("提示: 尚无任何用户, 先执行 deltascope user add <name> 创建管理员")
+		log.Printf("note: no users yet, run deltascope user add <name> to create an admin")
 	}
 
 	srv := &httpapi.Server{
@@ -175,16 +175,16 @@ func cmdServe(args []string) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	if *tlsCert != "" {
-		log.Printf("v%s HTTPS 监听 %s, 归档 %s", version, *listen, *archive)
+		log.Printf("v%s listening HTTPS on %s, archive %s", version, *listen, *archive)
 		log.Fatal(h.ListenAndServeTLS(*tlsCert, *tlsKey))
 	}
-	log.Printf("v%s HTTP 监听 %s, 归档 %s", version, *listen, *archive)
+	log.Printf("v%s listening HTTP on %s, archive %s", version, *listen, *archive)
 	log.Fatal(h.ListenAndServe())
 }
 
 func cmdCatalog(args []string) {
 	if len(args) == 0 || args[0] != "export" {
-		fmt.Fprintln(os.Stderr, "用法: deltascope catalog export > catalog.json")
+		fmt.Fprintln(os.Stderr, "usage: deltascope catalog export > catalog.json")
 		os.Exit(2)
 	}
 	data, err := pcp.ExportCatalog()
@@ -201,22 +201,22 @@ func parseWhen(s string) (time.Time, error) {
 			return t, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("时间格式无效: %q (期望 2006-01-02T15:04)", s)
+	return time.Time{}, fmt.Errorf("invalid time format: %q (expected 2006-01-02T15:04)", s)
 }
 
 func cmdCompare(args []string) {
 	fs := flag.NewFlagSet("compare", flag.ExitOnError)
-	aStart := fs.String("a-start", "", "基线开始")
-	aEnd := fs.String("a-end", "", "基线结束")
-	bStart := fs.String("b-start", "", "对比开始")
-	bEnd := fs.String("b-end", "", "对比结束")
-	archive := fs.String("archive", defaultArchive(), "归档目录")
-	threshold := fs.Float64("threshold", 15, "显著阈值 %")
-	catalogPath := fs.String("catalog", "", "自定义指标目录 JSON")
-	rulesPath := fs.String("rules", "", "自定义诊断规则 JSON")
-	format := fs.String("format", "text", "输出格式: text|json")
-	showAll := fs.Bool("all", false, "文本模式包含平稳行")
-	noColor := fs.Bool("no-color", false, "关闭 ANSI 颜色")
+	aStart := fs.String("a-start", "", "baseline window start")
+	aEnd := fs.String("a-end", "", "baseline window end")
+	bStart := fs.String("b-start", "", "compare window start")
+	bEnd := fs.String("b-end", "", "compare window end")
+	archive := fs.String("archive", defaultArchive(), "archive directory")
+	threshold := fs.Float64("threshold", 15, "significance threshold %")
+	catalogPath := fs.String("catalog", "", "custom metric catalog JSON")
+	rulesPath := fs.String("rules", "", "custom diagnosis rules JSON")
+	format := fs.String("format", "text", "output format: text|json")
+	showAll := fs.Bool("all", false, "text mode: include flat rows")
+	noColor := fs.Bool("no-color", false, "disable ANSI color")
 	fs.Parse(args)
 
 	if *catalogPath != "" {
@@ -265,7 +265,7 @@ func cmdCompare(args []string) {
 
 func cmdRules(args []string) {
 	if len(args) == 0 || args[0] != "export" {
-		fmt.Fprintln(os.Stderr, "用法: deltascope rules export > rules.json")
+		fmt.Fprintln(os.Stderr, "usage: deltascope rules export > rules.json")
 		os.Exit(2)
 	}
 	data, err := pcp.ExportRules()
@@ -278,23 +278,23 @@ func cmdRules(args []string) {
 
 func cmdVerify(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "用法: deltascope verify start|report [-name <发布名>] [-format text|md]")
+		fmt.Fprintln(os.Stderr, "usage: deltascope verify start|report [-name <release-name>] [-format text|md]")
 		os.Exit(2)
 	}
 	sub := args[0]
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
-	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
-	name := fs.String("name", "release", "发布基线名 (多条发布线可区分)")
-	format := fs.String("format", "text", "report 输出格式: text | md")
-	title := fs.String("title", "", "报告标题 (md 格式用)")
-	noColor := fs.Bool("no-color", false, "关闭彩色输出")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
+	name := fs.String("name", "", "release baseline name (default: auto timestamp)")
+	format := fs.String("format", "text", "report output format: text | md")
+	title := fs.String("title", "", "report title (md format)")
+	noColor := fs.Bool("no-color", false, "disable colored output")
 	fs.Parse(args[1:])
 
 	st := openStore(*dataDir)
 	defer st.Close()
 	ss, err := state.NewStore(st.DB())
 	if err != nil {
-		log.Fatalf("初始化快照存储失败: %v", err)
+		log.Fatalf("failed to init snapshot store: %v", err)
 	}
 	host, _ := os.Hostname()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -302,18 +302,25 @@ func cmdVerify(args []string) {
 
 	switch sub {
 	case "start":
+		if *name == "" {
+			*name = "release-" + time.Now().Format("20060102-150405")
+		}
 		snap := state.Capture(ctx, host)
 		if err := ss.SaveMarker(*name, snap); err != nil {
-			log.Fatalf("保存基线失败: %v", err)
+			log.Fatalf("failed to save baseline: %v", err)
 		}
 		total := 0
 		for _, sec := range snap.Sections {
 			total += len(sec.Items)
 		}
-		fmt.Printf("已记录发布基线 %q — %s · %d 项事实\n", *name, snap.Taken.Local().Format("15:04:05"), total)
-		fmt.Println("完成发布后运行: deltascope verify report -name " + *name)
+		fmt.Printf("baseline %q recorded — %s · %d facts\n", *name, snap.Taken.Local().Format("15:04:05"), total)
+		fmt.Println("after the release, run: deltascope verify report -name " + *name)
 
 	case "report":
+		if *name == "" {
+			fmt.Fprintln(os.Stderr, "missing -name (use the name printed by 'verify start')")
+			os.Exit(2)
+		}
 		base, err := ss.LoadMarker(*name)
 		if err != nil {
 			log.Fatal(err)
@@ -330,23 +337,23 @@ func cmdVerify(args []string) {
 		}
 
 	default:
-		fmt.Fprintln(os.Stderr, "未知子命令, 用 start 或 report")
+		fmt.Fprintln(os.Stderr, "unknown subcommand, use start or report")
 		os.Exit(2)
 	}
 }
 
 func cmdSnapshot(args []string) {
 	fs := flag.NewFlagSet("snapshot", flag.ExitOnError)
-	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
-	keep := fs.Int("keep-days", 7, "快照保留天数")
-	quiet := fs.Bool("quiet", false, "只输出摘要")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
+	keep := fs.Int("keep-days", 7, "snapshot retention days")
+	quiet := fs.Bool("quiet", false, "summary output only")
 	fs.Parse(args)
 
 	st := openStore(*dataDir)
 	defer st.Close()
 	ss, err := state.NewStore(st.DB())
 	if err != nil {
-		log.Fatalf("初始化快照存储失败: %v", err)
+		log.Fatalf("failed to init snapshot store: %v", err)
 	}
 
 	host, _ := os.Hostname()
@@ -354,10 +361,10 @@ func cmdSnapshot(args []string) {
 	defer cancel()
 	snap := state.Capture(ctx, host)
 	if err := ss.Save(snap); err != nil {
-		log.Fatalf("保存快照失败: %v", err)
+		log.Fatalf("failed to save snapshot: %v", err)
 	}
 	if n, _ := ss.Prune(*keep); n > 0 && !*quiet {
-		log.Printf("清理过期快照 %d 份", n)
+		log.Printf("pruned %d expired snapshots", n)
 	}
 
 	total := 0
@@ -369,62 +376,62 @@ func cmdSnapshot(args []string) {
 		}
 	}
 	if *quiet {
-		fmt.Printf("snapshot %s: %d 项 / %d 类\n", snap.Taken.Format("2006-01-02 15:04:05"), total, len(snap.Sections))
+		fmt.Printf("snapshot %s: %d facts / %d sections\n", snap.Taken.Format("2006-01-02 15:04:05"), total, len(snap.Sections))
 		return
 	}
-	fmt.Printf("已采集快照 %s\n  主机 %s · %d 项事实 · %d 个类别\n",
+	fmt.Printf("snapshot captured %s\n  host %s · %d facts · %d sections\n",
 		snap.Taken.Local().Format("2006-01-02 15:04:05"), host, total, len(snap.Sections))
 	for _, sec := range snap.Sections {
 		if sec.Skipped != "" {
-			fmt.Printf("  - %-12s 跳过: %s\n", sec.Name, sec.Skipped)
+			fmt.Printf("  - %-12s skipped: %s\n", sec.Name, sec.Skipped)
 		} else {
-			fmt.Printf("  - %-12s %d 项\n", sec.Name, len(sec.Items))
+			fmt.Printf("  - %-12s %d items\n", sec.Name, len(sec.Items))
 		}
 	}
 }
 
 func cmdStatediff(args []string) {
 	fs := flag.NewFlagSet("statediff", flag.ExitOnError)
-	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
-	since := fs.Duration("since", 24*time.Hour, "基线相对现在的回溯时长 (与 -a/-b 二选一)")
-	aAt := fs.String("a", "", "基线时刻 2006-01-02T15:04 (默认取 -since 之前最近快照)")
-	bAt := fs.String("b", "", "对比时刻 2006-01-02T15:04 (默认取最新快照)")
-	noColor := fs.Bool("no-color", false, "关闭彩色输出")
-	summary := fs.Bool("summary", false, "只输出单行摘要 (适合 cron)")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
+	since := fs.Duration("since", 24*time.Hour, "how far back the baseline is from now (alternative to -a/-b)")
+	aAt := fs.String("a", "", "baseline time 2006-01-02T15:04 (default: nearest snapshot before -since)")
+	bAt := fs.String("b", "", "compare time 2006-01-02T15:04 (default: latest snapshot)")
+	noColor := fs.Bool("no-color", false, "disable colored output")
+	summary := fs.Bool("summary", false, "single-line summary output (for cron)")
 	fs.Parse(args)
 
 	st := openStore(*dataDir)
 	defer st.Close()
 	ss, err := state.NewStore(st.DB())
 	if err != nil {
-		log.Fatalf("初始化快照存储失败: %v", err)
+		log.Fatalf("failed to init snapshot store: %v", err)
 	}
 
 	var a, b state.Snapshot
 	if *bAt != "" {
 		t, err := time.ParseInLocation("2006-01-02T15:04", *bAt, time.Local)
 		if err != nil {
-			log.Fatalf("时刻 -b 格式错误: %v", err)
+			log.Fatalf("invalid -b time: %v", err)
 		}
 		if b, err = ss.Before(t); err != nil {
-			log.Fatalf("找不到 -b 对应快照: %v", err)
+			log.Fatalf("no snapshot found for -b: %v", err)
 		}
 	} else {
 		if b, err = ss.Latest(); err != nil {
-			log.Fatalf("没有任何快照, 先运行 deltascope snapshot")
+			log.Fatalf("no snapshots yet, run deltascope snapshot first")
 		}
 	}
 	if *aAt != "" {
 		t, err := time.ParseInLocation("2006-01-02T15:04", *aAt, time.Local)
 		if err != nil {
-			log.Fatalf("时刻 -a 格式错误: %v", err)
+			log.Fatalf("invalid -a time: %v", err)
 		}
 		if a, err = ss.Before(t); err != nil {
-			log.Fatalf("找不到 -a 对应快照: %v", err)
+			log.Fatalf("no snapshot found for -a: %v", err)
 		}
 	} else {
 		if a, err = ss.NearestBefore(b.Taken.Add(-*since)); err != nil {
-			log.Fatalf("找不到基线快照: %v", err)
+			log.Fatalf("no baseline snapshot found: %v", err)
 		}
 	}
 
@@ -441,24 +448,24 @@ func cmdStatediff(args []string) {
 
 func cmdProcDiff(args []string) {
 	fs := flag.NewFlagSet("proc-diff", flag.ExitOnError)
-	archive := fs.String("archive", defaultArchive(), "归档目录")
-	aStart := fs.String("a-start", "", "基线开始 2006-01-02T15:04")
-	aEnd := fs.String("a-end", "", "基线结束")
-	bStart := fs.String("b-start", "", "对比开始")
-	bEnd := fs.String("b-end", "", "对比结束")
-	threshold := fs.Float64("threshold", 20, "显著阈值 %")
-	noColor := fs.Bool("no-color", false, "关闭彩色输出")
+	archive := fs.String("archive", defaultArchive(), "archive directory")
+	aStart := fs.String("a-start", "", "baseline start 2006-01-02T15:04")
+	aEnd := fs.String("a-end", "", "baseline window end")
+	bStart := fs.String("b-start", "", "compare window start")
+	bEnd := fs.String("b-end", "", "compare window end")
+	threshold := fs.Float64("threshold", 20, "significance threshold %")
+	noColor := fs.Bool("no-color", false, "disable colored output")
 	fs.Parse(args)
 
 	parse := func(v, name string) time.Time {
 		t, err := time.ParseInLocation("2006-01-02T15:04", v, time.Local)
 		if err != nil {
-			log.Fatalf("时刻 %s 格式错误 (期望 2006-01-02T15:04): %v", name, err)
+			log.Fatalf("invalid time %s (expected 2006-01-02T15:04): %v", name, err)
 		}
 		return t
 	}
 	if *aStart == "" || *aEnd == "" || *bStart == "" || *bEnd == "" {
-		log.Fatal("需提供 -a-start -a-end -b-start -b-end")
+		log.Fatal("must provide -a-start -a-end -b-start -b-end")
 	}
 	w := pcp.Windows{
 		AStart: parse(*aStart, "a-start"), AEnd: parse(*aEnd, "a-end"),
@@ -470,14 +477,14 @@ func cmdProcDiff(args []string) {
 	defer cancel()
 	rep, err := pcp.CompareProc(ctx, pcp.ExecRunner{}, *archive, w)
 	if err != nil {
-		log.Fatalf("进程对账失败: %v\n提示: 需先在 pmlogger 中启用 hotproc 采集 (见 hotproc.config)", err)
+		log.Fatalf("process diff failed: %v\nhint: enable hotproc collection in pmlogger first (see hotproc.config)", err)
 	}
 	renderProcReport(os.Stdout, rep, !*noColor)
 }
 
 func cmdUser(args []string) {
 	fs := flag.NewFlagSet("user", flag.ExitOnError)
-	dataDir := fs.String("data", "/var/lib/deltascope", "数据目录")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
 	var rest []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "-data" || args[i] == "--data" {
@@ -497,18 +504,18 @@ func cmdUser(args []string) {
 	switch rest[0] {
 	case "add":
 		if len(rest) < 2 {
-			log.Fatal("用法: deltascope user add <name>")
+			log.Fatal("usage: deltascope user add <name>")
 		}
 		name := strings.TrimSpace(rest[1])
 		if name == "" || len(name) > 64 {
-			log.Fatal("用户名不能为空且不超过 64 字符")
+			log.Fatal("username must be non-empty and at most 64 chars")
 		}
 		pw := os.Getenv("DSCOPE_PASSWORD")
 		if pw == "" {
 			pw = promptPassword()
 		}
 		if len(pw) < 8 {
-			log.Fatal("口令至少 8 位")
+			log.Fatal("password must be at least 8 characters")
 		}
 		hash, err := auth.HashPassword(pw)
 		if err != nil {
@@ -517,15 +524,15 @@ func cmdUser(args []string) {
 		if err := st.UpsertUser(name, hash); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("用户 %s 已创建/更新\n", name)
+		fmt.Printf("user %s created/updated\n", name)
 	case "del":
 		if len(rest) < 2 {
-			log.Fatal("用法: deltascope user del <name>")
+			log.Fatal("usage: deltascope user del <name>")
 		}
 		if err := st.DeleteUser(rest[1]); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("已删除")
+		fmt.Println("deleted")
 	case "list":
 		users, err := st.ListUsers()
 		if err != nil {
@@ -552,10 +559,10 @@ func promptPassword() string {
 		fmt.Scanln(&s)
 		return s
 	}
-	p1 := read("口令: ")
-	p2 := read("再输一次: ")
+	p1 := read("password: ")
+	p2 := read("confirm: ")
 	if p1 != p2 {
-		log.Fatal("两次输入不一致")
+		log.Fatal("passwords do not match")
 	}
 	return p1
 }

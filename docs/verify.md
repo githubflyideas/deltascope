@@ -1,35 +1,41 @@
-# 发布影响面验证 (verify)
+# Release Impact Verification (verify)
 
-在每次发布 / 升级 / 改配置的前后各拍一次整机快照,自动对账出"这次改动到底动了什么"。
-回答运维每天最提心吊胆的问题:我这次上线,除了预期的改动,有没有悄悄动了别的?
+Snapshots the whole machine before and after every release / upgrade /
+config change, and automatically accounts for exactly what that change
+touched. Answers the question every on-call engineer dreads: beyond what
+I meant to change, did this release quietly touch anything else?
 
-## 用法
+## Usage
 
-发布前打基线:
+Baseline before the release:
 
     deltascope verify start -name deploy-2024w30
 
-执行你的发布 (升级包 / 改配置 / 重启服务 / 跑 ansible ...)。
+Run your release (package upgrade / config change / service restart /
+an ansible run ...).
 
-发布后出影响面报告:
+Impact report after the release:
 
     deltascope verify report -name deploy-2024w30
 
-## 接入 CI / PR
+## Wiring into CI / PRs
 
-生成 Markdown,贴进 PR 评论或 Slack:
+Generate Markdown to paste into a PR comment or Slack:
 
-    deltascope verify report -name $CI_COMMIT_SHA -format md -title "本次部署影响面" > impact.md
+    deltascope verify report -name $CI_COMMIT_SHA -format md -title "Deploy impact" > impact.md
 
-report 在检出变更时返回退出码 3 —— CI 里可据此要求人工确认:
+`report` exits with code 3 when changes are detected -- use that in CI to
+require a manual sign-off:
 
     deltascope verify start -name $CI_COMMIT_SHA
     ./deploy.sh
     if ! deltascope verify report -name $CI_COMMIT_SHA -format md > impact.md; then
-        gh pr comment --body-file impact.md   # 有变更,贴报告并卡住等确认
+        gh pr comment --body-file impact.md   # changes found, post the report and wait for confirmation
     fi
 
-## 与 statediff 的区别
+## verify vs. statediff
 
-- statediff 面向"日常巡检":定时快照,看今天 vs 昨天自然漂移了什么。
-- verify 面向"一次发布":显式打基线,精确框定"这次操作"的影响面,基线按名字持久保存。
+- statediff is for routine watch: scheduled snapshots, seeing what
+  naturally drifted between today and yesterday.
+- verify is for a single release: an explicit baseline that precisely
+  frames the impact of "this one operation", saved persistently by name.

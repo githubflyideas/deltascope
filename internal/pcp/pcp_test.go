@@ -29,7 +29,7 @@ some.unparseable line without number tail x
 func TestParseSummary(t *testing.T) {
 	vals := ParseSummary(strings.NewReader(sampleSummary))
 	if len(vals) != 9 {
-		t.Fatalf("期望 9 行, 得到 %d: %+v", len(vals), vals)
+		t.Fatalf("expected 9 rows, got %d: %+v", len(vals), vals)
 	}
 	byKey := map[string]Value{}
 	for _, v := range vals {
@@ -37,15 +37,15 @@ func TestParseSummary(t *testing.T) {
 	}
 	load1 := byKey["kernel.all.load\x001 minute"]
 	if load1.Val != 1.542 || load1.Units != "none" {
-		t.Errorf("load[1 minute] 解析错误: %+v", load1)
+		t.Errorf("load[1 minute] parse error: %+v", load1)
 	}
 	cpu := byKey["kernel.all.cpu.user\x00"]
 	if cpu.Val != 245.917 || cpu.Units != "millisec / second" {
-		t.Errorf("cpu.user 解析错误: %+v", cpu)
+		t.Errorf("cpu.user parse error: %+v", cpu)
 	}
 	eth0 := byKey["network.interface.in.bytes\x00eth0"]
 	if eth0.Val != 10240.5 {
-		t.Errorf("in.bytes[eth0] 解析错误: %+v", eth0)
+		t.Errorf("in.bytes[eth0] parse error: %+v", eth0)
 	}
 }
 
@@ -69,15 +69,15 @@ func TestJudge(t *testing.T) {
 		wantExc  bool
 		wantDpct *float64
 	}{
-		{"CPU 上涨 500% 恶化", f(100), f(600), WorseUp, VWorse, true, f(500)},
-		{"CPU 下降改善", f(100), f(60), WorseUp, VBetter, true, f(-40)},
-		{"可用内存下降恶化", f(1000), f(500), BetterUp, VWorse, true, f(-50)},
-		{"可用内存上升改善", f(1000), f(1300), BetterUp, VBetter, true, nil},
-		{"吞吐变化标关注", f(100), f(200), Neutral, VWatch, true, nil},
-		{"低于阈值平稳", f(100), f(110), WorseUp, VFlat, false, f(10)},
-		{"0 到 0 平稳", f(0), f(0), WorseUp, VFlat, false, f(0)},
-		{"0 到 非0 恶化(∞)", f(0), f(5), WorseUp, VWorse, true, nil},
-		{"单侧缺失标关注", nil, f(5), WorseUp, VWatch, true, nil},
+		{"CPU up 500% worse", f(100), f(600), WorseUp, VWorse, true, f(500)},
+		{"CPU down better", f(100), f(60), WorseUp, VBetter, true, f(-40)},
+		{"available mem down worse", f(1000), f(500), BetterUp, VWorse, true, f(-50)},
+		{"available mem up better", f(1000), f(1300), BetterUp, VBetter, true, nil},
+		{"throughput change flagged watch", f(100), f(200), Neutral, VWatch, true, nil},
+		{"below threshold flat", f(100), f(110), WorseUp, VFlat, false, f(10)},
+		{"0 to 0 flat", f(0), f(0), WorseUp, VFlat, false, f(0)},
+		{"0 to nonzero worse (inf)", f(0), f(5), WorseUp, VWorse, true, nil},
+		{"one side missing flagged watch", nil, f(5), WorseUp, VWatch, true, nil},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -127,23 +127,23 @@ network.tcp.retranssegs  1.050 count / second
 		t.Fatal(err)
 	}
 	if len(fr.args) != 2 || fr.args[0][0] != "pmlogsummary" {
-		t.Fatalf("期望调用两次 pmlogsummary: %+v", fr.args)
+		t.Fatalf("expected two pmlogsummary calls: %+v", fr.args)
 	}
 	got := map[string]DiffRow{}
 	for _, r := range rep.Rows {
 		got[r.Metric] = r
 	}
 	if r := got["kernel.all.cpu.user"]; r.Verdict != VWorse || !r.Exceeded || math.Abs(*r.DeltaPct-500) > 1e-9 {
-		t.Errorf("cpu.user 判定错误: %+v", r)
+		t.Errorf("cpu.user verdict error: %+v", r)
 	}
 	if r := got["mem.util.available"]; r.Verdict != VWorse || math.Abs(*r.DeltaPct+50) > 1e-9 {
-		t.Errorf("mem.available 判定错误: %+v", r)
+		t.Errorf("mem.available verdict error: %+v", r)
 	}
 	if r := got["network.tcp.retranssegs"]; r.Verdict != VFlat || r.Exceeded {
-		t.Errorf("retranssegs 应为 flat: %+v", r)
+		t.Errorf("retranssegs should be flat: %+v", r)
 	}
 	if rep.Rows[0].Metric != "kernel.all.cpu.user" {
-		t.Errorf("排序错误, 首行=%s", rep.Rows[0].Metric)
+		t.Errorf("sort order wrong, first row=%s", rep.Rows[0].Metric)
 	}
 }
 
@@ -159,29 +159,29 @@ func TestParseTrendCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(series) != 2 {
-		t.Fatalf("期望 2 条序列, 得到 %d", len(series))
+		t.Fatalf("expected 2 series, got %d", len(series))
 	}
 	if series[0].Name != `kernel.all.load-1 minute` {
-		t.Errorf("序列名错误: %q", series[0].Name)
+		t.Errorf("series name wrong: %q", series[0].Name)
 	}
 	if len(series[0].Points) != 3 {
-		t.Fatalf("期望 3 个点, 得到 %d", len(series[0].Points))
+		t.Fatalf("expected 3 points, got %d", len(series[0].Points))
 	}
 	if series[0].Points[1][1] != nil {
-		t.Errorf("缺失值应为 nil: %+v", series[0].Points[1])
+		t.Errorf("missing value should be nil: %+v", series[0].Points[1])
 	}
 	if v, ok := series[0].Points[2][1].(float64); !ok || v != 1.7 {
-		t.Errorf("数值解析错误: %+v", series[0].Points[2])
+		t.Errorf("value parse error: %+v", series[0].Points[2])
 	}
 }
 
 func TestTrendStep(t *testing.T) {
 	now := time.Now()
 	if s := TrendStep(now.Add(-time.Hour), now); s != 10*time.Second {
-		t.Errorf("1h 窗口步长应为 10s, got %v", s)
+		t.Errorf("1h window step should be 10s, got %v", s)
 	}
 	if s := TrendStep(now.Add(-14*24*time.Hour), now); s != 15*time.Minute {
-		t.Errorf("14d 窗口步长应封顶 15m, got %v", s)
+		t.Errorf("14d window step should cap at 15m, got %v", s)
 	}
 }
 
@@ -199,19 +199,19 @@ func TestCatalogRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(Catalog) != before {
-		t.Fatalf("往返后指标数不一致: %d != %d", len(Catalog), before)
+		t.Fatalf("metric count mismatch after round-trip: %d != %d", len(Catalog), before)
 	}
 	if _, ok := Lookup("network.tcp.syncookiessent"); !ok {
-		t.Error("加载后索引未重建")
+		t.Error("index not rebuilt after load")
 	}
 	bad := t.TempDir() + "/bad.json"
 	os.WriteFile(bad, []byte(`{"categories":["x"],"metrics":[{"metric":"a;rm -rf","label":"l","category":"x","polarity":"neutral"}]}`), 0o644)
 	if err := LoadCatalogFile(bad); err == nil {
-		t.Error("非法指标名应被拒绝")
+		t.Error("invalid metric name should be rejected")
 	}
 	os.WriteFile(bad, []byte(`{"categories":["x"],"metrics":[{"metric":"a.b","label":"l","category":"x","polarity":"up"}]}`), 0o644)
 	if err := LoadCatalogFile(bad); err == nil {
-		t.Error("非法极性应被拒绝")
+		t.Error("invalid polarity should be rejected")
 	}
 }
 
@@ -227,18 +227,18 @@ func TestRulesEngine(t *testing.T) {
 		if x.ID == "swap-spiral" {
 			found = true
 			if len(x.Evidence) != 2 {
-				t.Errorf("swap-spiral 证据应为 2 条: %+v", x.Evidence)
+				t.Errorf("swap-spiral should have 2 evidence lines: %+v", x.Evidence)
 			}
 		}
 		if x.ID == "disk-saturated" {
-			t.Error("未满足的规则不应命中")
+			t.Error("unmet rule should not fire")
 		}
 	}
 	if !found {
-		t.Error("swap-spiral 应命中")
+		t.Error("swap-spiral should fire")
 	}
 	if got := EvaluateRules(nil); len(got) != 0 {
-		t.Errorf("空行集不应有结论: %+v", got)
+		t.Errorf("empty row set should have no findings: %+v", got)
 	}
 }
 
@@ -254,12 +254,12 @@ func TestRulesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(Rules) != n {
-		t.Fatalf("往返后规则数不一致: %d != %d", len(Rules), n)
+		t.Fatalf("rule count mismatch after round-trip: %d != %d", len(Rules), n)
 	}
 	bad := t.TempDir() + "/bad.json"
 	os.WriteFile(bad, []byte(`[{"id":"x","severity":"fatal","conclusion":"c","when":[{"metric":"a.b"}]}]`), 0o644)
 	if err := LoadRulesFile(bad); err == nil {
-		t.Error("非法 severity 应被拒绝")
+		t.Error("invalid severity should be rejected")
 	}
 }
 
@@ -268,12 +268,12 @@ func TestPerMetricThreshold(t *testing.T) {
 	b := map[string]Value{"network.icmp.inmsgs\x00": {Metric: "network.icmp.inmsgs", Val: 25}}
 	rows := buildRows(a, b, 15)
 	if len(rows) != 1 || rows[0].Verdict != VFlat {
-		t.Fatalf("icmp +150%% 应被 300%% 专属阈值判为平稳: %+v", rows)
+		t.Fatalf("icmp +150%% should be flat under its 300%% override: %+v", rows)
 	}
 	b2 := map[string]Value{"network.icmp.inmsgs\x00": {Metric: "network.icmp.inmsgs", Val: 60}}
 	rows = buildRows(a, b2, 15)
 	if rows[0].Verdict == VFlat {
-		t.Fatalf("icmp +500%% 应超过专属阈值: %+v", rows[0])
+		t.Fatalf("icmp +500%% should exceed its override threshold: %+v", rows[0])
 	}
 }
 
@@ -296,10 +296,10 @@ func TestRunTrendSelfHeal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(missing) != 1 || missing[0] != "network.tcp.syncookiessent" {
-		t.Fatalf("missing 应记录被剔除指标: %+v", missing)
+		t.Fatalf("missing should record the dropped metric: %+v", missing)
 	}
 	if fr.calls != 2 || len(series) == 0 {
-		t.Fatalf("应重试一次并返回序列: calls=%d series=%d", fr.calls, len(series))
+		t.Fatalf("should retry once and return series: calls=%d series=%d", fr.calls, len(series))
 	}
 }
 
@@ -313,7 +313,7 @@ func (allBadRunner) Run(_ context.Context, _ string, args ...string) ([]byte, []
 func TestRunTrendAllMissing(t *testing.T) {
 	_, missing, err := RunTrend(context.Background(), allBadRunner{}, "/a", "load", time.Now().Add(-time.Hour), time.Now())
 	if err == nil {
-		t.Fatal("全部指标缺失应报错")
+		t.Fatal("all metrics missing should error")
 	}
 	if len(missing) != 1 {
 		t.Fatalf("missing=%v", missing)
@@ -323,11 +323,11 @@ func TestRunTrendAllMissing(t *testing.T) {
 func TestTriage(t *testing.T) {
 	rows := []DiffRow{
 		{Metric: "kernel.all.cpu.user", Category: "CPU", Verdict: VWorse, DeltaPct: f(520)},
-		{Metric: "mem.util.available", Category: "内存", Verdict: VWorse, DeltaPct: f(-60)},
-		// 磁盘只有非核心指标关注 -> 应为 warn 不是 bad
-		{Metric: "disk.dev.read", Category: "磁盘 I/O", Verdict: VWatch, DeltaPct: f(40)},
-		// 网络无变化 -> ok
-		{Metric: "network.tcp.insegs", Category: "网络", Verdict: VFlat, DeltaPct: f(2)},
+		{Metric: "mem.util.available", Category: "Memory", Verdict: VWorse, DeltaPct: f(-60)},
+		// disk has only a non-core metric flagged -> should be warn, not bad
+		{Metric: "disk.dev.read", Category: "Disk I/O", Verdict: VWatch, DeltaPct: f(40)},
+		// network unchanged -> ok
+		{Metric: "network.tcp.insegs", Category: "Network", Verdict: VFlat, DeltaPct: f(2)},
 	}
 	blocks := Triage(rows)
 	got := map[string]TriageStatus{}
@@ -335,15 +335,15 @@ func TestTriage(t *testing.T) {
 		got[b.Key] = b.Status
 	}
 	if got["cpu"] != TriageBad {
-		t.Errorf("CPU 核心指标恶化应为 bad, 得到 %s", got["cpu"])
+		t.Errorf("CPU core metric regression should be bad, got %s", got["cpu"])
 	}
 	if got["mem"] != TriageBad {
-		t.Errorf("内存核心指标恶化应为 bad, 得到 %s", got["mem"])
+		t.Errorf("memory core metric regression should be bad, got %s", got["mem"])
 	}
 	if got["disk"] != TriageWarn {
-		t.Errorf("磁盘仅非核心关注应为 warn, 得到 %s", got["disk"])
+		t.Errorf("disk with only non-core watch should be warn, got %s", got["disk"])
 	}
 	if got["net"] != TriageOK {
-		t.Errorf("网络无变化应为 ok, 得到 %s", got["net"])
+		t.Errorf("network unchanged should be ok, got %s", got["net"])
 	}
 }

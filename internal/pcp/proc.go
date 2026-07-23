@@ -10,25 +10,25 @@ import (
 	"time"
 )
 
-// ProcMetrics 是进程对账依赖的 hotproc 指标名。
-// 采集端需在 pmlogger 中记录这些指标(见 hotproc 配置)。
+// ProcMetrics are the hotproc metric names process accounting depends on.
+// The collector side must record these in pmlogger (see hotproc config).
 var ProcMetrics = []string{
-	"hotproc.psinfo.utime",      // 用户态 CPU 累计 (ms)
-	"hotproc.psinfo.stime",      // 内核态 CPU 累计 (ms)
-	"hotproc.psinfo.rss",        // 常驻内存 (KB)
-	"hotproc.psinfo.start_time", // 进程启动时间 (ms since epoch)
+	"hotproc.psinfo.utime",      // cumulative user CPU (ms)
+	"hotproc.psinfo.stime",      // cumulative system CPU (ms)
+	"hotproc.psinfo.rss",        // resident memory (KB)
+	"hotproc.psinfo.start_time", // process start time (ms since epoch)
 }
 
-// ProcSample 是某进程在一个窗口内的聚合值。
+// ProcSample is one process's aggregated values within a window.
 type ProcSample struct {
 	Name      string
-	CPUms     float64 // utime+stime 的窗口均值 (ms/s 语义)
-	RSS       float64 // 常驻内存 KB
-	StartTime float64 // 启动时间 (ms epoch),用于重启检测
-	Count     int     // 该名字下聚合的实例数
+	CPUms     float64 // window mean of utime+stime (ms/s semantics)
+	RSS       float64 // resident memory KB
+	StartTime float64 // start time (ms epoch), used for restart detection
+	Count     int     // number of instances aggregated under this name
 }
 
-// ProcVerdict 描述一行进程对账结论。
+// ProcVerdict describes the verdict for one process-accounting row.
 type ProcVerdict string
 
 const (
@@ -39,7 +39,7 @@ const (
 	PVGone     ProcVerdict = "gone"
 )
 
-// ProcRow 是进程对账报告的一行。
+// ProcRow is one row of the process-accounting report.
 type ProcRow struct {
 	Name      string
 	Metric    string // "cpu" | "mem"
@@ -52,7 +52,7 @@ type ProcRow struct {
 	Unit      string
 }
 
-// ProcReport 是进程对账的完整结果。
+// ProcReport is the full result of process accounting.
 type ProcReport struct {
 	AStart, AEnd time.Time
 	BStart, BEnd time.Time
@@ -63,8 +63,9 @@ type ProcReport struct {
 	Warnings     []string
 }
 
-// parseProcSummary 从 pmlogsummary 输出解析 hotproc 指标,按进程名聚合。
-// hotproc 实例名形如 "1234 mysqld" —— 取空格后的命令名做聚合键。
+// parseProcSummary parses hotproc metrics from pmlogsummary output and
+// aggregates by process name. hotproc instance names look like
+// "1234 mysqld" - the command name after the space is the aggregation key.
 func parseProcSummary(vals []Value) map[string]*ProcSample {
 	acc := map[string]*ProcSample{}
 	get := func(name string) *ProcSample {
@@ -96,8 +97,8 @@ func parseProcSummary(vals []Value) map[string]*ProcSample {
 	return acc
 }
 
-// procName 从 hotproc 实例名提取命令名。
-// 实例名典型格式 "01234 mysqld" 或 "1234 /usr/sbin/nginx"。
+// procName extracts the command name from a hotproc instance name.
+// Typical formats: "01234 mysqld" or "1234 /usr/sbin/nginx".
 func procName(inst string) string {
 	inst = strings.TrimSpace(inst)
 	if inst == "" {
@@ -117,7 +118,7 @@ func procName(inst string) string {
 	return cmd
 }
 
-// CompareProc 对两个窗口做进程级对账。
+// CompareProc runs process-level accounting between two windows.
 func CompareProc(ctx context.Context, r Runner, archive string, w Windows) (*ProcReport, error) {
 	a, warnA, err := RunSummary(ctx, r, archive, w.AStart, w.AEnd, ProcMetrics)
 	if err != nil {
@@ -190,7 +191,7 @@ func procRow(name, metric, unit string, a, b *float64, threshold float64) ProcRo
 	return row
 }
 
-// judgeProc 进程指标一律 worse_up 语义(占用升高=更差)。
+// judgeProc: process metrics are always worse_up semantics (higher usage = worse).
 func judgeProc(a, b *float64, threshold float64) (*float64, bool, ProcVerdict) {
 	if a == nil && b != nil {
 		return nil, true, PVAppeared
@@ -260,7 +261,7 @@ func valsOf(m map[string]Value) []Value {
 	return out
 }
 
-// FormatStartDelta 把两个启动时间(ms epoch)渲染成 "20天前 → 2小时前"。
+// FormatStartDelta renders two start times (ms epoch) as "20d ago -> 2h ago".
 func FormatStartDelta(startA, startB float64) string {
 	now := float64(time.Now().UnixMilli())
 	return fmt.Sprintf("%s → %s", agoText(now-startA), agoText(now-startB))
@@ -270,12 +271,12 @@ func agoText(ms float64) string {
 	d := time.Duration(ms) * time.Millisecond
 	switch {
 	case d < time.Minute:
-		return "刚刚"
+		return "just now"
 	case d < time.Hour:
-		return fmt.Sprintf("%d分钟前", int(d.Minutes()))
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d小时前", int(d.Hours()))
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	default:
-		return fmt.Sprintf("%d天前", int(d.Hours()/24))
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }

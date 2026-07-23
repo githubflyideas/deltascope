@@ -96,7 +96,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := s.currentUser(r)
 		if u == "" {
-			writeErr(w, http.StatusUnauthorized, "未登录或会话已过期")
+			writeErr(w, http.StatusUnauthorized, "not logged in or session expired")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), ctxUser{}, u)))
@@ -109,7 +109,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	if ok, wait := s.Limiter.Allow(ip); !ok {
 		writeErr(w, http.StatusTooManyRequests,
-			"失败次数过多,请 "+strconv.Itoa(int(wait.Minutes())+1)+" 分钟后再试")
+			"too many failed attempts, try again in "+strconv.Itoa(int(wait.Minutes())+1)+" minute(s)")
 		return
 	}
 
@@ -119,7 +119,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil ||
 		req.Username == "" || req.Password == "" {
-		writeErr(w, http.StatusBadRequest, "请输入用户名和密码")
+		writeErr(w, http.StatusBadRequest, "username and password required")
 		return
 	}
 
@@ -127,17 +127,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(err, store.ErrNotFound) {
 		auth.VerifyPassword("pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", req.Password)
 		s.Limiter.Fail(ip)
-		writeErr(w, http.StatusUnauthorized, "用户名或密码错误")
+		writeErr(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	if err != nil {
-		log.Printf("login: 读取用户失败: %v", err)
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		log.Printf("login: failed to read user: %v", err)
+		writeErr(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if !auth.VerifyPassword(hash, req.Password) {
 		s.Limiter.Fail(ip)
-		writeErr(w, http.StatusUnauthorized, "用户名或密码错误")
+		writeErr(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 
@@ -183,24 +183,24 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	bStart, err3 := parseLocal(q.Get("b_start"))
 	bEnd, err4 := parseLocal(q.Get("b_end"))
 	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
-		writeErr(w, http.StatusBadRequest, "时间参数格式错误, 期望 2026-07-03T14:00")
+		writeErr(w, http.StatusBadRequest, "invalid time parameter, expected 2026-07-03T14:00")
 		return
 	}
 	threshold := 15.0
 	if t := q.Get("threshold"); t != "" {
 		v, err := strconv.ParseFloat(t, 64)
 		if err != nil || v < 0 || v > 10000 {
-			writeErr(w, http.StatusBadRequest, "threshold 必须是 0~10000 的数字")
+			writeErr(w, http.StatusBadRequest, "threshold must be a number between 0 and 10000")
 			return
 		}
 		threshold = v
 	}
 	if err := checkWindow(aStart, aEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "时间段 A: "+err.Error())
+		writeErr(w, http.StatusBadRequest, "window A: "+err.Error())
 		return
 	}
 	if err := checkWindow(bStart, bEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "时间段 B: "+err.Error())
+		writeErr(w, http.StatusBadRequest, "window B: "+err.Error())
 		return
 	}
 
@@ -211,7 +211,7 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("diff: %v", err)
-		writeErr(w, http.StatusBadGateway, "归档数据查询失败, 请检查服务端日志或确认所选窗口内存在数据")
+		writeErr(w, http.StatusBadGateway, "archive query failed, check server logs or confirm the selected window has data")
 		return
 	}
 	writeJSON(w, rep)
@@ -222,7 +222,7 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	start, err1 := parseLocal(q.Get("start"))
 	end, err2 := parseLocal(q.Get("end"))
 	if err1 != nil || err2 != nil {
-		writeErr(w, http.StatusBadRequest, "时间参数格式错误, 期望 2026-07-03T14:00")
+		writeErr(w, http.StatusBadRequest, "invalid time parameter, expected 2026-07-03T14:00")
 		return
 	}
 	if err := checkWindow(start, end); err != nil {
@@ -236,7 +236,7 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	series, missing, err := pcp.RunTrend(ctx, s.Runner, s.Archive, preset, start, end)
 	if err != nil {
 		log.Printf("trend: %v", err)
-		writeErr(w, http.StatusBadGateway, "归档数据查询失败, 请检查服务端日志或确认所选窗口内存在数据")
+		writeErr(w, http.StatusBadGateway, "archive query failed, check server logs or confirm the selected window has data")
 		return
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
@@ -250,7 +250,7 @@ func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
 	bStart, err3 := parseLocal(q.Get("b_start"))
 	bEnd, err4 := parseLocal(q.Get("b_end"))
 	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
-		writeErr(w, http.StatusBadRequest, "时间参数格式错误, 期望 2026-07-03T14:00")
+		writeErr(w, http.StatusBadRequest, "invalid time parameter, expected 2026-07-03T14:00")
 		return
 	}
 	threshold := 20.0
@@ -260,11 +260,11 @@ func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := checkWindow(aStart, aEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "时间段 A: "+err.Error())
+		writeErr(w, http.StatusBadRequest, "window A: "+err.Error())
 		return
 	}
 	if err := checkWindow(bStart, bEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "时间段 B: "+err.Error())
+		writeErr(w, http.StatusBadRequest, "window B: "+err.Error())
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
@@ -274,7 +274,7 @@ func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("procdiff: %v", err)
-		writeErr(w, http.StatusBadGateway, err.Error()+" (需在 pmlogger 启用 hotproc 采集)")
+		writeErr(w, http.StatusBadGateway, err.Error()+" (enable hotproc collection in pmlogger)")
 		return
 	}
 	writeJSON(w, procReportJSON(rep))
@@ -313,10 +313,10 @@ func parseLocal(s string) (time.Time, error) {
 
 func checkWindow(start, end time.Time) error {
 	if !end.After(start) {
-		return errors.New("结束时间必须晚于开始时间")
+		return errors.New("end time must be after start time")
 	}
 	if end.Sub(start) > 32*24*time.Hour {
-		return errors.New("单个窗口最长 32 天")
+		return errors.New("a single window cannot exceed 32 days")
 	}
 	return nil
 }

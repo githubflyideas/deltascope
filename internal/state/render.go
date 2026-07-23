@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// RenderText 把 diff 渲染为终端友好的彩色文本。
+// RenderText renders a diff as terminal-friendly colored text.
 func RenderText(w io.Writer, d Diff, color bool) {
 	c := func(code, s string) string {
 		if !color {
@@ -28,11 +28,11 @@ func RenderText(w io.Writer, d Diff, color bool) {
 		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
 
 	if d.Total == 0 {
-		fmt.Fprintln(w, c(green, "两个时刻状态一致 — 未检出任何配置或环境变更。"))
+		fmt.Fprintln(w, c(green, "State is identical between the two points in time - no configuration or environment changes detected."))
 		return
 	}
 
-	fmt.Fprintf(w, "%s 共 %d 处变更\n\n", c(bold, "▲"), d.Total)
+	fmt.Fprintf(w, "%s %d changes\n\n", c(bold, "▲"), d.Total)
 
 	for _, sd := range d.Sections {
 		fmt.Fprintf(w, "%s  (%d)\n", c(bold, "== "+sd.Title+" =="), len(sd.Changes))
@@ -45,7 +45,7 @@ func RenderText(w io.Writer, d Diff, color bool) {
 				}
 				fmt.Fprintln(w, c(green, line))
 			case Removed:
-				fmt.Fprintln(w, c(dim, fmt.Sprintf("  - %s  (原 %s)", ch.Key, ch.Old)))
+				fmt.Fprintln(w, c(dim, fmt.Sprintf("  - %s  (was %s)", ch.Key, ch.Old)))
 			case Modified:
 				fmt.Fprintln(w, c(amber, fmt.Sprintf("  ~ %s: %s → %s", ch.Key, ch.Old, ch.New)))
 			}
@@ -54,10 +54,10 @@ func RenderText(w io.Writer, d Diff, color bool) {
 	}
 }
 
-// RenderSummaryLine 返回单行摘要,便于 cron 日志或告警管道判读。
+// RenderSummaryLine returns a single-line summary for cron logs or alert pipelines.
 func RenderSummaryLine(d Diff) string {
 	if d.Total == 0 {
-		return fmt.Sprintf("[%s] 状态一致", time.Now().Format("2006-01-02"))
+		return fmt.Sprintf("[%s] no change", time.Now().Format("2006-01-02"))
 	}
 	var a, r, m int
 	for _, sd := range d.Sections {
@@ -72,22 +72,22 @@ func RenderSummaryLine(d Diff) string {
 			}
 		}
 	}
-	return fmt.Sprintf("[%s] %d 处变更: +%d 新增 ~%d 修改 -%d 移除",
+	return fmt.Sprintf("[%s] %d changes: +%d added ~%d modified -%d removed",
 		time.Now().Format("2006-01-02"), d.Total, a, m, r)
 }
 
-// RenderMarkdown 把 diff 渲染为 Markdown,便于贴进 PR / Slack / 工单。
+// RenderMarkdown renders a diff as Markdown, for pasting into a PR / Slack / ticket.
 func RenderMarkdown(w io.Writer, d Diff, title string) {
 	if title == "" {
-		title = "变更影响面报告"
+		title = "Change Impact Report"
 	}
 	fmt.Fprintf(w, "## %s\n\n", title)
-	fmt.Fprintf(w, "- 基线 A: `%s`\n- 对比 B: `%s`\n\n",
+	fmt.Fprintf(w, "- Baseline A: `%s`\n- Compare B: `%s`\n\n",
 		d.A.Taken.Local().Format("2006-01-02 15:04:05"),
 		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
 
 	if d.Total == 0 {
-		fmt.Fprintln(w, "✅ **未检出任何配置或环境变更** — 本次改动未触及系统状态。")
+		fmt.Fprintln(w, "✅ **No configuration or environment changes detected** - this change did not touch system state.")
 		return
 	}
 
@@ -104,18 +104,18 @@ func RenderMarkdown(w io.Writer, d Diff, title string) {
 			}
 		}
 	}
-	fmt.Fprintf(w, "⚠️ **共 %d 处变更** — 🟢 新增 %d · 🟡 修改 %d · ⚪ 移除 %d\n\n", d.Total, a, m, r)
+	fmt.Fprintf(w, "⚠️ **%d changes** - 🟢 %d added · 🟡 %d modified · ⚪ %d removed\n\n", d.Total, a, m, r)
 
 	for _, sd := range d.Sections {
 		fmt.Fprintf(w, "### %s (%d)\n\n", sd.Title, len(sd.Changes))
-		fmt.Fprintln(w, "| | 项 | 变化 |")
+		fmt.Fprintln(w, "| | Item | Change |")
 		fmt.Fprintln(w, "|---|---|---|")
 		for _, ch := range sd.Changes {
 			switch ch.Kind {
 			case Added:
-				fmt.Fprintf(w, "| 🟢 | `%s` | 新增 = `%s` |\n", ch.Key, mdEsc(ch.New))
+				fmt.Fprintf(w, "| 🟢 | `%s` | added = `%s` |\n", ch.Key, mdEsc(ch.New))
 			case Removed:
-				fmt.Fprintf(w, "| ⚪ | `%s` | 移除 (原 `%s`) |\n", ch.Key, mdEsc(ch.Old))
+				fmt.Fprintf(w, "| ⚪ | `%s` | removed (was `%s`) |\n", ch.Key, mdEsc(ch.Old))
 			case Modified:
 				fmt.Fprintf(w, "| 🟡 | `%s` | `%s` → `%s` |\n", ch.Key, mdEsc(ch.Old), mdEsc(ch.New))
 			}

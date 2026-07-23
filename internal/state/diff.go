@@ -13,7 +13,7 @@ const (
 	Modified ChangeKind = "modified"
 )
 
-// Change 是一条状态差异。
+// Change is one state difference.
 type Change struct {
 	Section string     `json:"section"`
 	Title   string     `json:"title"`
@@ -24,14 +24,14 @@ type Change struct {
 	Note    string     `json:"note,omitempty"`
 }
 
-// SectionDiff 汇总某 Section 的全部变化。
+// SectionDiff summarizes all changes within one Section.
 type SectionDiff struct {
 	Name    string   `json:"name"`
 	Title   string   `json:"title"`
 	Changes []Change `json:"changes"`
 }
 
-// Diff 汇总两份快照之间的全部差异。
+// Diff summarizes all differences between two snapshots.
 type Diff struct {
 	A, B     Snapshot      `json:"-"`
 	Sections []SectionDiff `json:"sections"`
@@ -40,7 +40,7 @@ type Diff struct {
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
-// Compare 对账 a→b 两份快照,仅保留发生变化的项。
+// Compare diffs snapshot a against b, keeping only items that changed.
 func Compare(a, b Snapshot) Diff {
 	d := Diff{A: a, B: b}
 	amap := indexSections(a)

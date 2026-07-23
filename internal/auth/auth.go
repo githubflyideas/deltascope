@@ -157,7 +157,7 @@ func (rl *RateLimiter) Reset(ip string) {
 func GenerateSecret() ([]byte, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("生成会话密钥失败: %w", err)
+		return nil, fmt.Errorf("failed to generate session key: %w", err)
 	}
 	return b, nil
 }

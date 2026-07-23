@@ -2,44 +2,47 @@ package pcp
 
 import "strconv"
 
-// 分诊框架:把 146 项指标归到四大硬件资源 + "软件的鬼",
-// 每块取其核心指标的最严重判定作为状态灯,避免次要计数器的抖动误报整块变红。
+// Triage framework: buckets the catalog into four hardware resources plus
+// "the software gremlin". Each block's status light is driven by that
+// block's core metrics, so a noisy secondary counter can't flip the whole
+// block red.
 
 type TriageStatus string
 
 const (
-	TriageBad  TriageStatus = "bad"  // 红:核心指标恶化
-	TriageWarn TriageStatus = "warn" // 黄:核心指标关注,或次要指标恶化
-	TriageOK   TriageStatus = "ok"   // 绿:平稳
+	TriageBad  TriageStatus = "bad"  // red: a core metric regressed
+	TriageWarn TriageStatus = "warn" // amber: a core metric needs watching, or a secondary metric regressed
+	TriageOK   TriageStatus = "ok"   // green: flat
 )
 
 type TriageBlock struct {
 	Key      string       `json:"key"`
 	Label    string       `json:"label"`
 	Status   TriageStatus `json:"status"`
-	Headline string       `json:"headline"` // 一句话结论
+	Headline string       `json:"headline"` // one-line conclusion
 	WorstPct *float64     `json:"worst_pct,omitempty"`
 }
 
-// resourceOf 把 catalog 分类映射到四大资源块。
+// resourceOf maps a catalog category to one of the four resource blocks.
 func resourceOf(category string) string {
 	switch category {
 	case "CPU":
 		return "cpu"
-	case "内存":
+	case "Memory":
 		return "mem"
-	case "磁盘 I/O", "文件系统":
+	case "Disk I/O", "Filesystem":
 		return "disk"
-	case "网络":
+	case "Network":
 		return "net"
 	}
 	return "other"
 }
 
-// coreMetrics 是每块资源的核心指标 —— 只有这些恶化才让整块亮红。
-// 其余指标恶化只升到黄。这样避免 ICMP、页激活这类高抖动项误伤整块状态。
+// coreMetrics are the metrics that represent real trouble for their block —
+// only these can flip a block red. Other regressions only raise it to amber,
+// so high-jitter counters like ICMP or page activations can't taint the block.
 var coreMetrics = map[string]bool{
-	// CPU:真正代表"算力紧张"的
+	// CPU: metrics that genuinely mean "compute is tight"
 	"kernel.all.cpu.user":       true,
 	"kernel.all.cpu.sys":        true,
 	"kernel.all.cpu.wait.total": true,
@@ -47,21 +50,21 @@ var coreMetrics = map[string]bool{
 	"kernel.all.load":           true,
 	"kernel.all.runnable":       true,
 	"kernel.all.pressure.cpu.some.avg": true,
-	// 内存:代表"内存不足"的
+	// Memory: metrics that mean "memory is short"
 	"mem.util.available":                  true,
 	"swap.pagesin":                        true,
 	"swap.pagesout":                       true,
 	"mem.vmstat.pgscan_direct":            true,
 	"mem.vmstat.oom_kill":                 true,
 	"kernel.all.pressure.memory.some.avg": true,
-	// 磁盘:代表"磁盘顶死/写满"的
+	// Disk: metrics that mean "disk saturated / filling up"
 	"disk.all.avactive":               true,
 	"disk.all.aveq":                   true,
 	"disk.dev.avactive":               true,
 	"disk.dev.aveq":                   true,
 	"filesys.full":                    true,
 	"kernel.all.pressure.io.some.avg": true,
-	// 网络:代表"链路/队列出问题"的
+	// Network: metrics that mean "link/queue trouble"
 	"network.tcp.retranssegs":     true,
 	"network.tcp.listendrops":     true,
 	"network.tcp.listenoverflows": true,
@@ -72,11 +75,11 @@ var coreMetrics = map[string]bool{
 }
 
 var triageLabels = map[string]string{
-	"cpu": "CPU", "mem": "内存", "disk": "磁盘", "net": "网卡",
+	"cpu": "CPU", "mem": "Memory", "disk": "Disk", "net": "Network",
 }
 
-// Triage 从 diff 报告生成四大资源的分诊摘要。
-// "软件的鬼"块由调用方结合进程/变更对账单独填充。
+// Triage builds the four-resource summary from a diff report.
+// The "software gremlin" block is filled in by the caller from process/change signals.
 func Triage(rows []DiffRow) []TriageBlock {
 	type acc struct {
 		worstBad  *DiffRow
@@ -116,7 +119,7 @@ func Triage(rows []DiffRow) []TriageBlock {
 	out := make([]TriageBlock, 0, 4)
 	for _, k := range order {
 		a := blocks[k]
-		b := TriageBlock{Key: k, Label: triageLabels[k], Status: TriageOK, Headline: "正常"}
+		b := TriageBlock{Key: k, Label: triageLabels[k], Status: TriageOK, Headline: "normal"}
 		switch {
 		case a.worstBad != nil:
 			b.Status = TriageBad
@@ -139,9 +142,9 @@ func headline(r DiffRow) string {
 	}
 	if r.DeltaPct == nil {
 		if r.A == nil && r.B != nil {
-			return label + " 新出现"
+			return label + " appeared"
 		}
-		return label + " 异常"
+		return label + " anomaly"
 	}
 	sign := "+"
 	if *r.DeltaPct < 0 {
@@ -153,7 +156,7 @@ func headline(r DiffRow) string {
 
 func formatPct(v float64) string {
 	if v > 999 || v < -999 {
-		return "剧变"
+		return "spike"
 	}
 	return strconv.Itoa(int(v)) + "%"
 }

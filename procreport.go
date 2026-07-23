@@ -25,23 +25,23 @@ func renderProcReport(w io.Writer, rep *pcp.ProcReport, color bool) {
 	}
 
 	fmt.Fprintf(w, "%s\n", c(cBold, "deltascope proc-diff"))
-	fmt.Fprintf(w, "  A %s ~ %s\n  B %s ~ %s  (阈值 %.0f%%)\n\n",
+	fmt.Fprintf(w, "  A %s ~ %s\n  B %s ~ %s  (threshold %.0f%%)\n\n",
 		rep.AStart.Format("01-02 15:04"), rep.AEnd.Format("15:04"),
 		rep.BStart.Format("01-02 15:04"), rep.BEnd.Format("15:04"), rep.ThresholdPct)
 
 	if len(rep.Restarts) > 0 {
-		fmt.Fprintf(w, "%s\n", c(cViolet+cBold, "⟳ 期间发生重启的进程"))
+		fmt.Fprintf(w, "%s\n", c(cViolet+cBold, "⟳ processes restarted during this window"))
 		for _, r := range rep.Restarts {
 			fmt.Fprintf(w, "  %s  %s\n", r.Name, c(cViolet, pcp.FormatStartDelta(r.StartA, r.StartB)))
 		}
 		fmt.Fprintln(w)
 	}
 
-	renderProcSection(w, c, "进程 CPU 对账 (占用升高 = 变差)", rep.CPURows)
-	renderProcSection(w, c, "进程内存对账", rep.MemRows)
+	renderProcSection(w, c, "Process CPU accounting (higher = worse)", rep.CPURows)
+	renderProcSection(w, c, "Process memory accounting", rep.MemRows)
 
 	if len(rep.Warnings) > 0 {
-		fmt.Fprintf(w, "%s\n", c(cGray, "PCP 提示:"))
+		fmt.Fprintf(w, "%s\n", c(cGray, "PCP notes:"))
 		for _, warn := range rep.Warnings {
 			fmt.Fprintf(w, "  %s\n", c(cGray, warn))
 		}
@@ -55,9 +55,9 @@ func renderProcSection(w io.Writer, c func(string, string) string, title string,
 			shown++
 		}
 	}
-	fmt.Fprintf(w, "%s  (%d 项有变化)\n", c(cBold, "== "+title+" =="), shown)
+	fmt.Fprintf(w, "%s  (%d changed)\n", c(cBold, "== "+title+" =="), shown)
 	if shown == 0 {
-		fmt.Fprintln(w, c(cGray, "  无显著变化"))
+		fmt.Fprintln(w, c(cGray, "  no significant change"))
 		fmt.Fprintln(w)
 		return
 	}
@@ -69,13 +69,13 @@ func renderProcSection(w io.Writer, c func(string, string) string, title string,
 		var col, verdict, delta string
 		switch r.Verdict {
 		case pcp.PVWorse:
-			col, verdict = cRed, "恶化"
+			col, verdict = cRed, "worse"
 		case pcp.PVBetter:
-			col, verdict = cGreen, "改善"
+			col, verdict = cGreen, "better"
 		case pcp.PVAppeared:
-			col, verdict = cViolet, "新出现"
+			col, verdict = cViolet, "appeared"
 		case pcp.PVGone:
-			col, verdict = cGray, "已消失"
+			col, verdict = cGray, "gone"
 		}
 		switch {
 		case r.Verdict == pcp.PVAppeared:
