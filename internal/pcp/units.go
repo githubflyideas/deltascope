@@ -72,3 +72,33 @@ func inferUnit(metric string) string {
 		return "none"
 	}
 }
+
+// excludedInstance filters out per-instance rows that are noise
+// regardless of change magnitude -- structural noise the significance
+// floor can't catch, because the numbers can be large and "real" by
+// PCP's own accounting; they just never mean what the report implies.
+//
+//   - network.interface.* on "lo": loopback traffic is inter-process
+//     communication on this host, not network activity. It never leaves
+//     the machine, so it has no business in a "NIC traffic" report and
+//     its numbers (which can be large -- some databases and message
+//     brokers talk to themselves over loopback TCP) look exactly like
+//     real external traffic if you don't know to discount it.
+//   - filesys.* on a /dev/loopN device: loop devices back snap package
+//     mounts (Ubuntu ships dozens by default) and squashfs images, not
+//     disks anyone provisions or manages capacity for. They are always
+//     ~100% full by construction (a squashfs image is exactly as big as
+//     its own contents), so they contribute zero signal and just repeat
+//     the same "100.0% flat" row 15-20 times per report.
+func excludedInstance(metric, instance string) bool {
+	if instance == "" {
+		return false
+	}
+	if strings.HasPrefix(metric, "network.interface.") && instance == "lo" {
+		return true
+	}
+	if strings.HasPrefix(metric, "filesys.") && strings.HasPrefix(instance, "/dev/loop") {
+		return true
+	}
+	return false
+}

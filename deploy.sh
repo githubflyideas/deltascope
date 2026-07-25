@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# usage: DSCOPE_ADMIN_USER=admin DSCOPE_ADMIN_PASS='...' ./deploy.sh
+# usage: LISTEN_ADDR=0.0.0.0:8080 ./deploy.sh
 # offline: put pre-downloaded pcp rpms into ./rpms/
+#
+# Creating the admin account happens in the browser on first visit, not
+# here -- see the final message this script prints.
 set -euo pipefail
 
-RETENTION_DAYS="${RETENTION_DAYS:-7}"        # archive retention days (ring cleanup)
+RETENTION_DAYS="${RETENTION_DAYS:-7}"        # PCP archive retention (ring cleanup)
 LISTEN_ADDR="${LISTEN_ADDR:-0.0.0.0:8080}"   # web listen address
 INSTALL_BIN="/usr/local/bin/deltascope"
 DATA_DIR="/var/lib/deltascope"
@@ -11,7 +14,13 @@ SVC_USER="deltascope"
 
 [[ $EUID -eq 0 ]] || { echo "must be run as root"; exit 1; }
 cd "$(dirname "$0")"
-[[ -x ./deltascope ]] || { echo "deltascope binary missing in this directory (run make build first)"; exit 1; }
+[[ -x ./deltascope ]] || {
+    echo "deltascope binary missing in this directory."
+    echo "Download one from dist/ in the repository, or build with:"
+    echo "  CGO_ENABLED=1 CC=musl-gcc go build -tags cgosqlite \\"
+    echo "    -ldflags '-linkmode external -extldflags -static' -o deltascope ."
+    exit 1
+}
 
 echo "==> [1/6] installing PCP"
 if compgen -G "rpms/*.rpm" >/dev/null; then
@@ -24,7 +33,7 @@ else
 fi
 command -v pmrep >/dev/null || { echo "pmrep missing (pcp-system-tools), aborting"; exit 1; }
 
-echo "==> [2/6] enabling pmcd / pmlogger and setting ${RETENTION_DAYS}-day ring cleanup"
+echo "==> [2/6] enabling pmcd / pmlogger, ${RETENTION_DAYS}-day ring cleanup, tiered sampling"
 systemctl enable --now pmcd pmlogger
 TIMERS=/etc/sysconfig/pmlogger_timers
 touch "$TIMERS"
@@ -36,7 +45,11 @@ fi
 systemctl enable --now pmlogger_daily.timer 2>/dev/null || true
 systemctl enable --now pmlogger_check.timer 2>/dev/null || true
 
-echo "==> [2.5/6] writing tiered sampling config (hot 10s / warm 60s / cold 5min)"
+# Sampling groups mirror deltascope's built-in catalog (internal/pcp/catalog.go):
+# hot = metrics with meaningful second-to-second movement; warm = per-device/
+# per-NIC/per-core detail; cold = things that only change slowly. If you add
+# metrics via `deltascope catalog export`, extend this config to match --
+# a metric pmlogger never records can't appear in any report.
 cat > /etc/pcp/pmlogger/deltascope.config <<'PMCFG'
 log mandatory on every 10 seconds {
     kernel.all
@@ -86,17 +99,7 @@ mkdir -p "$DATA_DIR"
 chown "$SVC_USER:$SVC_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
-echo "==> [4/6] creating admin account"
-if [[ -n "${DSCOPE_ADMIN_USER:-}" && -n "${DSCOPE_ADMIN_PASS:-}" ]]; then
-    DSCOPE_PASSWORD="$DSCOPE_ADMIN_PASS" \
-        sudo -u "$SVC_USER" --preserve-env=DSCOPE_PASSWORD \
-        "$INSTALL_BIN" user add "$DSCOPE_ADMIN_USER" -data "$DATA_DIR"
-else
-    echo "    DSCOPE_ADMIN_USER/DSCOPE_ADMIN_PASS not set, run manually later:"
-    echo "    sudo -u $SVC_USER $INSTALL_BIN user add <name> -data $DATA_DIR"
-fi
-
-echo "==> [5/6] writing systemd service"
+echo "==> [4/6] writing systemd service"
 cat > /etc/systemd/system/deltascope.service <<EOF
 [Unit]
 Description=deltascope change & performance diagnostics web service
@@ -127,7 +130,7 @@ EOF
 systemctl daemon-reload
 systemctl enable --now deltascope
 
-echo "==> [6/6] firewall (optional)"
+echo "==> [5/6] firewall (optional)"
 PORT="${LISTEN_ADDR##*:}"
 if systemctl is-active --quiet firewalld; then
     firewall-cmd --permanent --add-port="${PORT}/tcp" >/dev/null
@@ -137,9 +140,20 @@ else
     echo "    firewalld not running, skipping"
 fi
 
+echo "==> [6/6] waiting for the service to come up"
+for _ in $(seq 1 10); do
+    curl -sf "http://127.0.0.1:${PORT}/api/setup-status" >/dev/null 2>&1 && break
+    sleep 1
+done
+
 echo
-echo "deploy complete ✔  http://<this-host-ip>:${PORT}/"
-echo "  service status:  systemctl status deltascope"
-echo "  user management: sudo -u $SVC_USER $INSTALL_BIN user add|del|list <name> -data $DATA_DIR"
-echo "  archive retention: ${RETENTION_DAYS} days (edit $TIMERS then restart pmlogger_daily.timer)"
-echo "  note: comparisons need pmlogger to accumulate at least two full periods of data before they'll work"
+echo "deploy complete ✔"
+echo
+echo "  Open http://<this-host-ip>:${PORT}/ in a browser to create the"
+echo "  admin account -- the login page detects there's no account yet"
+echo "  and offers to create one directly, no CLI step required."
+echo
+echo "  service status:     systemctl status deltascope"
+echo "  archive retention:  ${RETENTION_DAYS} days (edit $TIMERS, restart pmlogger_daily.timer)"
+echo "  snapshot retention: 7 days, captured automatically every 10 minutes by the service"
+echo "  note: comparisons need at least two full sampling periods of history before they'll show anything"

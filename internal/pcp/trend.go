@@ -58,6 +58,45 @@ var trendTimeLayouts = []string{
 // name against the metric names actually requested. pmrep's per-instance
 // column naming isn't uniform across versions (dash- or bracket-suffixed),
 // so this matches by prefix rather than assuming an exact format.
+// filterExcludedSeries drops per-instance trend columns that are known
+// noise (see excludedInstance), matching pmrep's column-naming pattern
+// for a per-instance metric against the requested base metric name. This
+// is best-effort: pmrep's exact separator between metric and instance in
+// CSV headers can vary by PCP version, so the match below accepts the
+// common delimiters ('-', '[', ':') rather than assuming one exact
+// format. If a PCP build uses something else, an excluded instance may
+// still slip through -- filtering the same instance out of the
+// Regression Diff table (buildRows, which uses the cleanly-parsed
+// Instance field rather than guessing from a header string) is the
+// reliable path; this is the best trend charts can do without pmrep
+// itself tagging instances in a structured way.
+var seriesInstanceRe = regexp.MustCompile(`[-\[:]([^\]]+)\]?$`)
+
+func filterExcludedSeries(series []Series, requested []string) []Series {
+	out := series[:0]
+	for _, s := range series {
+		excluded := false
+		for _, m := range requested {
+			if !strings.HasPrefix(s.Name, m) {
+				continue
+			}
+			if m == s.Name {
+				break // no instance suffix at all
+			}
+			if mm := seriesInstanceRe.FindStringSubmatch(s.Name); mm != nil {
+				if excludedInstance(m, mm[1]) {
+					excluded = true
+				}
+			}
+			break
+		}
+		if !excluded {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func annotateUnits(series []Series, requested []string) {
 	for i := range series {
 		name := series[i].Name
@@ -123,6 +162,7 @@ func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end 
 		if err == nil {
 			series, perr := ParseTrendCSV(bytes.NewReader(stdout))
 			annotateUnits(series, p.Metrics)
+			series = filterExcludedSeries(series, p.Metrics)
 			return series, missing, perr
 		}
 		m := invalidMetricRe.FindStringSubmatch(string(stderr))

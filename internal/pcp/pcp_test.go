@@ -702,3 +702,117 @@ func TestInferUnitAgreesWithRealObservations(t *testing.T) {
 		}
 	}
 }
+
+// TestExcludedInstance covers the two structural-noise cases: loopback
+// traffic (not external network activity) and loop-device filesystems
+// (snap package mounts, always ~100% full by construction).
+func TestExcludedInstance(t *testing.T) {
+	cases := []struct {
+		metric, instance string
+		want             bool
+	}{
+		{"network.interface.in.bytes", "lo", true},
+		{"network.interface.out.bytes", "lo", true},
+		{"network.interface.in.bytes", "ens18", false},
+		{"network.interface.in.bytes", "docker0", false}, // present but always-zero already reads as flat
+		{"filesys.full", "/dev/loop0", true},
+		{"filesys.full", "/dev/loop15", true},
+		{"filesys.full", "/dev/sda5", false},
+		{"filesys.full", "/dev/sda1", false},
+		{"disk.dev.avactive", "sda", false}, // unrelated metric, must not be affected
+	}
+	for _, c := range cases {
+		if got := excludedInstance(c.metric, c.instance); got != c.want {
+			t.Errorf("excludedInstance(%q, %q) = %v, want %v", c.metric, c.instance, got, c.want)
+		}
+	}
+}
+
+// TestBuildRowsExcludesNoiseInstances verifies the exclusion actually
+// reaches the diff report, not just the standalone predicate.
+func TestBuildRowsExcludesNoiseInstances(t *testing.T) {
+	a := map[string]Value{
+		"lo\x00":    {Metric: "network.interface.in.bytes", Instance: "lo", Val: 1000},
+		"ens18\x00": {Metric: "network.interface.in.bytes", Instance: "ens18", Val: 1000},
+		"loop0\x00": {Metric: "filesys.full", Instance: "/dev/loop0", Val: 100},
+		"sda5\x00":  {Metric: "filesys.full", Instance: "/dev/sda5", Val: 20},
+	}
+	b := map[string]Value{
+		"lo\x00":    {Metric: "network.interface.in.bytes", Instance: "lo", Val: 5000},
+		"ens18\x00": {Metric: "network.interface.in.bytes", Instance: "ens18", Val: 1200},
+		"loop0\x00": {Metric: "filesys.full", Instance: "/dev/loop0", Val: 100},
+		"sda5\x00":  {Metric: "filesys.full", Instance: "/dev/sda5", Val: 22},
+	}
+	rows := buildRows(a, b, 15)
+	seen := map[string]bool{}
+	for _, r := range rows {
+		seen[r.Instance] = true
+	}
+	if seen["lo"] {
+		t.Error("lo instance should be excluded from the diff report")
+	}
+	if seen["/dev/loop0"] {
+		t.Error("/dev/loop0 should be excluded from the diff report")
+	}
+	if !seen["ens18"] || !seen["/dev/sda5"] {
+		t.Errorf("real instances should survive: %+v", seen)
+	}
+}
+
+// TestFilterExcludedSeriesDropsLoopback covers the trend-side best-effort
+// filter against pmrep's likely CSV header conventions for a per-instance
+// metric ("metric-instance" and "metric[instance]").
+func TestFilterExcludedSeriesDropsLoopback(t *testing.T) {
+	series := []Series{
+		{Name: "network.interface.in.bytes-lo"},
+		{Name: "network.interface.in.bytes-ens18"},
+		{Name: "network.interface.in.bytes[lo]"},
+		{Name: "network.interface.in.bytes[natgre]"},
+		{Name: "kernel.all.load"}, // no instance at all, must survive untouched
+	}
+	out := filterExcludedSeries(series, []string{"network.interface.in.bytes", "kernel.all.load"})
+	var names []string
+	for _, s := range out {
+		names = append(names, s.Name)
+	}
+	for _, want := range []string{"network.interface.in.bytes-ens18", "network.interface.in.bytes[natgre]", "kernel.all.load"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s should survive filtering, got %v", want, names)
+		}
+	}
+	for _, unwanted := range []string{"network.interface.in.bytes-lo", "network.interface.in.bytes[lo]"} {
+		for _, n := range names {
+			if n == unwanted {
+				t.Errorf("%s should have been filtered out, got %v", unwanted, names)
+			}
+		}
+	}
+}
+
+// TestDiffRowStatsJSONFields locks the wire format for the min/max/count
+// fields added alongside each side's mean. A struct tag written as
+// "AMin, AMax *float64 `json:\"a_min,omitempty\"`" silently gives both
+// fields the same JSON name (the exact bug go vet caught twice now in
+// this codebase) -- this test makes the contract explicit so it can't
+// regress a third time without a test failing first.
+func TestDiffRowStatsJSONFields(t *testing.T) {
+	min, max := 3.0, 24.0
+	row := DiffRow{AMin: &min, AMax: &max, ACount: 5, BMin: &min, BMax: &max, BCount: 7}
+	raw, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	json.Unmarshal(raw, &m)
+	for _, k := range []string{"a_min", "a_max", "a_count", "b_min", "b_max", "b_count"} {
+		if _, ok := m[k]; !ok {
+			t.Errorf("%s missing from DiffRow JSON: %s", k, raw)
+		}
+	}
+}

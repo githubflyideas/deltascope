@@ -393,6 +393,11 @@ function renderTop5(rows) {
     }));
 }
 
+function statsTitle(min, max, count, unit) {
+  if (min === null || min === undefined) return "";
+  return `range ${fmtByUnit(min, unit)} \u2013 ${fmtByUnit(max, unit)} over ${count} sample${count === 1 ? "" : "s"}`;
+}
+
 function rowHTML(r, kind, extraCls, hiddenAttr) {
   const k = KIND[kind];
   let deltaTxt, barHtml = "";
@@ -408,13 +413,15 @@ function rowHTML(r, kind, extraCls, hiddenAttr) {
   const bg = k.rgb && isFinite(absD(r)) && absD(r) > 0
     ? `rgba(${k.rgb},${Math.min(0.05 + absD(r) / renderScale * 0.16, 0.22).toFixed(3)})`
     : (k.rgb && !isFinite(absD(r)) ? `rgba(${k.rgb},0.18)` : "");
+  const aTitle = statsTitle(r.a_min, r.a_max, r.a_count, r.units);
+  const bTitle = statsTitle(r.b_min, r.b_max, r.b_count, r.units);
   return `<tr id="${r._id}" class="${k.cls}${extraCls}"${hiddenAttr}${bg ? ` data-bg="${bg}"` : ""}>
     <td class="metric-cell">
       <span class="m-label">${k.icon} ${escapeHtml(r.label)}${inst}</span>
       <span class="m-name">${escapeHtml(r.metric)}</span>
     </td>
-    <td class="col-a">${fmtNum(r.a)}</td>
-    <td class="col-b">${fmtNum(r.b)}</td>
+    <td class="col-a"${aTitle ? ` title="A: ${escapeHtml(aTitle)}"` : ""}>${fmtByUnit(r.a, r.units)}</td>
+    <td class="col-b"${bTitle ? ` title="B: ${escapeHtml(bTitle)}"` : ""}>${fmtByUnit(r.b, r.units)}</td>
     <td class="delta-cell">${deltaTxt}${barHtml}</td>
     <td>${k.text}</td>
     <td class="units-cell">${escapeHtml(r.units || "")}</td>
@@ -481,8 +488,8 @@ function renderReport(rep) {
           const wd = worst.delta_pct === null ? "\u221E" : (worst.delta_pct > 0 ? "+" : "") + worst.delta_pct.toFixed(1) + "%";
           trs.push(`<tr class="fold-agg ${KIND[wk].cls}" data-fold="${escapeHtml(r.metric)}">
             <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} instances</code></span>
-            <span class="m-name">${escapeHtml(r.metric)} \u00B7 B \u6781\u5DEE ${fmtNum(bMin)} ~ ${fmtNum(bMax)}</span></td>
-            <td class="col-a"></td><td class="col-b">${fmtNum(bMax)}</td>
+            <span class="m-name">${escapeHtml(r.metric)} \u00B7 B \u6781\u5DEE ${fmtByUnit(bMin, r.units)} ~ ${fmtByUnit(bMax, r.units)}</span></td>
+            <td class="col-a"></td><td class="col-b">${fmtByUnit(bMax, r.units)}</td>
             <td class="delta-cell">\u6700\u5DEE ${wd}</td><td>${KIND[wk].text}</td><td class="units-cell">${escapeHtml(r.units || "")}</td></tr>`);
           grp.forEach((x) => trs.push(rowHTML(x, rowKind(x), " fold-child", " hidden")));
           i = j;

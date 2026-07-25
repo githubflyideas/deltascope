@@ -27,6 +27,16 @@ type DiffRow struct {
 	DeltaPct *float64 `json:"delta_pct"`
 	Verdict  Verdict  `json:"verdict"`
 	Exceeded bool     `json:"exceeded"`
+	// Stats give the sample range and count behind each side's mean, so
+	// "9.68 avg" can be understood as "ranged 3.0-24.2 over 1465 samples"
+	// on hover instead of being either hidden or dumped as unlabelled
+	// numbers next to the unit.
+	AMin   *float64 `json:"a_min,omitempty"`
+	AMax   *float64 `json:"a_max,omitempty"`
+	ACount int      `json:"a_count,omitempty"`
+	BMin   *float64 `json:"b_min,omitempty"`
+	BMax   *float64 `json:"b_max,omitempty"`
+	BCount int      `json:"b_count,omitempty"`
 }
 
 type DiffReport struct {
@@ -86,6 +96,9 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 		if !ok {
 			continue
 		}
+		if excludedInstance(meta.Metric, meta.Instance) {
+			continue
+		}
 		row := DiffRow{
 			Metric:   meta.Metric,
 			Instance: meta.Instance,
@@ -98,10 +111,18 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 		if okA {
 			x := va.Val
 			row.A = &x
+			if va.HasStats {
+				mn, mx := va.Min, va.Max
+				row.AMin, row.AMax, row.ACount = &mn, &mx, va.Count
+			}
 		}
 		if okB {
 			x := vb.Val
 			row.B = &x
+			if vb.HasStats {
+				mn, mx := vb.Min, vb.Max
+				row.BMin, row.BMax, row.BCount = &mn, &mx, vb.Count
+			}
 		}
 		eff := thresholdPct
 		if info.ThresholdPct > 0 {

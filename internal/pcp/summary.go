@@ -19,6 +19,15 @@ type Value struct {
 	Instance string  `json:"instance"`
 	Val      float64 `json:"val"`
 	Units    string  `json:"units"`
+	// Min/Max/Count are the sample-level statistics pmlogsummary reports
+	// alongside the mean: the range of raw samples within the window and
+	// how many went into the average. HasStats is false when a build's
+	// output doesn't include them (format varies) rather than defaulting
+	// to a misleading 0/0/0.
+	Min      float64 `json:"min,omitempty"`
+	Max      float64 `json:"max,omitempty"`
+	Count    int     `json:"count,omitempty"`
+	HasStats bool    `json:"has_stats,omitempty"`
 }
 
 func (v Value) Key() string { return v.Metric + "\x00" + v.Instance }
@@ -56,12 +65,16 @@ func ParseSummary(r io.Reader) []Value {
 		// the actual unit; the rest is statistics we don't use here. This
 		// used to leak the whole tail into the Units field, showing up as
 		// garbage like "0.018 0.002 1.147 766 none" instead of "none".
-		out = append(out, Value{
+		v := Value{
 			Metric:   m[1],
 			Instance: m[2],
 			Val:      val,
 			Units:    extractUnit(m[4]),
-		})
+		}
+		if min, max, count, ok := extractStats(m[4]); ok {
+			v.Min, v.Max, v.Count, v.HasStats = min, max, count, true
+		}
+		out = append(out, v)
 	}
 	return out
 }
@@ -79,6 +92,30 @@ func extractUnit(s string) string {
 		}
 	}
 	return ""
+}
+
+// extractStats reads the sample range and count this pmlogsummary build
+// reports after the mean: min, max, and sample count. The exact number
+// of leading numeric fields varies (some builds repeat the mean before
+// min/max/count, some don't), so this indexes from the END of the
+// numeric run rather than assuming a fixed position -- count is always
+// last, max second-to-last, min third-to-last, regardless of what (if
+// anything) precedes them.
+func extractStats(s string) (min, max float64, count int, ok bool) {
+	fields := strings.Fields(s)
+	var nums []float64
+	for _, f := range fields {
+		v, err := strconv.ParseFloat(f, 64)
+		if err != nil {
+			break
+		}
+		nums = append(nums, v)
+	}
+	if len(nums) < 3 {
+		return 0, 0, 0, false
+	}
+	n := len(nums)
+	return nums[n-3], nums[n-2], int(nums[n-1]), true
 }
 
 type Runner interface {
