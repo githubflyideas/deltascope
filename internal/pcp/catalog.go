@@ -194,11 +194,9 @@ var TrendPresets = map[string]Preset{
 	"memdet":  {"Memory detail", []string{"mem.util.cached", "mem.util.dirty", "mem.util.anonpages", "swap.pagesout"}},
 	"disk":    {"Disk throughput", []string{"disk.all.read_bytes", "disk.all.write_bytes"}},
 	"diskio":  {"Disk activity / queue", []string{"disk.all.avactive", "disk.all.aveq"}},
-	"fs":      {"Filesystem usage (%)", []string{"filesys.full"}},
 	"net":     {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
 	"tcp":     {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
 	"sock":    {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
-	"conn":    {"Connection state breakdown", []string{"network.tcpconn.established", "network.tcpconn.time_wait", "network.tcpconn.close_wait", "network.tcpconn.syn_recv"}},
 	"psi":     {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
 }
 

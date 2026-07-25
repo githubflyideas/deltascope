@@ -745,11 +745,25 @@
         "kernel.all.cpu.steal"
       ]
     },
+    "ctx": {
+      "label": "Context switches / interrupts",
+      "metrics": [
+        "kernel.all.pswitch",
+        "kernel.all.intr"
+      ]
+    },
     "disk": {
       "label": "Disk throughput",
       "metrics": [
         "disk.all.read_bytes",
         "disk.all.write_bytes"
+      ]
+    },
+    "diskio": {
+      "label": "Disk activity / queue",
+      "metrics": [
+        "disk.all.avactive",
+        "disk.all.aveq"
       ]
     },
     "load": {
@@ -759,9 +773,18 @@
       ]
     },
     "mem": {
-      "label": "available memory",
+      "label": "Available memory",
       "metrics": [
         "mem.util.available"
+      ]
+    },
+    "memdet": {
+      "label": "Memory detail",
+      "metrics": [
+        "mem.util.cached",
+        "mem.util.dirty",
+        "mem.util.anonpages",
+        "swap.pagesout"
       ]
     },
     "net": {
@@ -769,6 +792,13 @@
       "metrics": [
         "network.interface.in.bytes",
         "network.interface.out.bytes"
+      ]
+    },
+    "percpu": {
+      "label": "CPU per core [0-3]",
+      "metrics": [
+        "kernel.percpu.cpu.user",
+        "kernel.percpu.cpu.wait.total"
       ]
     },
     "psi": {

@@ -1,6 +1,7 @@
 package pcp
 
 import (
+	"encoding/json"
 	"context"
 	"fmt"
 	"math"
@@ -577,5 +578,69 @@ func TestAbsentMetricLearning(t *testing.T) {
 	// and a metric that is present must be untouched
 	if IsAbsent("kernel.all.cpu.user") {
 		t.Error("a present metric must not be marked absent")
+	}
+}
+
+// TestParseTrendCSVRejectsNaNInf covers a real failure mode: pmrep can
+// emit "nan" for a degenerate ratio (e.g. a 0-byte filesystem computing
+// used/total). strconv.ParseFloat happily parses "nan"/"inf" into actual
+// NaN/Inf values, and Go's json.Encoder cannot encode either -- it errors
+// out mid-stream, after the 200 status and some bytes are already on the
+// wire, so the client sees a truncated, unparsable body with no error
+// message. NaN/Inf must be treated as a missing sample, not passed
+// through to the JSON layer.
+func TestParseTrendCSVRejectsNaNInf(t *testing.T) {
+	csv := "Time,kernel.all.cpu.user\n" +
+		"2026-07-25 20:00:00,0.02\n" +
+		"2026-07-25 20:00:01,nan\n" +
+		"2026-07-25 20:00:02,-inf\n" +
+		"2026-07-25 20:00:03,+Inf\n" +
+		"2026-07-25 20:00:04,0.03\n"
+	series, err := ParseTrendCSV(strings.NewReader(csv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(series) != 1 || len(series[0].Points) != 5 {
+		t.Fatalf("expected 1 series of 5 points, got %+v", series)
+	}
+	for i, p := range series[0].Points {
+		v := p[1]
+		if v == nil {
+			continue
+		}
+		f, ok := v.(float64)
+		if !ok {
+			t.Fatalf("point %d: unexpected type %T", i, v)
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			t.Fatalf("point %d: NaN/Inf leaked through as %v -- this crashes JSON encoding", i, f)
+		}
+	}
+	// the nan/inf rows must have become nil (missing), not silently 0
+	for _, i := range []int{1, 2, 3} {
+		if series[0].Points[i][1] != nil {
+			t.Errorf("point %d (nan/inf source) should decode to nil, got %v", i, series[0].Points[i][1])
+		}
+	}
+
+	// and the result must actually be JSON-encodable end to end
+	if _, err := json.Marshal(series); err != nil {
+		t.Fatalf("series with former NaN/Inf values still fails to encode: %v", err)
+	}
+}
+
+// The same guard applies to pmlogsummary output.
+func TestParseSummaryRejectsNaNInf(t *testing.T) {
+	out := "kernel.all.cpu.user  0.020 millisec / second\n" +
+		"mem.util.dirty  nan Kbyte\n" +
+		"disk.all.avactive  inf none\n"
+	vals := ParseSummary(strings.NewReader(out))
+	for _, v := range vals {
+		if math.IsNaN(v.Val) || math.IsInf(v.Val, 0) {
+			t.Errorf("%s: NaN/Inf leaked through: %v", v.Metric, v.Val)
+		}
+	}
+	if len(vals) != 1 {
+		t.Fatalf("expected only the finite value to survive, got %d: %+v", len(vals), vals)
 	}
 }

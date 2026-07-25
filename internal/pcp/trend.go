@@ -2,6 +2,7 @@ package pcp
 
 import (
 	"bytes"
+	"math"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -174,7 +175,14 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 			var v any
 			if cell == "" || cell == "N/A" || cell == "?" {
 				v = nil
-			} else if f, err := strconv.ParseFloat(cell, 64); err == nil {
+			} else if f, err := strconv.ParseFloat(cell, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
+				// NaN/Inf can come out of pmrep for a degenerate ratio (e.g.
+				// a 0-byte loop-device filesystem computing used/total).
+				// Go's JSON encoder cannot encode either and errors out
+				// mid-stream -- after headers and some bytes are already
+				// sent, so the client sees a 200 with a truncated, invalid
+				// body instead of a clean error. Treat it as a missing
+				// sample instead of letting it reach the encoder.
 				v = f
 			} else {
 				v = nil

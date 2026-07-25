@@ -11,6 +11,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/githubflyideas/deltascope/internal/auth"
@@ -45,6 +46,8 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("GET /login", s.servePage("web/login.html", false))
 	mux.HandleFunc("POST /api/login", s.handleLogin)
+	mux.HandleFunc("GET /api/setup-status", s.handleSetupStatus)
+	mux.HandleFunc("POST /api/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/logout", s.handleLogout)
 
 	mux.HandleFunc("GET /{$}", s.servePage("web/index.html", true))
@@ -112,6 +115,84 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.Handler {
 }
 
 type ctxUser struct{}
+
+// handleSetupStatus reports whether the server has zero users, in which
+// case the login page offers to create the first admin account directly
+// instead of requiring a separate CLI step. This exists because
+// "user add" and "serve" resolving -data to two different directories --
+// a relative path from a different shell, systemd's WorkingDirectory,
+// forgetting the flag -- used to fail silently: the account "existed"
+// somewhere the running server could not see, with nothing in the UI
+// explaining why login kept failing.
+func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	users, err := s.Store.ListUsers()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, map[string]any{"needs_setup": len(users) == 0})
+}
+
+// handleSetup creates the first admin account from the browser. It only
+// ever succeeds once: the moment any user exists, this endpoint refuses
+// unconditionally, so it cannot be used to add a second account or take
+// over an already-configured server. This is intentionally
+// unauthenticated -- there is nothing to authenticate against before the
+// first account exists -- and mirrors the window every self-hosted admin
+// tool has between "installed" and "configured".
+func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	users, err := s.Store.ListUsers()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if len(users) > 0 {
+		writeErr(w, http.StatusConflict, "an account already exists; setup is only available before the first account is created")
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	req.Username = strings.TrimSpace(req.Username)
+	if req.Username == "" || len(req.Username) > 64 {
+		writeErr(w, http.StatusBadRequest, "username must be non-empty and at most 64 characters")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	hash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	// Re-check immediately before writing to close the race between two
+	// browsers hitting an unconfigured server at once; whichever request
+	// wins the UpsertUser below is authoritative, and this is a single
+	// local admin tool, not a multi-tenant service, so the residual race
+	// window is acceptable.
+	users, err = s.Store.ListUsers()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if len(users) > 0 {
+		writeErr(w, http.StatusConflict, "an account already exists; setup is only available before the first account is created")
+		return
+	}
+	if err := s.Store.UpsertUser(req.Username, hash); err != nil {
+		writeErr(w, http.StatusInternalServerError, "failed to create the account")
+		return
+	}
+	log.Printf("setup: created initial admin account %q via web UI", req.Username)
+	writeJSON(w, map[string]any{"ok": true})
+}
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)

@@ -10,12 +10,22 @@ async function api(path, opts = {}) {
     ...opts,
   });
   let body = null;
-  try { body = await res.json(); } catch {}
+  let parseFailed = false;
+  try { body = await res.json(); } catch { parseFailed = true; }
   if (res.status === 401 && page === "main") {
     location.href = "/login";
     throw new Error("not logged in");
   }
   if (!res.ok) throw new Error((body && body.error) || `HTTP ${res.status}`);
+  // A 200 with an unparsable or empty body used to be returned as null,
+  // which crashed the first thing that read a property off it (e.g.
+  // "Cannot read properties of null (reading 'series')") with no useful
+  // message. Fail loudly here instead, once, with the real cause.
+  if (body === null) {
+    throw new Error(parseFailed
+      ? "server returned an unreadable response (possibly truncated)"
+      : "server returned an empty response");
+  }
   return body;
 }
 
@@ -38,6 +48,17 @@ function fmtNum(v) {
 
 
 if (page === "login") {
+  (async () => {
+    let needsSetup = false;
+    try {
+      const status = await api("/api/setup-status");
+      needsSetup = !!status.needs_setup;
+    } catch (e) { /* status check failed, fall back to the login form */ }
+    $("#setupPanel").classList.toggle("hidden", !needsSetup);
+    $("#loginForm").classList.toggle("hidden", needsSetup);
+    (needsSetup ? $("#setupUsername") : $("#username")).focus();
+  })();
+
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const errBox = $("#loginError");
@@ -56,7 +77,30 @@ if (page === "login") {
       errBox.classList.remove("hidden");
     }
   });
+
+  $("#setupForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errBox = $("#setupError");
+    errBox.classList.add("hidden");
+    const username = $("#setupUsername").value.trim();
+    const password = $("#setupPassword").value;
+    if (password.length < 8) {
+      errBox.textContent = "password must be at least 8 characters";
+      errBox.classList.remove("hidden");
+      return;
+    }
+    try {
+      await api("/api/setup", { method: "POST", body: JSON.stringify({ username, password }) });
+      // the account now exists; sign in with the same credentials right away
+      await api("/api/login", { method: "POST", body: JSON.stringify({ username, password }) });
+      location.href = "/";
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove("hidden");
+    }
+  });
 }
+
 
 
 if (page === "main") {
@@ -73,10 +117,6 @@ async function main() {
   $("#userChip").textContent = me.user;
   $("#hostChip").textContent = me.archive;
   if (me.version) $("#verChip").textContent = "v" + me.version;
-  if (me.version) {
-    $("#brandVer").textContent = "v" + me.version;
-    $("#footVer").textContent = "\u00b7 deltascope v" + me.version;
-  }
   initTheme();
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST" });
@@ -449,7 +489,7 @@ async function trendInit() {
 
   const cat = CAT || (CAT = await api("/api/catalog"));
   const seg = $("#presetSeg");
-  const order = ["cpu", "percpu", "load", "ctx", "mem", "memdet", "disk", "diskio", "fs", "net", "tcp", "sock", "conn", "psi"];
+  const order = ["cpu", "percpu", "load", "ctx", "mem", "memdet", "disk", "diskio", "net", "tcp", "sock", "psi"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");
@@ -491,7 +531,7 @@ const PALETTE = ["#4cc9f0", "#e8a33d", "#3ddc97", "#ff5d6c", "#b28dff", "#e8c547
 async function loadTrend() {
   const errBox = $("#trendError");
   errBox.classList.add("hidden");
-  const lt = document.body.classList.contains("theme-light") || document.body.classList.contains("theme-dim");
+  const lt = document.body.classList.contains("theme-paper");
   chart.showLoading({ text: "Reading archive\u2026", color: lt ? "#0b7fa8" : "#4cc9f0", textColor: lt ? "#6a7489" : "#8391ad", maskColor: lt ? "rgba(246,247,251,.6)" : "rgba(13,19,34,.6)" });
   try {
     const q = new URLSearchParams({
@@ -874,8 +914,8 @@ function renderDiagnosis(d) {
 
 // Theme: dark by default, light available for people who find a dark
 // dashboard tiring over a long session. Persisted per browser.
-const THEME_CYCLE = ["dark", "dim", "light"];
-const THEME_ICON = { dark: "\u25D1", dim: "\u25D2", light: "\u25D5" };
+const THEME_CYCLE = ["dark", "slate", "paper", "solar"];
+const THEME_ICON = { dark: "\u25D1", slate: "\u25D0", paper: "\u25D5", solar: "\u2600" };
 
 function initTheme() {
   const stored = (() => { try { return localStorage.getItem("dscope-theme"); } catch (e) { return null; } })();

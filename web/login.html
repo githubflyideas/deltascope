@@ -15,9 +15,24 @@
       <span class="brand-name">deltascope</span>
     </div>
     <p class="login-sub">Whole-machine change &amp; performance diagnostics · local auth</p>
-    <form id="loginForm" autocomplete="off">
+
+    <div id="setupPanel" class="hidden">
+      <p class="setup-lead">No admin account exists yet. Create one to finish setting up this server.</p>
+      <form id="setupForm" autocomplete="off">
+        <label>Username
+          <input type="text" id="setupUsername" autocomplete="username" required autofocus>
+        </label>
+        <label>Password <span class="field-hint">at least 8 characters</span>
+          <input type="password" id="setupPassword" autocomplete="new-password" required minlength="8">
+        </label>
+        <div class="notice hidden" id="setupError"></div>
+        <button class="btn btn-primary btn-block" type="submit">Create admin account</button>
+      </form>
+    </div>
+
+    <form id="loginForm" class="hidden" autocomplete="off">
       <label>Username
-        <input type="text" id="username" autocomplete="username" required autofocus>
+        <input type="text" id="username" autocomplete="username" required>
       </label>
       <label>Password
         <input type="password" id="password" autocomplete="current-password" required>

@@ -1,6 +1,7 @@
 package pcp
 
 import (
+	"math"
 	"bufio"
 	"bytes"
 	"context"
@@ -46,7 +47,7 @@ func ParseSummary(r io.Reader) []Value {
 			continue
 		}
 		val, err := strconv.ParseFloat(m[3], 64)
-		if err != nil {
+		if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
 		out = append(out, Value{

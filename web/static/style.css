@@ -327,55 +327,6 @@ tr[hidden] { display: none; }
 .dv-next code { background: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 11.5px; color: var(--ink); }
 .diag-notes { color: var(--muted); font-size: 12px; line-height: 1.8; border: 1px dashed var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
 
-/* Dim theme: a lower-contrast middle ground for long monitoring sessions.
-   Dark's near-black background against saturated cyan/amber is easy to
-   read in short bursts but tiring to stare at for an hour; dim keeps a
-   dark background but lifts it and desaturates the accents. */
-body.theme-dim {
-  --bg: #1c212c;
-  --grid: rgba(140, 155, 190, .05);
-  --panel: #242b38;
-  --panel-2: #2c3442;
-  --line: #3a4356;
-  --ink: #c9d0dd;
-  --muted: #838fa3;
-  --a: #6fb8d4;
-  --a-dim: rgba(111, 184, 212, .10);
-  --b: #d1a35f;
-  --b-dim: rgba(209, 163, 95, .10);
-  --bad: #d97883;
-  --bad-dim: rgba(217, 120, 131, .09);
-  --good: #7fc4a0;
-  --good-dim: rgba(127, 196, 160, .09);
-  --warn: #d0b96a;
-  --warn-dim: rgba(208, 185, 106, .10);
-}
-
-/* Light theme: overrides the custom properties only, so every component
-   follows without touching layout. Chart colours are set from JS. */
-body.theme-light {
-  --bg: #f6f7fb;
-  --grid: rgba(90, 110, 150, .06);
-  --panel: #ffffff;
-  --panel-2: #eef1f7;
-  --line: #d7dce8;
-  --ink: #1c2536;
-  --muted: #6a7489;
-  --a: #0b7fa8;
-  --a-dim: rgba(11, 127, 168, .09);
-  --b: #b5741a;
-  --b-dim: rgba(181, 116, 26, .10);
-  --bad: #cc2b3d;
-  --bad-dim: rgba(204, 43, 61, .08);
-  --good: #17794f;
-  --good-dim: rgba(23, 121, 79, .08);
-  --warn: #9a6f00;
-  --warn-dim: rgba(154, 111, 0, .10);
-}
-body.theme-light .brand-mark { color: #fff; }
-body.theme-light .sev-crit, body.theme-light .sev-warn, body.theme-light .sev-info { color: #fff; }
-body.theme-light .report tr[data-bg] { mix-blend-mode: multiply; }
-
 .theme-toggle { background: transparent; border: 1px solid var(--line); color: var(--muted);
   border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; line-height: 1; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
@@ -385,3 +336,84 @@ body.theme-light .report tr[data-bg] { mix-blend-mode: multiply; }
 
 .ver-chip { font-family: var(--mono); font-size: 10.5px; color: var(--muted);
   border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 10px; }
+
+/* ---- Theme variants ---- */
+/* Only :root's variables are overridden; every component already reads
+   them, so no layout or component CSS needs to change per theme. */
+
+/* Slate — neutral graphite, single indigo accent, restrained semantic
+   colours. The "modern SaaS dashboard" register (Linear/Vercel-adjacent)
+   rather than a classic terminal palette. */
+body.theme-slate {
+  --bg: #121316;
+  --grid: rgba(160, 165, 180, .045);
+  --panel: #1a1c21;
+  --panel-2: #202329;
+  --line: #2c2f37;
+  --ink: #e4e5e9;
+  --muted: #858993;
+  --a: #7c8cf8;
+  --a-dim: rgba(124, 140, 248, .12);
+  --b: #e0a15c;
+  --b-dim: rgba(224, 161, 92, .11);
+  --bad: #ef5c6e;
+  --bad-dim: rgba(239, 92, 110, .10);
+  --good: #4fd1a5;
+  --good-dim: rgba(79, 209, 165, .10);
+  --warn: #e3b955;
+  --warn-dim: rgba(227, 185, 85, .11);
+}
+
+/* Paper — warm off-white, soft ink, restrained saturation. Not a stark
+   white light-mode; closer to the paper tone Notion/Linear use so long
+   reading sessions don't glare. */
+body.theme-paper {
+  --bg: #f4f2ee;
+  --grid: rgba(90, 80, 60, .045);
+  --panel: #fdfcfa;
+  --panel-2: #f0eee9;
+  --line: #ddd8cf;
+  --ink: #2a2622;
+  --muted: #7c7568;
+  --a: #0e7c8c;
+  --a-dim: rgba(14, 124, 140, .09);
+  --b: #a8611a;
+  --b-dim: rgba(168, 97, 26, .09);
+  --bad: #b8324a;
+  --bad-dim: rgba(184, 50, 74, .07);
+  --good: #1c7e56;
+  --good-dim: rgba(28, 126, 86, .08);
+  --warn: #93700c;
+  --warn-dim: rgba(147, 112, 12, .09);
+}
+body.theme-paper .brand-mark { color: #fff; }
+body.theme-paper .sev-crit, body.theme-paper .sev-warn, body.theme-paper .sev-info { color: #fff; }
+body.theme-paper .report tr[data-bg] { mix-blend-mode: multiply; }
+
+/* Solar — warm dark, low blue-light. A brown-olive background instead of
+   the near-universal blue-black of dev tools; muted gold/teal accents.
+   The theme to reach for during a long on-call session. */
+body.theme-solar {
+  --bg: #221e18;
+  --grid: rgba(210, 180, 130, .05);
+  --panel: #2c2720;
+  --panel-2: #342e26;
+  --line: #453d31;
+  --ink: #e8ddc8;
+  --muted: #a3937a;
+  --a: #5fb3b3;
+  --a-dim: rgba(95, 179, 179, .12);
+  --b: #d8a95f;
+  --b-dim: rgba(216, 169, 95, .12);
+  --bad: #e0707a;
+  --bad-dim: rgba(224, 112, 122, .11);
+  --good: #8fbf7f;
+  --good-dim: rgba(143, 191, 127, .11);
+  --warn: #ddb75f;
+  --warn-dim: rgba(221, 183, 95, .12);
+}
+
+.theme-toggle {
+
+.setup-lead { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+.field-hint { font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
