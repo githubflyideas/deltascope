@@ -132,3 +132,24 @@ func (s *Store) Prune(keepDays int) (int64, error) {
 	}
 	return res.RowsAffected()
 }
+
+// Nearest returns the snapshot whose timestamp is closest to t, within
+// the given tolerance. Used to line up snapshot-based windows with the
+// continuous time series from PCP.
+func (s *Store) Nearest(t time.Time, tolerance time.Duration) (Snapshot, error) {
+	lo := t.Add(-tolerance).UTC().Format(time.RFC3339)
+	hi := t.Add(tolerance).UTC().Format(time.RFC3339)
+	target := t.UTC().Format(time.RFC3339)
+	return s.queryOne(`
+		SELECT body FROM snapshots
+		WHERE taken BETWEEN ? AND ?
+		ORDER BY ABS(JULIANDAY(taken) - JULIANDAY(?)) ASC
+		LIMIT 1`, lo, hi, target)
+}
+
+// Count returns how many snapshots are stored.
+func (s *Store) Count() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM snapshots`).Scan(&n)
+	return n, err
+}

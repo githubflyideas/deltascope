@@ -5,7 +5,7 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/githubflyideas/deltascope/internal/pcp"
+	"github.com/githubflyideas/deltascope/internal/state"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 	cBold   = "\x1b[1m"
 )
 
-func renderProcReport(w io.Writer, rep *pcp.ProcReport, color bool) {
+func renderProcDiff(w io.Writer, d state.ProcDiff, color bool) {
 	c := func(code, s string) string {
 		if !color {
 			return s
@@ -25,76 +25,90 @@ func renderProcReport(w io.Writer, rep *pcp.ProcReport, color bool) {
 	}
 
 	fmt.Fprintf(w, "%s\n", c(cBold, "deltascope proc-diff"))
-	fmt.Fprintf(w, "  A %s ~ %s\n  B %s ~ %s  (threshold %.0f%%)\n\n",
-		rep.AStart.Format("01-02 15:04"), rep.AEnd.Format("15:04"),
-		rep.BStart.Format("01-02 15:04"), rep.BEnd.Format("15:04"), rep.ThresholdPct)
+	fmt.Fprintf(w, "  A %s ~ %s\n  B %s ~ %s\n\n",
+		d.AStart.Local().Format("01-02 15:04"), d.AEnd.Local().Format("15:04"),
+		d.BStart.Local().Format("01-02 15:04"), d.BEnd.Local().Format("15:04"))
 
-	if len(rep.Restarts) > 0 {
-		fmt.Fprintf(w, "%s\n", c(cViolet+cBold, "⟳ processes restarted during this window"))
-		for _, r := range rep.Restarts {
-			fmt.Fprintf(w, "  %s  %s\n", r.Name, c(cViolet, pcp.FormatStartDelta(r.StartA, r.StartB)))
+	if d.Note != "" {
+		fmt.Fprintln(w, c(cGray, d.Note))
+		return
+	}
+
+	if len(d.Restarts) > 0 {
+		fmt.Fprintf(w, "%s\n", c(cViolet+cBold, "\u27f3 restarted during this window"))
+		for _, r := range d.Restarts {
+			fmt.Fprintf(w, "  %s\n", r.Name)
 		}
 		fmt.Fprintln(w)
 	}
 
-	renderProcSection(w, c, "Process CPU accounting (higher = worse)", rep.CPURows)
-	renderProcSection(w, c, "Process memory accounting", rep.MemRows)
-
-	if len(rep.Warnings) > 0 {
-		fmt.Fprintf(w, "%s\n", c(cGray, "PCP notes:"))
-		for _, warn := range rep.Warnings {
-			fmt.Fprintf(w, "  %s\n", c(cGray, warn))
-		}
-	}
-}
-
-func renderProcSection(w io.Writer, c func(string, string) string, title string, rows []pcp.ProcRow) {
 	shown := 0
-	for _, r := range rows {
-		if r.Verdict != pcp.PVFlat {
+	for _, r := range d.Rows {
+		if r.Verdict != state.PVFlat {
 			shown++
 		}
 	}
-	fmt.Fprintf(w, "%s  (%d changed)\n", c(cBold, "== "+title+" =="), shown)
+	fmt.Fprintf(w, "%s  (%d changed of %d tracked)\n", c(cBold, "== Process accounting =="), shown, len(d.Rows))
 	if shown == 0 {
 		fmt.Fprintln(w, c(cGray, "  no significant change"))
-		fmt.Fprintln(w)
 		return
 	}
+
 	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
-	for _, r := range rows {
-		if r.Verdict == pcp.PVFlat {
+	fmt.Fprintln(tw, "  PROCESS\tCPU A\tCPU B\tΔCPU\tMEM A\tMEM B\tΔMEM\tVERDICT")
+	for _, r := range d.Rows {
+		if r.Verdict == state.PVFlat {
 			continue
 		}
-		var col, verdict, delta string
+		var col, verdict string
 		switch r.Verdict {
-		case pcp.PVWorse:
+		case state.PVWorse:
 			col, verdict = cRed, "worse"
-		case pcp.PVBetter:
+		case state.PVBetter:
 			col, verdict = cGreen, "better"
-		case pcp.PVAppeared:
+		case state.PVAppeared:
 			col, verdict = cViolet, "appeared"
-		case pcp.PVGone:
+		case state.PVGone:
 			col, verdict = cGray, "gone"
-		}
-		switch {
-		case r.Verdict == pcp.PVAppeared:
-			delta = "⊕"
-		case r.Verdict == pcp.PVGone:
-			delta = "⊖"
-		case r.DeltaPct == nil:
-			delta = "∞"
-		default:
-			delta = fmt.Sprintf("%+.1f%%", *r.DeltaPct)
 		}
 		mark := ""
 		if r.Restarted {
-			mark = " ⟳"
+			mark = " \u27f3"
 		}
-		line := fmt.Sprintf("  %s%s\t%s\t%s\t%s\t%s\t%s",
-			r.Name, mark, fmtVal(r.A), fmtVal(r.B), delta, verdict, r.Unit)
+		line := fmt.Sprintf("  %s%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+			r.Name, mark,
+			pct(r.CPUPctA), pct(r.CPUPctB), delta(r.CPUDelta),
+			mem(r.RSSKBA), mem(r.RSSKBB), delta(r.RSSDelta),
+			verdict)
 		fmt.Fprintln(tw, c(col, line))
 	}
 	tw.Flush()
-	fmt.Fprintln(w)
+}
+
+func pct(v *float64) string {
+	if v == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%.1f%%", *v)
+}
+
+func delta(v *float64) string {
+	if v == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%+.0f%%", *v)
+}
+
+func mem(v *float64) string {
+	if v == nil {
+		return "—"
+	}
+	kb := *v
+	switch {
+	case kb >= 1048576:
+		return fmt.Sprintf("%.1fG", kb/1048576)
+	case kb >= 1024:
+		return fmt.Sprintf("%.0fM", kb/1024)
+	}
+	return fmt.Sprintf("%.0fK", kb)
 }

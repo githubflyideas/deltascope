@@ -23,6 +23,11 @@ type Section struct {
 	Title   string `json:"title"`
 	Items   []Item `json:"items"`
 	Skipped string `json:"skipped,omitempty"`
+	// SkipDiff marks a section whose values are cumulative counters or
+	// otherwise always-changing, so the generic change diff must ignore
+	// it. Such sections get a purpose-built comparison instead (see
+	// CompareProcesses).
+	SkipDiff bool `json:"skip_diff,omitempty"`
 }
 
 // Snapshot is a full flattening of a machine's enumerable state at one point in time.

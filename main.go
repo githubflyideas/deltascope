@@ -174,6 +174,14 @@ func cmdServe(args []string) {
 		SecureCk:   *tlsCert != "",
 	}
 
+	if stateStore != nil {
+		sched := &state.Scheduler{Store: stateStore, Interval: state.DefaultSnapshotInterval, KeepDays: 7}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go sched.Run(ctx)
+		log.Printf("state snapshots: capturing every %s (no cron needed)", state.DefaultSnapshotInterval)
+	}
+
 	h := &http.Server{
 		Addr:              *listen,
 		Handler:           srv.Routes(),
@@ -453,40 +461,70 @@ func cmdStatediff(args []string) {
 
 func cmdProcDiff(args []string) {
 	fs := flag.NewFlagSet("proc-diff", flag.ExitOnError)
-	archive := fs.String("archive", defaultArchive(), "archive directory")
+	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
 	aStart := fs.String("a-start", "", "baseline start 2006-01-02T15:04")
-	aEnd := fs.String("a-end", "", "baseline window end")
-	bStart := fs.String("b-start", "", "compare window start")
-	bEnd := fs.String("b-end", "", "compare window end")
+	aEnd := fs.String("a-end", "", "baseline end")
+	bStart := fs.String("b-start", "", "compare start")
+	bEnd := fs.String("b-end", "", "compare end")
+	since := fs.Duration("since", 0, "shortcut: compare the last hour against the same hour this long ago (e.g. 24h)")
 	threshold := fs.Float64("threshold", 20, "significance threshold %")
 	noColor := fs.Bool("no-color", false, "disable colored output")
 	fs.Parse(args)
 
-	parse := func(v, name string) time.Time {
-		t, err := time.ParseInLocation("2006-01-02T15:04", v, time.Local)
-		if err != nil {
-			log.Fatalf("invalid time %s (expected 2006-01-02T15:04): %v", name, err)
-		}
-		return t
-	}
-	if *aStart == "" || *aEnd == "" || *bStart == "" || *bEnd == "" {
-		log.Fatal("must provide -a-start -a-end -b-start -b-end")
-	}
-	w := pcp.Windows{
-		AStart: parse(*aStart, "a-start"), AEnd: parse(*aEnd, "a-end"),
-		BStart: parse(*bStart, "b-start"), BEnd: parse(*bEnd, "b-end"),
-		ThresholdPct: *threshold,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	rep, err := pcp.CompareProc(ctx, pcp.ExecRunner{}, *archive, w)
+	st := openStore(*dataDir)
+	defer st.Close()
+	ss, err := state.NewStore(st.DB())
 	if err != nil {
-		log.Fatalf("process diff failed: %v\nhint: enable hotproc collection in pmlogger first (see hotproc.config)", err)
+		log.Fatalf("failed to open snapshot store: %v", err)
 	}
-	renderProcReport(os.Stdout, rep, !*noColor)
-}
 
+	var aS, aE, bS, bE time.Time
+	if *since > 0 {
+		bE = time.Now()
+		bS = bE.Add(-time.Hour)
+		aE = bE.Add(-*since)
+		aS = bS.Add(-*since)
+	} else {
+		if *aStart == "" || *aEnd == "" || *bStart == "" || *bEnd == "" {
+			log.Fatal("provide -since (e.g. -since 24h) or all of -a-start -a-end -b-start -b-end")
+		}
+		parse := func(v, name string) time.Time {
+			t, err := time.ParseInLocation("2006-01-02T15:04", v, time.Local)
+			if err != nil {
+				log.Fatalf("invalid time %s (expected 2006-01-02T15:04): %v", name, err)
+			}
+			return t
+		}
+		aS, aE = parse(*aStart, "a-start"), parse(*aEnd, "a-end")
+		bS, bE = parse(*bStart, "b-start"), parse(*bEnd, "b-end")
+	}
+
+	n, err := ss.Count()
+	if err != nil || n < 2 {
+		log.Fatalf("need at least two snapshots (have %d). Run 'deltascope snapshot', or start 'deltascope serve' which captures every %s.", n, state.DefaultSnapshotInterval)
+	}
+
+	tol := 30 * time.Minute
+	b1, e3 := ss.Nearest(bS, tol)
+	b2, e4 := ss.Nearest(bE, tol)
+	if e3 != nil || e4 != nil {
+		log.Fatal("no snapshots cover the compare window")
+	}
+	a1, e1 := ss.Nearest(aS, tol)
+	a2, e2 := ss.Nearest(aE, tol)
+	if e1 != nil || e2 != nil {
+		log.Printf("note: no snapshots cover the baseline window; showing the compare window only")
+		a1, a2 = b1, b1
+	}
+
+	d := state.CompareProcesses(a1, a2, b1, b2, *threshold, 1, 10240)
+	renderProcDiff(os.Stdout, d, !*noColor)
+	for _, r := range d.Rows {
+		if r.Verdict == state.PVWorse {
+			os.Exit(3)
+		}
+	}
+}
 func cmdUser(args []string) {
 	fs := flag.NewFlagSet("user", flag.ExitOnError)
 	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")

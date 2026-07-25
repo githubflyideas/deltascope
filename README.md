@@ -23,9 +23,11 @@ directly, across three layers:
   security posture) and diff two points in time, showing only what
   changed. `verify` turns this into a release tool: baseline before a
   deploy, report after, paste the Markdown into a PR.
-- **Process accounting** — per-process CPU/memory accounting between two
-  windows, with restart detection, so "today mysqld pegged the CPU and
-  nginx ate 90% of memory, yesterday both were idle" is one command away.
+- **Process accounting** — per-process CPU/memory between two windows with
+  restart detection, so "today mysqld pegged the CPU and nginx ate 90% of
+  memory, yesterday both were idle" is one command away. Read directly
+  from `/proc` into the local snapshot store: no PCP hotproc PMDA, no
+  pmlogger configuration, no waiting for an archive to fill.
 
 A triage dashboard on top organizes all of this the way an engineer
 actually thinks about a machine: CPU / memory / disk / network, plus a
@@ -91,8 +93,6 @@ detected — useful for CI gating and cron alerting.
 
 ## More
 
-- [`docs/hotproc.config`](docs/hotproc.config) — enabling per-process
-  accounting
 - [`docs/statediff-cron.md`](docs/statediff-cron.md) — scheduled change
   watching
 - [`docs/verify.md`](docs/verify.md) — release impact verification

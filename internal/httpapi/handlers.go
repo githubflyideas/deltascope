@@ -303,6 +303,10 @@ func stateDiffJSON(d state.Diff) []map[string]any {
 }
 
 func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
+	if s.StateStore == nil {
+		writeErr(w, http.StatusServiceUnavailable, "process accounting is not enabled on this server")
+		return
+	}
 	q := r.URL.Query()
 	aStart, err1 := parseLocal(q.Get("a_start"))
 	aEnd, err2 := parseLocal(q.Get("a_end"))
@@ -318,62 +322,50 @@ func (s *Server) handleProcDiff(w http.ResponseWriter, r *http.Request) {
 			threshold = v
 		}
 	}
-	if err := checkWindow(aStart, aEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "window A: "+err.Error())
-		return
-	}
-	if err := checkWindow(bStart, bEnd); err != nil {
-		writeErr(w, http.StatusBadRequest, "window B: "+err.Error())
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
-	defer cancel()
-	rep, err := pcp.CompareProc(ctx, s.Runner, s.Archive, pcp.Windows{
-		AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd, ThresholdPct: threshold,
-	})
-	if err != nil {
-		log.Printf("procdiff: %v", err)
-		writeErr(w, http.StatusBadGateway, err.Error()+" (enable hotproc collection in pmlogger)")
-		return
-	}
-	// pmlogsummary can exit 0 while returning nothing at all for hotproc
-	// metrics: the archive simply never recorded them. Say so explicitly
-	// instead of rendering an empty table with no explanation.
-	if len(rep.CPURows) == 0 && len(rep.MemRows) == 0 {
+
+	d, note := s.procDiffFromSnapshots(aStart, aEnd, bStart, bEnd, threshold)
+	if note != "" {
 		writeJSON(w, map[string]any{
-			"cpu": []any{}, "mem": []any{}, "restarts": []any{},
-			"warnings":   rep.Warnings,
-			"no_data":    true,
-			"no_data_hint": "No per-process data in this archive. Process accounting needs the hotproc PMDA enabled and recorded by pmlogger -- see docs/hotproc.config. Data is recorded from that point onward, so allow time to accumulate before comparing windows.",
+			"rows": []any{}, "restarts": []any{},
+			"no_data": true, "no_data_hint": note,
 		})
 		return
 	}
-	writeJSON(w, procReportJSON(rep))
+	writeJSON(w, d)
 }
 
-func procReportJSON(rep *pcp.ProcReport) map[string]any {
-	conv := func(rows []pcp.ProcRow) []map[string]any {
-		out := make([]map[string]any, 0, len(rows))
-		for _, r := range rows {
-			m := map[string]any{
-				"name": r.Name, "verdict": string(r.Verdict),
-				"a": r.A, "b": r.B, "delta_pct": r.DeltaPct,
-				"restarted": r.Restarted, "unit": r.Unit,
-			}
-			if r.Restarted {
-				m["restart_text"] = pcp.FormatStartDelta(r.StartA, r.StartB)
-			}
-			out = append(out, m)
-		}
-		return out
+// procDiffFromSnapshots lines up two snapshot pairs against the requested
+// windows. A CPU rate needs two cumulative readings, so each window is
+// bounded by the snapshots nearest its start and end.
+func (s *Server) procDiffFromSnapshots(aStart, aEnd, bStart, bEnd time.Time, threshold float64) (state.ProcDiff, string) {
+	n, err := s.StateStore.Count()
+	if err != nil || n < 2 {
+		return state.ProcDiff{}, "Not enough snapshots yet. The server captures state every " +
+			state.DefaultSnapshotInterval.String() + "; process accounting needs at least two " +
+			"captures in each window. Wait for the next capture and try again."
 	}
-	return map[string]any{
-		"cpu":      conv(rep.CPURows),
-		"mem":      conv(rep.MemRows),
-		"restarts": conv(rep.Restarts),
-		"warnings": rep.Warnings,
+	tol := 30 * time.Minute
+	a1, e1 := s.StateStore.Nearest(aStart, tol)
+	a2, e2 := s.StateStore.Nearest(aEnd, tol)
+	b1, e3 := s.StateStore.Nearest(bStart, tol)
+	b2, e4 := s.StateStore.Nearest(bEnd, tol)
+	if e3 != nil || e4 != nil {
+		return state.ProcDiff{}, "No snapshots cover the compare window. Snapshots start " +
+			"accumulating when the server starts, so a window from before that has no data."
 	}
+	if e1 != nil || e2 != nil {
+		// No baseline window: still useful -- show window B on its own.
+		a1, a2 = b1, b1
+	}
+	// minCPUPct 1% of a core and minRSSKB 10MB are the absolute floors, so
+	// a process idling at 0.01% doesn't post a huge percentage change.
+	d := state.CompareProcesses(a1, a2, b1, b2, threshold, 1, 10240)
+	if len(d.Rows) == 0 {
+		return d, "No process data in these snapshots."
+	}
+	return d, ""
 }
+
 
 func parseLocal(s string) (time.Time, error) {
 	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.Local); err == nil {

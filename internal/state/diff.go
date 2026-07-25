@@ -49,6 +49,9 @@ func Compare(a, b Snapshot) Diff {
 	names := unionKeys(amap, bmap)
 	for _, name := range names {
 		as, bs := amap[name], bmap[name]
+		if as.SkipDiff || bs.SkipDiff {
+			continue // cumulative counters; see CompareProcesses
+		}
 		title := bs.Title
 		if title == "" {
 			title = as.Title

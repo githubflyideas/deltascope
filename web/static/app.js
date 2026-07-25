@@ -638,45 +638,64 @@ const PV = {
   flat:     { icon: "\u00B7", text: "flat", cls: "v-flat" },
 };
 
-function procDelta(r) {
-  if (r.verdict === "appeared") return "\u2295";
-  if (r.verdict === "gone") return "\u2296";
-  if (r.delta_pct === null || r.delta_pct === undefined) return "\u221E";
-  return (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
+function pctVal(v) { return v === null || v === undefined ? "\u2014" : v.toFixed(1) + "%"; }
+function deltaVal(v) {
+  if (v === null || v === undefined) return "\u2014";
+  return (v > 0 ? "+" : "") + v.toFixed(0) + "%";
 }
-
-function procTable(rows, unit) {
-  const active = rows.filter((r) => r.verdict !== "flat");
-  if (!active.length) return `<div class="empty-hint">No significant change</div>`;
-  const trs = active.map((r) => {
-    const v = PV[r.verdict] || PV.flat;
-    const mark = r.restarted ? ` <span class="restart-tag" title="${escapeHtml(r.restart_text||"")}">\u27F3</span>` : "";
-    return `<tr class="${v.cls}">
-      <td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}</td>
-      <td>${fmtNum(r.a)}</td><td>${fmtNum(r.b)}</td>
-      <td class="delta-cell">${procDelta(r)}</td>
-      <td>${v.text}</td><td class="units-cell">${unit}</td>
-    </tr>`;
-  }).join("");
-  return `<table class="report"><thead><tr>
-    <th>Process</th><th>A</th><th>B</th><th>\u0394</th><th>Verdict</th><th>Unit</th>
-    </tr></thead><tbody>${trs}</tbody></table>`;
+function memVal(kb) {
+  if (kb === null || kb === undefined) return "\u2014";
+  if (kb >= 1048576) return (kb / 1048576).toFixed(1) + "G";
+  if (kb >= 1024) return (kb / 1024).toFixed(0) + "M";
+  return kb.toFixed(0) + "K";
 }
 
 function renderProcDiff(rep) {
   if (rep.no_data) {
     $("#procResult").innerHTML =
-      `<div class="no-finding" style="line-height:1.7">${escapeHtml(rep.no_data_hint || "No per-process data in this archive.")}</div>`;
+      `<div class="no-finding" style="line-height:1.7">${escapeHtml(rep.no_data_hint || "No process data available.")}</div>`;
     return;
   }
+  const rows = rep.rows || [];
+  const active = rows.filter((r) => r.verdict !== "flat");
   let html = "";
+
   if (rep.restarts && rep.restarts.length) {
     html += `<div class="restart-banner"><b>\u27F3 restarted during this window</b> ` +
-      rep.restarts.map((r) => `<span class="restart-chip">${escapeHtml(r.name)} <em>${escapeHtml(r.restart_text||"")}</em></span>`).join("") +
+      rep.restarts.map((r) => `<span class="restart-chip">${escapeHtml(r.name)}</span>`).join("") +
       `</div>`;
   }
-  html += `<div class="cat-block"><div class="cat-head"><span>Process CPU accounting</span><span>higher = worse</span></div>${procTable(rep.cpu, "ms/s")}</div>`;
-  html += `<div class="cat-block"><div class="cat-head"><span>Process memory accounting</span><span>RSS</span></div>${procTable(rep.mem, "KB")}</div>`;
+
+  html += `<div class="change-window">A ${new Date(rep.a_start).toLocaleString()} &rarr; ${new Date(rep.a_end).toLocaleTimeString()} ` +
+          `vs B ${new Date(rep.b_start).toLocaleString()} &rarr; ${new Date(rep.b_end).toLocaleTimeString()}</div>`;
+
+  if (!active.length) {
+    html += `<div class="no-finding" style="margin-top:10px">\u2705 No significant per-process change across ${rows.length} tracked processes.</div>`;
+    $("#procResult").innerHTML = html;
+    return;
+  }
+
+  const trs = active.map((r) => {
+    const v = PV[r.verdict] || PV.flat;
+    const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
+    const inst = r.instances > 1 ? ` <code>${r.instances}\u00d7</code>` : "";
+    return `<tr class="${v.cls}">
+      <td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}${inst}</td>
+      <td>${pctVal(r.cpu_pct_a)}</td><td>${pctVal(r.cpu_pct_b)}</td>
+      <td class="delta-cell">${deltaVal(r.cpu_delta_pct)}</td>
+      <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
+      <td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td>
+      <td>${v.text}</td>
+    </tr>`;
+  }).join("");
+
+  html += `<div class="cat-block"><div class="cat-head">
+      <span>Process accounting</span><span>${active.length} changed of ${rows.length} tracked</span></div>
+    <table class="report"><thead><tr>
+      <th>Process</th><th>CPU A</th><th>CPU B</th><th>\u0394CPU</th>
+      <th>Mem A</th><th>Mem B</th><th>\u0394Mem</th><th>Verdict</th>
+    </tr></thead><tbody>${trs}</tbody></table></div>`;
+
   $("#procResult").innerHTML = html;
 }
 
