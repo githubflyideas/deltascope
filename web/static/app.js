@@ -38,12 +38,12 @@ function toLocalInput(d) {
 // numbers actually mean, so nobody has to infer it from a bare suffix.
 function unitLabel(unit) {
   switch (unit) {
-    case "Kbyte": case "byte": return "size";
-    case "Kbyte / sec": case "byte / sec": return "rate";
-    case "millisec / second": return "% of a core";
-    case "count / sec": return "per sec";
-    case "count": return "count";
-    case "sec": return "duration";
+    case "Kbyte": case "byte": return t("unit_size");
+    case "Kbyte / sec": case "byte / sec": return t("unit_rate");
+    case "millisec / second": return t("unit_cores");
+    case "count / sec": return t("unit_per_sec");
+    case "count": return t("unit_count");
+    case "sec": return t("unit_duration");
     default: return "";
   }
 }
@@ -88,8 +88,15 @@ function fmtByUnit(v, unit) {
       return v.toFixed(0) + " B" + suffix;
     }
     case "millisec / second":
-      // 1000 ms of CPU time per second of wall time == one full core.
-      return (v / 10).toFixed(1) + "% core";
+      // 1000 ms of CPU time per second of wall time == one core fully busy.
+      // Expressed as core-equivalents rather than "% of a core": that
+      // phrasing implies one specific core, which is wrong for an
+      // aggregate metric like kernel.all.cpu.user (summed across every
+      // core) -- 250 ms/s could mean one core 25% busy, or four cores
+      // each 6% busy; the aggregate number can't distinguish those, so
+      // the label shouldn't claim it can. "0.25 cores" is unambiguous
+      // whether the metric is per-core or whole-machine.
+      return (v / 1000).toFixed(2) + " cores";
     case "count / sec":
       return fmtNum(v) + "/s";
     case "count":
@@ -111,6 +118,7 @@ function fmtByUnit(v, unit) {
 
 
 if (page === "login") {
+  initLang();
   (async () => {
     let needsSetup = false;
     try {
@@ -181,6 +189,7 @@ async function main() {
   $("#hostChip").textContent = me.archive;
   if (me.version) $("#verChip").textContent = "v" + me.version;
   initTheme();
+  initLang();
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST" });
     location.href = "/login";
@@ -247,7 +256,7 @@ async function runDiff() {
   const errBox = $("#diffError");
   errBox.classList.add("hidden");
   btn.disabled = true;
-  btn.textContent = "Comparing…";
+  btn.textContent = t("comparing");
   try {
     const q = new URLSearchParams({
       a_start: $("#aStart").value, a_end: $("#aEnd").value,
@@ -262,17 +271,17 @@ async function runDiff() {
     errBox.classList.remove("hidden");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Run comparison";
+    btn.textContent = t("run_comparison");
   }
 }
 
 const KIND = {
-  worse:  { icon: "\u{1F534}", text: "worse", cls: "v-worse", rgb: "255,93,108" },
-  better: { icon: "\u{1F7E2}", text: "better", cls: "v-better", rgb: "61,220,151" },
-  watch:  { icon: "\u{1F7E1}", text: "watch", cls: "v-watch", rgb: "232,197,71" },
-  flat:   { icon: "\u00B7",   text: "flat", cls: "v-flat", rgb: null },
-  new:    { icon: "\u2295",   text: "appeared", cls: "v-new", rgb: "178,141,255" },
-  gone:   { icon: "\u2296",   text: "gone", cls: "v-gone", rgb: "131,145,173" },
+  worse:  { icon: "\u{1F534}", key: "verdict_worse", cls: "v-worse", rgb: "255,93,108" },
+  better: { icon: "\u{1F7E2}", key: "verdict_better", cls: "v-better", rgb: "61,220,151" },
+  watch:  { icon: "\u{1F7E1}", key: "verdict_watch", cls: "v-watch", rgb: "232,197,71" },
+  flat:   { icon: "\u00B7",   key: "verdict_flat", cls: "v-flat", rgb: null },
+  new:    { icon: "\u2295",   key: "verdict_appeared", cls: "v-new", rgb: "178,141,255" },
+  gone:   { icon: "\u2296",   key: "verdict_gone", cls: "v-gone", rgb: "131,145,173" },
 };
 const KIND_RANK = { worse: 0, new: 1, watch: 2, gone: 3, better: 4, flat: 5 };
 
@@ -288,7 +297,7 @@ function absD(r) {
   return 0;
 }
 
-const SEV = { crit: "CRIT", warn: "WARN", info: "INFO" };
+const SEV_KEYS = { crit: "sev_crit_short", warn: "sev_warn_short", info: "sev_info_short" };
 
 const TRIAGE_ICON = {
   cpu: "\u{1F5A5}\uFE0F", mem: "\u{1F9E0}", disk: "\u{1F4BE}", net: "\u{1F310}", ghost: "\u{1F47B}",
@@ -306,7 +315,7 @@ function renderTriage(triage, rows) {
   const cards = triage.map((b) => {
     const st = TRIAGE_STATUS[b.status] || TRIAGE_STATUS.ok;
     const jump = b.status !== "ok"
-      ? `<button class="triage-jump" data-res="${b.key}">Details \u2193</button>` : "";
+      ? `<button class="triage-jump" data-res="${b.key}">${t("details_down")}</button>` : "";
     return `<div class="triage-card ${st.cls}" data-res="${b.key}">
       <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key]||""}</span>
         <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
@@ -322,16 +331,16 @@ function renderTriage(triage, rows) {
   if (findings.length) {
     const crit = findings.filter((f) => f.severity === "crit").length;
     ghostStatus = crit ? "bad" : "warn";
-    ghostBits.push(`${findings.length} diagnosis hit(s)`);
+    ghostBits.push(t("diagnosis_hits", findings.length));
   }
   const ghostSt = TRIAGE_STATUS[ghostStatus];
-  const ghostHead = ghostBits.length ? ghostBits.join(" · ") : "no config/process anomalies seen";
+  const ghostHead = ghostBits.length ? ghostBits.join(" · ") : t("no_anomalies");
   cards.push(`<div class="triage-card ${ghostSt.cls}" data-res="ghost">
     <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON.ghost}</span>
-      <span class="tc-label">Software Gremlin</span><span class="tc-dot">${ghostSt.dot}</span></div>
+      <span class="tc-label">${t("software_gremlin")}</span><span class="tc-dot">${ghostSt.dot}</span></div>
     <div class="tc-headline">${escapeHtml(ghostHead)}</div>
     <div class="tc-ghost-links">
-      <button class="triage-jump" data-tab-jump="proc">View processes \u2192</button>
+      <button class="triage-jump" data-tab-jump="proc">${t("view_processes")}</button>
     </div>
   </div>`);
 
@@ -360,7 +369,7 @@ function renderFindings(findings) {
   window._lastFindings = findings || [];
   const box = $("#findings");
   if (!findings || !findings.length) {
-    box.innerHTML = `<div class="no-finding">No known diagnosis pattern matched -- see the detail and trend charts below.</div>`;
+    box.innerHTML = `<div class="no-finding">${t("no_finding")}</div>`;
     return;
   }
   const order = { crit: 0, warn: 1, info: 2 };
@@ -368,11 +377,11 @@ function renderFindings(findings) {
   box.innerHTML = sorted.map((f) => `
     <div class="finding f-${f.severity}">
       <div class="finding-head">
-        <span class="sev sev-${f.severity}">${SEV[f.severity] || f.severity}</span>
+        <span class="sev sev-${f.severity}">${SEV_KEYS[f.severity] ? t(SEV_KEYS[f.severity]) : f.severity}</span>
         <span class="finding-conclusion">${escapeHtml(f.conclusion)}</span>
       </div>
-      <div class="finding-evidence">Evidence: ${f.evidence.map(escapeHtml).join(" · ")}</div>
-      ${f.next && f.next.length ? `<div class="finding-next">Next: ${f.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
+      <div class="finding-evidence">${t("evidence_label")} ${f.evidence.map(escapeHtml).join(" · ")}</div>
+      ${f.next && f.next.length ? `<div class="finding-next">${t("next_label")} ${f.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
     </div>`).join("");
 }
 
@@ -393,9 +402,9 @@ function renderTop5(rows) {
     }));
 }
 
-function statsTitle(min, max, count, unit) {
+function statsCaption(min, max, count, unit) {
   if (min === null || min === undefined) return "";
-  return `range ${fmtByUnit(min, unit)} \u2013 ${fmtByUnit(max, unit)} over ${count} sample${count === 1 ? "" : "s"}`;
+  return t("min_max_n", fmtByUnit(min, unit), fmtByUnit(max, unit), count);
 }
 
 function rowHTML(r, kind, extraCls, hiddenAttr) {
@@ -413,17 +422,20 @@ function rowHTML(r, kind, extraCls, hiddenAttr) {
   const bg = k.rgb && isFinite(absD(r)) && absD(r) > 0
     ? `rgba(${k.rgb},${Math.min(0.05 + absD(r) / renderScale * 0.16, 0.22).toFixed(3)})`
     : (k.rgb && !isFinite(absD(r)) ? `rgba(${k.rgb},0.18)` : "");
-  const aTitle = statsTitle(r.a_min, r.a_max, r.a_count, r.units);
-  const bTitle = statsTitle(r.b_min, r.b_max, r.b_count, r.units);
+  const aStats = statsCaption(r.a_min, r.a_max, r.a_count, r.units);
+  const bStats = statsCaption(r.b_min, r.b_max, r.b_count, r.units);
+  const statsLine = (aStats || bStats)
+    ? `<span class="m-stats">${aStats ? "A " + aStats : ""}${aStats && bStats ? " \u00b7 " : ""}${bStats ? "B " + bStats : ""}</span>`
+    : "";
   return `<tr id="${r._id}" class="${k.cls}${extraCls}"${hiddenAttr}${bg ? ` data-bg="${bg}"` : ""}>
     <td class="metric-cell">
       <span class="m-label">${k.icon} ${escapeHtml(r.label)}${inst}</span>
-      <span class="m-name">${escapeHtml(r.metric)}</span>
+      <span class="m-name">${escapeHtml(r.metric)}${statsLine ? " · " + statsLine : ""}</span>
     </td>
-    <td class="col-a"${aTitle ? ` title="A: ${escapeHtml(aTitle)}"` : ""}>${fmtByUnit(r.a, r.units)}</td>
-    <td class="col-b"${bTitle ? ` title="B: ${escapeHtml(bTitle)}"` : ""}>${fmtByUnit(r.b, r.units)}</td>
+    <td class="col-a">${fmtByUnit(r.a, r.units)}</td>
+    <td class="col-b">${fmtByUnit(r.b, r.units)}</td>
     <td class="delta-cell">${deltaTxt}${barHtml}</td>
-    <td>${k.text}</td>
+    <td>${t(k.key)}</td>
     <td class="units-cell">${escapeHtml(r.units || "")}</td>
   </tr>`;
 }
@@ -487,10 +499,10 @@ function renderReport(rep) {
           const bMin = Math.min(...grp.map((x) => x.b ?? Infinity));
           const wd = worst.delta_pct === null ? "\u221E" : (worst.delta_pct > 0 ? "+" : "") + worst.delta_pct.toFixed(1) + "%";
           trs.push(`<tr class="fold-agg ${KIND[wk].cls}" data-fold="${escapeHtml(r.metric)}">
-            <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} instances</code></span>
+            <td class="metric-cell"><span class="m-label">${KIND[wk].icon} ${escapeHtml(r.label)} <code>${grp.length} ${t("instances")}</code></span>
             <span class="m-name">${escapeHtml(r.metric)} \u00B7 B \u6781\u5DEE ${fmtByUnit(bMin, r.units)} ~ ${fmtByUnit(bMax, r.units)}</span></td>
             <td class="col-a"></td><td class="col-b">${fmtByUnit(bMax, r.units)}</td>
-            <td class="delta-cell">\u6700\u5DEE ${wd}</td><td>${KIND[wk].text}</td><td class="units-cell">${escapeHtml(r.units || "")}</td></tr>`);
+            <td class="delta-cell">\u6700\u5DEE ${wd}</td><td>${t(KIND[wk].key)}</td><td class="units-cell">${escapeHtml(r.units || "")}</td></tr>`);
           grp.forEach((x) => trs.push(rowHTML(x, rowKind(x), " fold-child", " hidden")));
           i = j;
           continue;
@@ -500,9 +512,9 @@ function renderReport(rep) {
       i++;
     }
     blocks.push(`<details class="cat-block" open>
-      <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} items</span></summary>
+      <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} ${t("items_shown")}</span></summary>
       <table class="report">
-        <thead><tr><th>Metric</th><th>A mean</th><th>B mean</th><th>\u0394</th><th>Verdict</th><th>Unit</th></tr></thead>
+        <thead><tr><th>${t("th_metric")}</th><th>${t("th_a_mean")}</th><th>${t("th_b_mean")}</th><th>${t("th_delta")}</th><th>${t("th_verdict")}</th><th>${t("th_unit")}</th></tr></thead>
         <tbody>${trs.join("")}</tbody>
       </table>
     </details>`);
@@ -601,8 +613,9 @@ const PALETTE = ["#4cc9f0", "#e8a33d", "#3ddc97", "#ff5d6c", "#b28dff", "#e8c547
 async function loadTrend() {
   const errBox = $("#trendError");
   errBox.classList.add("hidden");
-  const lt = document.body.classList.contains("theme-paper");
-  chart.showLoading({ text: "Reading archive\u2026", color: lt ? "#0b7fa8" : "#4cc9f0", textColor: lt ? "#6a7489" : "#8391ad", maskColor: lt ? "rgba(246,247,251,.6)" : "rgba(13,19,34,.6)" });
+  const lt = ["theme-nova-light", "theme-terra-light", "theme-iris-light"]
+    .some((c) => document.body.classList.contains(c));
+  chart.showLoading({ text: t("reading_archive"), color: lt ? "#0b7fa8" : "#4cc9f0", textColor: lt ? "#6a7489" : "#8391ad", maskColor: lt ? "rgba(246,247,251,.6)" : "rgba(13,19,34,.6)" });
   try {
     const q = new URLSearchParams({
       preset: curPreset,
@@ -760,7 +773,7 @@ async function runProcDiff() {
   const btn = $("#pcRun");
   const err = $("#procError");
   err.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "Accounting…";
+  btn.disabled = true; btn.textContent = t("accounting");
   try {
     const q = new URLSearchParams({
       a_start: $("#pcAStart").value, a_end: $("#pcAEnd").value,
@@ -774,16 +787,16 @@ async function runProcDiff() {
     err.classList.remove("hidden");
     $("#procResult").innerHTML = "";
   } finally {
-    btn.disabled = false; btn.textContent = "Run accounting";
+    btn.disabled = false; btn.textContent = t("run_accounting");
   }
 }
 
 const PV = {
-  worse:    { icon: "\u{1F534}", text: "worse", cls: "v-worse" },
-  better:   { icon: "\u{1F7E2}", text: "better", cls: "v-better" },
-  appeared: { icon: "\u2295", text: "appeared", cls: "v-new" },
-  gone:     { icon: "\u2296", text: "gone", cls: "v-gone" },
-  flat:     { icon: "\u00B7", text: "flat", cls: "v-flat" },
+  worse:    { icon: "\u{1F534}", key: "verdict_worse", cls: "v-worse" },
+  better:   { icon: "\u{1F7E2}", key: "verdict_better", cls: "v-better" },
+  appeared: { icon: "\u2295", key: "verdict_appeared", cls: "v-new" },
+  gone:     { icon: "\u2296", key: "verdict_gone", cls: "v-gone" },
+  flat:     { icon: "\u00B7", key: "verdict_flat", cls: "v-flat" },
 };
 
 function pctVal(v) { return v === null || v === undefined ? "\u2014" : v.toFixed(1) + "%"; }
@@ -801,7 +814,7 @@ function memVal(kb) {
 function renderProcDiff(rep) {
   if (rep.no_data) {
     $("#procResult").innerHTML =
-      `<div class="no-finding" style="line-height:1.7">${escapeHtml(rep.no_data_hint || "No process data available.")}</div>`;
+      `<div class="no-finding" style="line-height:1.7">${escapeHtml(rep.no_data_hint || t("no_process_data"))}</div>`;
     return;
   }
   const rows = rep.rows || [];
@@ -809,7 +822,7 @@ function renderProcDiff(rep) {
   let html = "";
 
   if (rep.restarts && rep.restarts.length) {
-    html += `<div class="restart-banner"><b>\u27F3 restarted during this window</b> ` +
+    html += `<div class="restart-banner"><b>\u27F3 ${t("restart_banner")}</b> ` +
       rep.restarts.map((r) => `<span class="restart-chip">${escapeHtml(r.name)}</span>`).join("") +
       `</div>`;
   }
@@ -818,7 +831,7 @@ function renderProcDiff(rep) {
           `vs B ${new Date(rep.b_start).toLocaleString()} &rarr; ${new Date(rep.b_end).toLocaleTimeString()}</div>`;
 
   if (!active.length) {
-    html += `<div class="no-finding" style="margin-top:10px">\u2705 No significant per-process change across ${rows.length} tracked processes.</div>`;
+    html += `<div class="no-finding" style="margin-top:10px">\u2705 ${t("no_significant_change")}</div>`;
     $("#procResult").innerHTML = html;
     return;
   }
@@ -833,15 +846,15 @@ function renderProcDiff(rep) {
       <td class="delta-cell">${deltaVal(r.cpu_delta_pct)}</td>
       <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
       <td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td>
-      <td>${v.text}</td>
+      <td>${t(v.key)}</td>
     </tr>`;
   }).join("");
 
   html += `<div class="cat-block"><div class="cat-head">
-      <span>Process accounting</span><span>${active.length} changed of ${rows.length} tracked</span></div>
+      <span>${t("process_cpu_accounting")}</span><span>${active.length} / ${rows.length} ${t("changed_label").toLowerCase()}</span></div>
     <table class="report"><thead><tr>
-      <th>Process</th><th>CPU A</th><th>CPU B</th><th>\u0394CPU</th>
-      <th>Mem A</th><th>Mem B</th><th>\u0394Mem</th><th>Verdict</th>
+      <th>${t("th_process")}</th><th>${t("th_cpu_a")}</th><th>${t("th_cpu_b")}</th><th>${t("th_dcpu")}</th>
+      <th>${t("th_mem_a")}</th><th>${t("th_mem_b")}</th><th>${t("th_dmem")}</th><th>${t("th_verdict")}</th>
     </tr></thead><tbody>${trs}</tbody></table></div>`;
 
   $("#procResult").innerHTML = html;
@@ -860,7 +873,7 @@ async function runStateDiff() {
   const btn = $("#changeRun");
   const err = $("#changeError");
   err.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "Checking…";
+  btn.disabled = true; btn.textContent = t("checking");
   try {
     const since = $("#changeSince").value;
     const rep = await api("/api/statediff?since=" + encodeURIComponent(since));
@@ -870,14 +883,14 @@ async function runStateDiff() {
     err.classList.remove("hidden");
     $("#changeResult").innerHTML = "";
   } finally {
-    btn.disabled = false; btn.textContent = "Check for changes";
+    btn.disabled = false; btn.textContent = t("check_for_changes");
   }
 }
 
 const CHANGE_KIND = {
-  added:    { icon: "\u{1F7E2}", cls: "v-new", label: "added" },
-  modified: { icon: "\u{1F7E1}", cls: "v-watch", label: "modified" },
-  removed:  { icon: "\u26AA",   cls: "v-gone", label: "removed" },
+  added:    { icon: "\u{1F7E2}", cls: "v-new", key: "change_added" },
+  modified: { icon: "\u{1F7E1}", cls: "v-watch", key: "change_modified" },
+  removed:  { icon: "\u26AA",   cls: "v-gone", key: "change_removed" },
 };
 
 function renderStateDiff(rep) {
@@ -886,7 +899,7 @@ function renderStateDiff(rep) {
   const header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`;
 
   if (!rep.total) {
-    box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">\u2705 State is identical between the two points in time -- no configuration or environment changes detected.</div>`;
+    box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">${t("no_change_hint")}</div>`;
     return;
   }
 
@@ -895,12 +908,12 @@ function renderStateDiff(rep) {
       const k = CHANGE_KIND[ch.kind] || CHANGE_KIND.modified;
       let detail;
       if (ch.kind === "added") detail = `<code>${escapeHtml(ch.new)}</code>`;
-      else if (ch.kind === "removed") detail = `<span class="was">was <code>${escapeHtml(ch.old)}</code></span>`;
+      else if (ch.kind === "removed") detail = `<span class="was">${t("was_label")} <code>${escapeHtml(ch.old)}</code></span>`;
       else detail = `<code>${escapeHtml(ch.old)}</code> &rarr; <code>${escapeHtml(ch.new)}</code>`;
-      return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(ch.key)}</span></td><td>${detail}</td><td>${k.label}</td></tr>`;
+      return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(ch.key)}</span></td><td>${detail}</td><td>${t(k.key)}</td></tr>`;
     }).join("");
     return `<details class="cat-block" open>
-      <summary class="cat-head"><span>${escapeHtml(sec.title)}</span><span>${sec.changes.length} items</span></summary>
+      <summary class="cat-head"><span>${escapeHtml(sec.title)}</span><span>${sec.changes.length} ${t("items_shown")}</span></summary>
       <table class="report"><tbody>${rows}</tbody></table>
     </details>`;
   }).join("");
@@ -918,10 +931,10 @@ function diagInit() {
 }
 
 const SEV_STYLE = {
-  crit: { cls: "d-crit", icon: "\u{1F534}", label: "CRITICAL" },
-  warn: { cls: "d-warn", icon: "\u{1F7E1}", label: "WARNING" },
-  info: { cls: "d-info", icon: "\u{1F535}", label: "INFO" },
-  ok:   { cls: "d-ok",   icon: "\u{1F7E2}", label: "HEALTHY" },
+  crit: { cls: "d-crit", icon: "\u{1F534}", key: "sev_crit" },
+  warn: { cls: "d-warn", icon: "\u{1F7E1}", key: "sev_warn" },
+  info: { cls: "d-info", icon: "\u{1F535}", key: "sev_info" },
+  ok:   { cls: "d-ok",   icon: "\u{1F7E2}", key: "sev_ok" },
 };
 
 async function runDiagnose() {
@@ -938,7 +951,7 @@ async function runDiagnose() {
     err.classList.remove("hidden");
     $("#diagResult").innerHTML = "";
   } finally {
-    btn.disabled = false; btn.textContent = "Diagnose this machine";
+    btn.disabled = false; btn.textContent = t("diag_run");
   }
 }
 
@@ -950,18 +963,18 @@ function renderDiagnosis(d) {
     ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}` : "";
 
   let html = `<div class="diag-verdict ${sv.cls}">
-    <div class="dv-top"><span class="dv-badge">${sv.icon} ${sv.label}</span></div>
+    <div class="dv-top"><span class="dv-badge">${sv.icon} ${t(sv.key)}</span></div>
     <div class="dv-headline">${escapeHtml(d.headline || "")}</div>`;
 
   const chain = [];
-  if (d.culprit) chain.push(`<div class="dv-link"><span class="dv-label">Responsible</span><span>${escapeHtml(d.culprit)}</span></div>`);
-  if (d.changed) chain.push(`<div class="dv-link"><span class="dv-label">Changed</span><code>${escapeHtml(d.changed)}</code></div>`);
+  if (d.culprit) chain.push(`<div class="dv-link"><span class="dv-label">${t("responsible_label")}</span><span>${escapeHtml(d.culprit)}</span></div>`);
+  if (d.changed) chain.push(`<div class="dv-link"><span class="dv-label">${t("changed_label")}</span><code>${escapeHtml(d.changed)}</code></div>`);
   if (chain.length) html += `<div class="dv-chain">${chain.join("")}</div>`;
 
   if (d.evidence && d.evidence.length)
-    html += `<div class="dv-evidence">Evidence: ${d.evidence.map(escapeHtml).join(" \u00b7 ")}</div>`;
+    html += `<div class="dv-evidence">${t("evidence_label")} ${d.evidence.map(escapeHtml).join(" \u00b7 ")}</div>`;
   if (d.next && d.next.length)
-    html += `<div class="dv-next">Next: ${d.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>`;
+    html += `<div class="dv-next">${t("next_label")} ${d.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>`;
   html += `</div>`;
 
   if (d.notes && d.notes.length)
@@ -986,9 +999,9 @@ function renderDiagnosis(d) {
         <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td><td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td></tr>`;
     }).join("");
     html += `<details class="cat-block" open><summary class="cat-head">
-      <span>Per-process</span><span>${d.processes.length} shown</span></summary>
-      <table class="report"><thead><tr><th>Process</th><th>CPU A</th><th>CPU B</th><th>\u0394CPU</th>
-      <th>Mem A</th><th>Mem B</th><th>\u0394Mem</th></tr></thead><tbody>${trs}</tbody></table></details>`;
+      <span>${t("per_process")}</span><span>${d.processes.length} ${t("shown")}</span></summary>
+      <table class="report"><thead><tr><th>${t("th_process")}</th><th>${t("th_cpu_a")}</th><th>${t("th_cpu_b")}</th><th>${t("th_dcpu")}</th>
+      <th>${t("th_mem_a")}</th><th>${t("th_mem_b")}</th><th>${t("th_dmem")}</th></tr></thead><tbody>${trs}</tbody></table></details>`;
   }
 
   if (d.changes && d.changes.length) {
@@ -996,13 +1009,13 @@ function renderDiagnosis(d) {
       const k = CHANGE_KIND[c.kind] || CHANGE_KIND.modified;
       let detail;
       if (c.kind === "added") detail = `<code>${escapeHtml(c.new)}</code>`;
-      else if (c.kind === "removed") detail = `<span class="was">was <code>${escapeHtml(c.old)}</code></span>`;
+      else if (c.kind === "removed") detail = `<span class="was">${t("was_label")} <code>${escapeHtml(c.old)}</code></span>`;
       else detail = `<code>${escapeHtml(c.old)}</code> &rarr; <code>${escapeHtml(c.new)}</code>`;
       return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(c.key)}</span>
         <span class="m-name">${escapeHtml(c.title)}</span></td><td>${detail}</td></tr>`;
     }).join("");
     html += `<details class="cat-block" open><summary class="cat-head">
-      <span>Configuration changes</span><span>${d.changes.length} shown</span></summary>
+      <span>${t("config_changes")}</span><span>${d.changes.length} ${t("shown")}</span></summary>
       <table class="report"><tbody>${trs}</tbody></table></details>`;
   }
 
@@ -1012,14 +1025,37 @@ function renderDiagnosis(d) {
 
 // Theme: dark by default, light available for people who find a dark
 // dashboard tiring over a long session. Persisted per browser.
-const THEME_CYCLE = ["dark", "slate", "paper", "solar"];
-const THEME_ICON = { dark: "\u25D1", slate: "\u25D0", paper: "\u25D5", solar: "\u2600" };
+const THEME_CYCLE = ["nova-dark", "nova-light", "terra-dark", "terra-light", "iris-dark", "iris-light"];
+const THEME_ICON = {
+  "nova-dark": "\u25D1", "nova-light": "\u25D5",
+  "terra-dark": "\u2600", "terra-light": "\u25D5",
+  "iris-dark": "\u25D0", "iris-light": "\u25D5",
+};
+
+function initLang() {
+  const sel = $("#langSelect");
+  Object.keys(LANG_NAMES).forEach((code) => {
+    const opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = LANG_NAMES[code];
+    sel.appendChild(opt);
+  });
+  setLang(detectLang());
+  sel.value = currentLang;
+  sel.addEventListener("change", () => {
+    setLang(sel.value);
+    // dynamically-rendered content (tables, diagnosis results) needs a
+    // re-render to pick up the new language; static chrome already
+    // updated itself via applyStaticI18n() inside setLang().
+    document.dispatchEvent(new CustomEvent("dscope-lang-changed"));
+  });
+}
 
 function initTheme() {
   const stored = (() => { try { return localStorage.getItem("dscope-theme"); } catch (e) { return null; } })();
-  applyTheme(THEME_CYCLE.includes(stored) ? stored : "dark");
+  applyTheme(THEME_CYCLE.includes(stored) ? stored : "nova-dark");
   $("#themeToggle").addEventListener("click", () => {
-    const cur = THEME_CYCLE.find((t) => document.body.classList.contains("theme-" + t)) || "dark";
+    const cur = THEME_CYCLE.find((t) => t !== "nova-dark" && document.body.classList.contains("theme-" + t)) || "nova-dark";
     const next = THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
     applyTheme(next);
     try { localStorage.setItem("dscope-theme", next); } catch (e) { /* private mode */ }
@@ -1027,8 +1063,10 @@ function initTheme() {
 }
 
 function applyTheme(name) {
-  THEME_CYCLE.forEach((t) => document.body.classList.toggle("theme-" + t, t === name));
-  $("#themeToggle").textContent = THEME_ICON[name] || THEME_ICON.dark;
+  // nova-dark is :root's own default palette and has no explicit class;
+  // every other theme overrides :root via body.theme-<name>.
+  THEME_CYCLE.forEach((t) => document.body.classList.toggle("theme-" + t, t === name && t !== "nova-dark"));
+  $("#themeToggle").textContent = THEME_ICON[name] || THEME_ICON["nova-dark"];
   $("#themeToggle").title = "Theme: " + name + " (click to cycle)";
   if (typeof chart !== "undefined" && chart) {
     if (typeof curPreset !== "undefined" && curPreset) loadTrend();

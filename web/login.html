@@ -10,40 +10,42 @@
 
 <div class="login-wrap">
   <div class="login-card">
+    <select class="lang-select login-lang" id="langSelect"></select>
     <div class="brand login-brand">
       <span class="brand-mark">Δ</span>
       <span class="brand-name">deltascope</span>
     </div>
-    <p class="login-sub">Whole-machine change &amp; performance diagnostics · local auth</p>
+    <p class="login-sub" data-i18n="login_sub">Whole-machine change &amp; performance diagnostics · local auth</p>
 
     <div id="setupPanel" class="hidden">
-      <p class="setup-lead">No admin account exists yet. Create one to finish setting up this server.</p>
+      <p class="setup-lead" data-i18n="setup_lead">No admin account exists yet. Create one to finish setting up this server.</p>
       <form id="setupForm" autocomplete="off">
-        <label>Username
+        <label><span data-i18n="label_username">Username</span>
           <input type="text" id="setupUsername" autocomplete="username" required autofocus>
         </label>
-        <label>Password <span class="field-hint">at least 8 characters</span>
+        <label><span data-i18n="label_password">Password</span> <span class="field-hint" data-i18n="password_hint">at least 8 characters</span>
           <input type="password" id="setupPassword" autocomplete="new-password" required minlength="8">
         </label>
         <div class="notice hidden" id="setupError"></div>
-        <button class="btn btn-primary btn-block" type="submit">Create admin account</button>
+        <button class="btn btn-primary btn-block" type="submit" data-i18n="create_admin">Create admin account</button>
       </form>
     </div>
 
     <form id="loginForm" class="hidden" autocomplete="off">
-      <label>Username
+      <label><span data-i18n="label_username">Username</span>
         <input type="text" id="username" autocomplete="username" required>
       </label>
-      <label>Password
+      <label><span data-i18n="label_password">Password</span>
         <input type="password" id="password" autocomplete="current-password" required>
       </label>
       <div class="notice hidden" id="loginError"></div>
-      <button class="btn btn-primary btn-block" type="submit">Sign in</button>
+      <button class="btn btn-primary btn-block" type="submit" data-i18n="sign_in">Sign in</button>
     </form>
-    <p class="login-foot">Credentials are stored locally only; nothing is sent to any external service</p>
+    <p class="login-foot" data-i18n="login_foot">Credentials are stored locally only; nothing is sent to any external service</p>
   </div>
 </div>
 
+<script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
