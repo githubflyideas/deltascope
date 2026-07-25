@@ -8,7 +8,7 @@ build:
 	go build -trimpath -mod=vendor \
 		-ldflags "-s -w -X main.version=$(VERSION)" \
 		-o $(BINARY) .
-	@echo "==> $(BINARY) ($$(du -h $(BINARY) | cut -f1))"
+	@echo "==> $(BINARY) ($$(du -h $(BINARY) | cut -f1)"
 
 vendor:
 	go mod tidy
