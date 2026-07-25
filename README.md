@@ -6,6 +6,20 @@ A single static Go binary. No internet dependency, minimal external
 requirements. Point it at two moments in time and it tells you what's
 different — not a wall of dashboards, a diagnosis.
 
+## One click
+
+The **Diagnose** tab runs all three engines at once against the last hour
+versus the same hour yesterday, correlates them, and answers in one
+sentence:
+
+> 🔴 **CPU is degraded: user CPU +2733%**
+> Responsible — `mysqld` at 310% of a core (+7650%)
+> Changed — `kernel.sched_migration_cost_ns` 500000 → 5000000
+> Next — `mpstat -P ALL 1 5` · `pidstat 1 5`
+
+Which resource, which process, what changed, what to run. Full detail from
+each engine folds out underneath.
+
 ## Why
 
 Most incidents are caused by a change. The usual question after "it's

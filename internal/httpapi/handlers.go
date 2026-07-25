@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/githubflyideas/deltascope/internal/auth"
+	"github.com/githubflyideas/deltascope/internal/diagnose"
 	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
@@ -52,6 +53,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/trend", s.requireAuth(s.handleTrend))
 	mux.Handle("GET /api/procdiff", s.requireAuth(s.handleProcDiff))
 	mux.Handle("GET /api/statediff", s.requireAuth(s.handleStateDiff))
+	mux.Handle("GET /api/diagnose", s.requireAuth(s.handleDiagnose))
 
 	return securityHeaders(mux)
 }
@@ -245,6 +247,27 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(series, func(i, j int) bool { return series[i].Name < series[j].Name })
 	writeJSON(w, map[string]any{"series": series, "missing": missing})
+}
+
+func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
+	threshold := 15.0
+	if t := r.URL.Query().Get("threshold"); t != "" {
+		if v, err := strconv.ParseFloat(t, 64); err == nil && v >= 0 && v <= 10000 {
+			threshold = v
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
+	defer cancel()
+	d, err := diagnose.Run(ctx, diagnose.Deps{
+		Runner: s.Runner, Archive: s.Archive,
+		StateStore: s.StateStore, Threshold: threshold,
+	})
+	if err != nil {
+		log.Printf("diagnose: %v", err)
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, d)
 }
 
 func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {

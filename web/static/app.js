@@ -80,6 +80,7 @@ async function main() {
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === t));
+      $("#view-diag").classList.toggle("hidden", t.dataset.tab !== "diag");
       $("#view-diff").classList.toggle("hidden", t.dataset.tab !== "diff");
       $("#view-trend").classList.toggle("hidden", t.dataset.tab !== "trend");
       $("#view-proc").classList.toggle("hidden", t.dataset.tab !== "proc");
@@ -87,10 +88,12 @@ async function main() {
       if (t.dataset.tab === "trend") trendInit();
       if (t.dataset.tab === "proc") procInit();
       if (t.dataset.tab === "change") changeInit();
+      if (t.dataset.tab === "diag") diagInit();
     })
   );
 
-  diffInit();
+  diffInit();   // prepare the regression tab's window pickers
+  diagInit();   // Diagnose is the default tab: run it on load
 }
 
 
@@ -758,4 +761,105 @@ function renderStateDiff(rep) {
   }).join("");
 
   box.innerHTML = header + `<div class="verdict-strip" style="margin-top:10px"><span class="verdict-pill pill-warn">\u26A0\uFE0F ${rep.total} change(s)</span></div>` + sections;
+}
+
+let diagReady = false;
+
+function diagInit() {
+  if (diagReady) return;
+  diagReady = true;
+  $("#diagRun").addEventListener("click", runDiagnose);
+  runDiagnose();
+}
+
+const SEV_STYLE = {
+  crit: { cls: "d-crit", icon: "\u{1F534}", label: "CRITICAL" },
+  warn: { cls: "d-warn", icon: "\u{1F7E1}", label: "WARNING" },
+  info: { cls: "d-info", icon: "\u{1F535}", label: "INFO" },
+  ok:   { cls: "d-ok",   icon: "\u{1F7E2}", label: "HEALTHY" },
+};
+
+async function runDiagnose() {
+  const btn = $("#diagRun");
+  const err = $("#diagError");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Diagnosing\u2026";
+  try {
+    const d = await api("/api/diagnose");
+    renderDiagnosis(d);
+    $("#diagEmpty").classList.add("hidden");
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove("hidden");
+    $("#diagResult").innerHTML = "";
+  } finally {
+    btn.disabled = false; btn.textContent = "Diagnose this machine";
+  }
+}
+
+function renderDiagnosis(d) {
+  const sv = SEV_STYLE[d.severity] || SEV_STYLE.info;
+  const w = d.window || {};
+  const fmt = (s) => s ? new Date(s).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  $("#diagWindow").textContent = w.label
+    ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}` : "";
+
+  let html = `<div class="diag-verdict ${sv.cls}">
+    <div class="dv-top"><span class="dv-badge">${sv.icon} ${sv.label}</span></div>
+    <div class="dv-headline">${escapeHtml(d.headline || "")}</div>`;
+
+  const chain = [];
+  if (d.culprit) chain.push(`<div class="dv-link"><span class="dv-label">Responsible</span><span>${escapeHtml(d.culprit)}</span></div>`);
+  if (d.changed) chain.push(`<div class="dv-link"><span class="dv-label">Changed</span><code>${escapeHtml(d.changed)}</code></div>`);
+  if (chain.length) html += `<div class="dv-chain">${chain.join("")}</div>`;
+
+  if (d.evidence && d.evidence.length)
+    html += `<div class="dv-evidence">Evidence: ${d.evidence.map(escapeHtml).join(" \u00b7 ")}</div>`;
+  if (d.next && d.next.length)
+    html += `<div class="dv-next">Next: ${d.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>`;
+  html += `</div>`;
+
+  if (d.notes && d.notes.length)
+    html += `<div class="diag-notes">${d.notes.map((n) => escapeHtml(n)).join("<br>")}</div>`;
+
+  if (d.triage && d.triage.length) {
+    html += `<div class="triage-board">` + d.triage.map((b) => {
+      const st = TRIAGE_STATUS[b.status] || TRIAGE_STATUS.ok;
+      return `<div class="triage-card ${st.cls}">
+        <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key] || ""}</span>
+          <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
+        <div class="tc-headline">${escapeHtml(b.headline)}</div></div>`;
+    }).join("") + `</div>`;
+  }
+
+  if (d.processes && d.processes.length) {
+    const trs = d.processes.map((r) => {
+      const v = PV[r.verdict] || PV.flat;
+      const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
+      return `<tr class="${v.cls}"><td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}</td>
+        <td>${pctVal(r.cpu_pct_a)}</td><td>${pctVal(r.cpu_pct_b)}</td><td class="delta-cell">${deltaVal(r.cpu_delta_pct)}</td>
+        <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td><td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td></tr>`;
+    }).join("");
+    html += `<details class="cat-block" open><summary class="cat-head">
+      <span>Per-process</span><span>${d.processes.length} shown</span></summary>
+      <table class="report"><thead><tr><th>Process</th><th>CPU A</th><th>CPU B</th><th>\u0394CPU</th>
+      <th>Mem A</th><th>Mem B</th><th>\u0394Mem</th></tr></thead><tbody>${trs}</tbody></table></details>`;
+  }
+
+  if (d.changes && d.changes.length) {
+    const trs = d.changes.map((c) => {
+      const k = CHANGE_KIND[c.kind] || CHANGE_KIND.modified;
+      let detail;
+      if (c.kind === "added") detail = `<code>${escapeHtml(c.new)}</code>`;
+      else if (c.kind === "removed") detail = `<span class="was">was <code>${escapeHtml(c.old)}</code></span>`;
+      else detail = `<code>${escapeHtml(c.old)}</code> &rarr; <code>${escapeHtml(c.new)}</code>`;
+      return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(c.key)}</span>
+        <span class="m-name">${escapeHtml(c.title)}</span></td><td>${detail}</td></tr>`;
+    }).join("");
+    html += `<details class="cat-block" open><summary class="cat-head">
+      <span>Configuration changes</span><span>${d.changes.length} shown</span></summary>
+      <table class="report"><tbody>${trs}</tbody></table></details>`;
+  }
+
+  $("#diagResult").innerHTML = html;
 }

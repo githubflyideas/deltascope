@@ -22,7 +22,8 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab is-active" data-tab="diff">Regression Diff</button>
+  <button class="tab is-active" data-tab="diag">Diagnose</button>
+  <button class="tab" data-tab="diff">Regression Diff</button>
   <button class="tab" data-tab="trend">Trends</button>
   <button class="tab" data-tab="proc">Process Accounting</button>
   <button class="tab" data-tab="change">Change Accounting</button>
@@ -30,7 +31,17 @@
 
 <main>
   
-  <section class="view" id="view-diff">
+
+  <section class="view" id="view-diag">
+    <div class="diag-hero">
+      <button class="btn btn-primary btn-diag" id="diagRun">Diagnose this machine</button>
+      <span class="diag-window" id="diagWindow"></span>
+    </div>
+    <div class="notice hidden" id="diagError"></div>
+    <div id="diagResult"></div>
+    <div class="empty-hint" id="diagEmpty">One click. deltascope compares the last hour against the same hour yesterday across three layers at once &mdash; system metrics, per-process usage, and configuration state &mdash; then tells you which resource is degraded, which process is responsible, and what changed.</div>
+  </section>
+  <section class="view hidden" id="view-diff">
     <div class="compare-grid">
       <div class="window-card card-a">
         <div class="window-head">
