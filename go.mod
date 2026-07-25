@@ -7,4 +7,3 @@ require (
 	modernc.org/sqlite v1.34.5
 )
 
-replace modernc.org/sqlite => ./_stub/sqlite

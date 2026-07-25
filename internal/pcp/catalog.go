@@ -186,14 +186,20 @@ var Catalog = []MetricInfo{
 }
 
 var TrendPresets = map[string]Preset{
-	"cpu":  {"CPU usage (ms/s)", []string{"kernel.all.cpu.user", "kernel.all.cpu.sys", "kernel.all.cpu.wait.total", "kernel.all.cpu.steal"}},
-	"load": {"System load", []string{"kernel.all.load"}},
-	"mem":  {"available memory", []string{"mem.util.available"}},
-	"disk": {"Disk throughput", []string{"disk.all.read_bytes", "disk.all.write_bytes"}},
-	"net":  {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
-	"tcp":  {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
-	"sock": {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
-	"psi":  {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
+	"cpu":     {"CPU usage (ms/s)", []string{"kernel.all.cpu.user", "kernel.all.cpu.sys", "kernel.all.cpu.wait.total", "kernel.all.cpu.steal"}},
+	"percpu":  {"CPU per core [0-3]", []string{"kernel.percpu.cpu.user", "kernel.percpu.cpu.wait.total"}},
+	"load":    {"System load", []string{"kernel.all.load"}},
+	"ctx":     {"Context switches / interrupts", []string{"kernel.all.pswitch", "kernel.all.intr"}},
+	"mem":     {"Available memory", []string{"mem.util.available"}},
+	"memdet":  {"Memory detail", []string{"mem.util.cached", "mem.util.dirty", "mem.util.anonpages", "swap.pagesout"}},
+	"disk":    {"Disk throughput", []string{"disk.all.read_bytes", "disk.all.write_bytes"}},
+	"diskio":  {"Disk activity / queue", []string{"disk.all.avactive", "disk.all.aveq"}},
+	"fs":      {"Filesystem usage (%)", []string{"filesys.full"}},
+	"net":     {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
+	"tcp":     {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
+	"sock":    {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
+	"conn":    {"Connection state breakdown", []string{"network.tcpconn.established", "network.tcpconn.time_wait", "network.tcpconn.close_wait", "network.tcpconn.syn_recv"}},
+	"psi":     {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
 }
 
 // minAbsDefault sets an absolute floor below which a change is not

@@ -327,6 +327,30 @@ tr[hidden] { display: none; }
 .dv-next code { background: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 11.5px; color: var(--ink); }
 .diag-notes { color: var(--muted); font-size: 12px; line-height: 1.8; border: 1px dashed var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
 
+/* Dim theme: a lower-contrast middle ground for long monitoring sessions.
+   Dark's near-black background against saturated cyan/amber is easy to
+   read in short bursts but tiring to stare at for an hour; dim keeps a
+   dark background but lifts it and desaturates the accents. */
+body.theme-dim {
+  --bg: #1c212c;
+  --grid: rgba(140, 155, 190, .05);
+  --panel: #242b38;
+  --panel-2: #2c3442;
+  --line: #3a4356;
+  --ink: #c9d0dd;
+  --muted: #838fa3;
+  --a: #6fb8d4;
+  --a-dim: rgba(111, 184, 212, .10);
+  --b: #d1a35f;
+  --b-dim: rgba(209, 163, 95, .10);
+  --bad: #d97883;
+  --bad-dim: rgba(217, 120, 131, .09);
+  --good: #7fc4a0;
+  --good-dim: rgba(127, 196, 160, .09);
+  --warn: #d0b96a;
+  --warn-dim: rgba(208, 185, 106, .10);
+}
+
 /* Light theme: overrides the custom properties only, so every component
    follows without touching layout. Chart colours are set from JS. */
 body.theme-light {

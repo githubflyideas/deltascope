@@ -449,7 +449,7 @@ async function trendInit() {
 
   const cat = CAT || (CAT = await api("/api/catalog"));
   const seg = $("#presetSeg");
-  const order = ["cpu", "load", "mem", "disk", "net", "tcp", "sock", "psi"];
+  const order = ["cpu", "percpu", "load", "ctx", "mem", "memdet", "disk", "diskio", "fs", "net", "tcp", "sock", "conn", "psi"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");
@@ -491,7 +491,7 @@ const PALETTE = ["#4cc9f0", "#e8a33d", "#3ddc97", "#ff5d6c", "#b28dff", "#e8c547
 async function loadTrend() {
   const errBox = $("#trendError");
   errBox.classList.add("hidden");
-  const lt = document.body.classList.contains("theme-light");
+  const lt = document.body.classList.contains("theme-light") || document.body.classList.contains("theme-dim");
   chart.showLoading({ text: "Reading archive\u2026", color: lt ? "#0b7fa8" : "#4cc9f0", textColor: lt ? "#6a7489" : "#8391ad", maskColor: lt ? "rgba(246,247,251,.6)" : "rgba(13,19,34,.6)" });
   try {
     const q = new URLSearchParams({
@@ -874,21 +874,25 @@ function renderDiagnosis(d) {
 
 // Theme: dark by default, light available for people who find a dark
 // dashboard tiring over a long session. Persisted per browser.
+const THEME_CYCLE = ["dark", "dim", "light"];
+const THEME_ICON = { dark: "\u25D1", dim: "\u25D2", light: "\u25D5" };
+
 function initTheme() {
   const stored = (() => { try { return localStorage.getItem("dscope-theme"); } catch (e) { return null; } })();
-  applyTheme(stored === "light" ? "light" : "dark");
+  applyTheme(THEME_CYCLE.includes(stored) ? stored : "dark");
   $("#themeToggle").addEventListener("click", () => {
-    const next = document.body.classList.contains("theme-light") ? "dark" : "light";
+    const cur = THEME_CYCLE.find((t) => document.body.classList.contains("theme-" + t)) || "dark";
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
     applyTheme(next);
     try { localStorage.setItem("dscope-theme", next); } catch (e) { /* private mode */ }
   });
 }
 
 function applyTheme(name) {
-  document.body.classList.toggle("theme-light", name === "light");
-  $("#themeToggle").textContent = name === "light" ? "\u25D5" : "\u25D1";
+  THEME_CYCLE.forEach((t) => document.body.classList.toggle("theme-" + t, t === name));
+  $("#themeToggle").textContent = THEME_ICON[name] || THEME_ICON.dark;
+  $("#themeToggle").title = "Theme: " + name + " (click to cycle)";
   if (typeof chart !== "undefined" && chart) {
-    // re-render so axis and tooltip colours follow the theme
     if (typeof curPreset !== "undefined" && curPreset) loadTrend();
   }
 }

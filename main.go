@@ -95,14 +95,33 @@ func defaultArchive() string {
 	return filepath.Join("/var/log/pcp/pmlogger", host)
 }
 
+// resolveDataDir turns -data into an absolute path before anything reads
+// or writes it. A relative path resolves against the current working
+// directory, which differs between an interactive shell, a systemd
+// service (WorkingDirectory=), and a cron job -- the same "-data mydata"
+// silently pointing at two different, unrelated database files is the
+// single most common cause of "I created a user but the server says
+// there are none". Resolving once, up front, and logging the result
+// removes the ambiguity instead of leaving it to be debugged later.
+func resolveDataDir(dataDir string) string {
+	abs, err := filepath.Abs(dataDir)
+	if err != nil {
+		log.Fatalf("failed to resolve data directory %q: %v", dataDir, err)
+	}
+	return abs
+}
+
 func openStore(dataDir string) *store.Store {
+	dataDir = resolveDataDir(dataDir)
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		log.Fatalf("failed to create data directory: %v", err)
 	}
-	st, err := store.Open(filepath.Join(dataDir, "deltascope.db"))
+	dbPath := filepath.Join(dataDir, "deltascope.db")
+	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open SQLite: %v", err)
 	}
+	log.Printf("data directory: %s", dataDir)
 	return st
 }
 
@@ -156,10 +175,12 @@ func cmdServe(args []string) {
 		log.Printf("warning: pmrep not found, install the pcp-system-tools package")
 	}
 
+	resolvedData := resolveDataDir(*dataDir)
 	st := openStore(*dataDir)
 	defer st.Close()
 	if users, err := st.ListUsers(); err == nil && len(users) == 0 {
-		log.Printf("note: no users yet, run deltascope user add <name> to create an admin")
+		log.Printf("note: no users found in this database (%s), run deltascope user add <name> -data %s to create an admin",
+			filepath.Join(resolvedData, "deltascope.db"), resolvedData)
 	}
 	stateStore, err := state.NewStore(st.DB())
 	if err != nil {
@@ -571,7 +592,7 @@ func cmdUser(args []string) {
 		if err := st.UpsertUser(name, hash); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("user %s created/updated\n", name)
+		fmt.Printf("user %s created/updated in %s\n", name, resolveDataDir(*dataDir))
 	case "del":
 		if len(rest) < 2 {
 			log.Fatal("usage: deltascope user del <name>")
