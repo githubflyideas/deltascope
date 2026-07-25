@@ -1042,8 +1042,7 @@
       "metrics": [
         "mem.util.cached",
         "mem.util.dirty",
-        "mem.util.anonpages",
-        "swap.pagesout"
+        "mem.util.anonpages"
       ]
     },
     "net": {
@@ -1074,6 +1073,13 @@
         "network.sockstat.tcp.alloc",
         "network.sockstat.tcp.tw",
         "network.sockstat.tcp.orphan"
+      ]
+    },
+    "swap": {
+      "label": "Swap activity",
+      "metrics": [
+        "swap.pagesin",
+        "swap.pagesout"
       ]
     },
     "tcp": {

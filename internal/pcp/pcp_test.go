@@ -644,3 +644,61 @@ func TestParseSummaryRejectsNaNInf(t *testing.T) {
 		t.Fatalf("expected only the finite value to survive, got %d: %+v", len(vals), vals)
 	}
 }
+
+// TestParseSummaryUnitsNotPolluted replays the exact pmlogsummary line
+// shape seen on a live host: "metric  mean  stddev  min  max  count  unit".
+// The regex's trailing capture group used to swallow the whole tail,
+// showing "0.018 0.002 1.147 766 none" in the Unit column instead of
+// "none".
+func TestParseSummaryUnitsNotPolluted(t *testing.T) {
+	out := `kernel.all.cpu.user  0.0180 0.00200 0.00100 1.14700 766 none
+mem.util.available  13742994.690 13609772.000 13817508.000 1232 Kbyte
+network.tcp.retranssegs  0.0330 0.00000 12.36700 766 count / sec
+`
+	vals := ParseSummary(strings.NewReader(out))
+	want := map[string]string{
+		"kernel.all.cpu.user":     "none",
+		"mem.util.available":      "Kbyte",
+		"network.tcp.retranssegs": "count / sec",
+	}
+	if len(vals) != 3 {
+		t.Fatalf("expected 3 values, got %d: %+v", len(vals), vals)
+	}
+	for _, v := range vals {
+		if want[v.Metric] != v.Units {
+			t.Errorf("%s: units = %q, want %q", v.Metric, v.Units, want[v.Metric])
+		}
+	}
+}
+
+// TestInferUnitAgreesWithRealObservations locks inferUnit's output against
+// unit strings actually observed from a live host's pmlogsummary output,
+// so trend charts (which have no other source of unit info) label the
+// same metric the same way the regression-diff table does.
+func TestInferUnitAgreesWithRealObservations(t *testing.T) {
+	cases := map[string]string{
+		"kernel.all.cpu.user":         "millisec / second",
+		"kernel.all.load":             "none",
+		"kernel.all.pswitch":          "count / sec",
+		"kernel.all.uptime":           "sec",
+		"mem.util.available":          "Kbyte",
+		"mem.util.dirty":              "Kbyte",
+		"swap.free":                   "byte",
+		"swap.pagesout":               "count / sec",
+		"disk.all.avactive":           "none",
+		"disk.all.write_bytes":        "Kbyte / sec",
+		"disk.all.write":              "count / sec",
+		"filesys.full":                "none",
+		"vfs.dentry.count":            "none",
+		"network.interface.in.bytes":  "byte / sec",
+		"network.tcp.currestab":       "none",
+		"network.tcp.retranssegs":     "count / sec",
+		"network.sockstat.tcp.inuse":  "count",
+		"kernel.all.pressure.cpu.some.avg": "none",
+	}
+	for metric, want := range cases {
+		if got := inferUnit(metric); got != want {
+			t.Errorf("inferUnit(%q) = %q, want %q", metric, got, want)
+		}
+	}
+}

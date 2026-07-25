@@ -34,6 +34,20 @@ function toLocalInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// unitLabel gives the Y-axis a short, human header naming what the
+// numbers actually mean, so nobody has to infer it from a bare suffix.
+function unitLabel(unit) {
+  switch (unit) {
+    case "Kbyte": case "byte": return "size";
+    case "Kbyte / sec": case "byte / sec": return "rate";
+    case "millisec / second": return "% of a core";
+    case "count / sec": return "per sec";
+    case "count": return "count";
+    case "sec": return "duration";
+    default: return "";
+  }
+}
+
 function fmtNum(v) {
   if (v === null || v === undefined) return "—";
   const abs = Math.abs(v);
@@ -44,6 +58,55 @@ function fmtNum(v) {
   if (abs >= 1) return v.toFixed(2);
   if (abs === 0) return "0";
   return v.toPrecision(3);
+}
+
+// fmtByUnit is unit-aware, unlike fmtNum's bare decimal-magnitude suffix.
+// This exists because a raw Kbyte value formatted with fmtNum's generic
+// K/M/G reads as a BYTE unit even though the suffix means "times a
+// thousand", not "kilobytes" -- 13,800,000 (Kbyte) becomes "13.80M",
+// which looks like "13.8 megabytes" but actually means 13.8 GB. A memory
+// chart mislabelled this way can make a healthy machine look seconds
+// from OOM. Every value that reaches the UI carries its PCP unit
+// alongside it specifically so this class of misread can't happen.
+function fmtByUnit(v, unit) {
+  if (v === null || v === undefined) return "—";
+  const abs = Math.abs(v);
+  switch (unit) {
+    case "Kbyte":
+    case "Kbyte / sec": {
+      const suffix = unit.endsWith("sec") ? "/s" : "";
+      if (abs >= 1048576) return (v / 1048576).toFixed(2) + " GB" + suffix;
+      if (abs >= 1024) return (v / 1024).toFixed(2) + " MB" + suffix;
+      return v.toFixed(0) + " KB" + suffix;
+    }
+    case "byte":
+    case "byte / sec": {
+      const suffix = unit.endsWith("sec") ? "/s" : "";
+      if (abs >= 1073741824) return (v / 1073741824).toFixed(2) + " GB" + suffix;
+      if (abs >= 1048576) return (v / 1048576).toFixed(2) + " MB" + suffix;
+      if (abs >= 1024) return (v / 1024).toFixed(2) + " KB" + suffix;
+      return v.toFixed(0) + " B" + suffix;
+    }
+    case "millisec / second":
+      // 1000 ms of CPU time per second of wall time == one full core.
+      return (v / 10).toFixed(1) + "% core";
+    case "count / sec":
+      return fmtNum(v) + "/s";
+    case "count":
+      return fmtNum(v);
+    case "sec": {
+      if (abs >= 86400) return (v / 86400).toFixed(1) + "d";
+      if (abs >= 3600) return (v / 3600).toFixed(1) + "h";
+      if (abs >= 60) return (v / 60).toFixed(1) + "m";
+      return v.toFixed(0) + "s";
+    }
+    case "none":
+    case "":
+    case undefined:
+      return fmtNum(v);
+    default:
+      return fmtNum(v) + " " + unit;
+  }
 }
 
 
@@ -489,7 +552,7 @@ async function trendInit() {
 
   const cat = CAT || (CAT = await api("/api/catalog"));
   const seg = $("#presetSeg");
-  const order = ["cpu", "percpu", "load", "ctx", "mem", "memdet", "disk", "diskio", "net", "tcp", "sock", "psi"];
+  const order = ["cpu", "percpu", "load", "ctx", "mem", "memdet", "swap", "disk", "diskio", "net", "tcp", "sock", "psi"];
   order.forEach((key) => {
     if (!cat.presets[key]) return;
     const b = document.createElement("button");
@@ -551,6 +614,7 @@ async function loadTrend() {
         // shift yesterday's timestamps forward one day to overlay on today's axis
         yesterday = yd.series.map((s) => ({
           name: s.name,
+          unit: s.unit,
           points: s.points.map((p) => [p[0] + dayMs, p[1]]),
         }));
       } catch (e) { /* no data for yesterday, ignore */ }
@@ -572,6 +636,15 @@ async function loadTrend() {
 
 function drawChart(series, yesterday) {
   chart.hideLoading();
+
+  // Every series in a preset shares one unit by construction (presets are
+  // built from same-unit metrics specifically so a shared Y-axis is never
+  // mixing Kbyte with count/sec). Look it up once for the axis label and
+  // per-series for the tooltip, in case a future preset isn't homogeneous.
+  const unitByName = {};
+  series.forEach((s) => { unitByName[s.name] = s.unit || "none"; });
+  const axisUnit = series.length ? (series[0].unit || "none") : "none";
+
   const opt = {
     backgroundColor: "transparent",
     color: PALETTE,
@@ -580,10 +653,24 @@ function drawChart(series, yesterday) {
       trigger: "axis",
       backgroundColor: "#1a2440", borderColor: "#263354",
       textStyle: { color: "#dbe4f5", fontSize: 12 },
-      valueFormatter: (v) => (v === null || v === undefined ? "—" : fmtNum(v)),
+      formatter: (params) => {
+        if (!params.length) return "";
+        const time = new Date(params[0].axisValue).toLocaleString();
+        const rows = params.map((p) => {
+          const v = Array.isArray(p.data) ? p.data[1] : p.data;
+          const unit = unitByName[p.seriesName] || "none";
+          return `<div style="display:flex;justify-content:space-between;gap:16px;">
+            <span>${p.marker} ${escapeHtml(p.seriesName)}</span>
+            <span>${escapeHtml(fmtByUnit(v, unit))}</span></div>`;
+        });
+        return `<div style="font-family:var(--mono);font-size:11px;color:#8391ad;margin-bottom:4px;">${time}</div>${rows.join("")}`;
+      },
     },
-    legend: { top: 0, textStyle: { color: "#8391ad" }, icon: "roundRect" },
-    grid: { left: 64, right: 24, top: 40, bottom: 76 },
+    legend: {
+      top: 0, textStyle: { color: "#8391ad" }, icon: "roundRect",
+      formatter: (name) => name,
+    },
+    grid: { left: 68, right: 24, top: 40, bottom: 76 },
     xAxis: {
       type: "time",
       axisLine: { lineStyle: { color: "#263354" } },
@@ -591,7 +678,10 @@ function drawChart(series, yesterday) {
     },
     yAxis: {
       type: "value",
-      axisLabel: { formatter: (v) => fmtNum(v) },
+      name: unitLabel(axisUnit),
+      nameLocation: "end",
+      nameTextStyle: { color: "#8391ad", fontSize: 10.5, align: "left" },
+      axisLabel: { formatter: (v) => fmtByUnit(v, axisUnit) },
       splitLine: { lineStyle: { color: "rgba(122,152,210,.1)" } },
     },
     dataZoom: [
@@ -616,6 +706,7 @@ function drawChart(series, yesterday) {
     series.forEach((s, i) => { idxByName[s.name] = i; });
     yesterday.forEach((y) => {
       const i = idxByName[y.name] ?? 0;
+      unitByName[y.name + " (yesterday)"] = y.unit || unitByName[y.name] || "none";
       opt.series.push({
         name: y.name + " (yesterday)",
         type: "line",

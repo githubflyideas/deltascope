@@ -50,14 +50,35 @@ func ParseSummary(r io.Reader) []Value {
 		if err != nil || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
+		// The regex's trailing group captures everything after the mean --
+		// on this pmlogsummary build that is "stddev min max count unit",
+		// not just the unit. Only the last whitespace-delimited token is
+		// the actual unit; the rest is statistics we don't use here. This
+		// used to leak the whole tail into the Units field, showing up as
+		// garbage like "0.018 0.002 1.147 766 none" instead of "none".
 		out = append(out, Value{
 			Metric:   m[1],
 			Instance: m[2],
 			Val:      val,
-			Units:    strings.TrimSpace(m[4]),
+			Units:    extractUnit(m[4]),
 		})
 	}
 	return out
+}
+
+// extractUnit finds where a pmlogsummary stat line's trailing numeric
+// fields (stddev/min/max/count -- however many a given PCP build emits)
+// end and the unit text begins. The unit itself can be multiple words
+// ("count / sec", "byte / sec"), so this returns everything from the
+// first non-numeric token onward, not just the last token.
+func extractUnit(s string) string {
+	fields := strings.Fields(s)
+	for i, f := range fields {
+		if _, err := strconv.ParseFloat(f, 64); err != nil {
+			return strings.Join(fields[i:], " ")
+		}
+	}
+	return ""
 }
 
 type Runner interface {

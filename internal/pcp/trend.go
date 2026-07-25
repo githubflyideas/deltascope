@@ -15,6 +15,7 @@ import (
 
 type Series struct {
 	Name   string   `json:"name"`
+	Unit   string   `json:"unit,omitempty"`
 	Points [][2]any `json:"points"`
 }
 
@@ -51,6 +52,25 @@ var trendTimeLayouts = []string{
 	time.RFC3339,
 	"01/02/2006 15:04:05",
 	"15:04:05",
+}
+
+// annotateUnits fills in each series' Unit by matching its CSV column
+// name against the metric names actually requested. pmrep's per-instance
+// column naming isn't uniform across versions (dash- or bracket-suffixed),
+// so this matches by prefix rather than assuming an exact format.
+func annotateUnits(series []Series, requested []string) {
+	for i := range series {
+		name := series[i].Name
+		best := ""
+		for _, m := range requested {
+			if (name == m || strings.HasPrefix(name, m)) && len(m) > len(best) {
+				best = m
+			}
+		}
+		if best != "" {
+			series[i].Unit = inferUnit(best)
+		}
+	}
 }
 
 func parseTrendTime(v string) (time.Time, bool) {
@@ -102,6 +122,7 @@ func RunTrend(ctx context.Context, r Runner, archive, preset string, start, end 
 		stdout, stderr, err := r.Run(ctx, "pmrep", args...)
 		if err == nil {
 			series, perr := ParseTrendCSV(bytes.NewReader(stdout))
+			annotateUnits(series, p.Metrics)
 			return series, missing, perr
 		}
 		m := invalidMetricRe.FindStringSubmatch(string(stderr))
