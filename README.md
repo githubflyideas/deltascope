@@ -51,13 +51,13 @@ changes that hardware counters alone won't show you.
 ## Install
 
 ```bash
-curl -LO https://github.com/githubflyideas/deltascope/releases/latest/download/deltascope-linux-amd64
-chmod +x deltascope-linux-amd64
-sudo mv deltascope-linux-amd64 /usr/local/bin/deltascope
+curl -L -o deltascope https://github.com/githubflyideas/deltascope/raw/main/dist/deltascope-linux-amd64
+chmod +x deltascope
+sudo mv deltascope /usr/local/bin/
 ```
 
-ARM64 (`deltascope-linux-arm64`) and CentOS/RHEL 6 (`deltascope-linux-amd64-el6`)
-builds are attached to the same [release](https://github.com/githubflyideas/deltascope/releases).
+ARM64 and CentOS/RHEL 6 builds are in [`dist/`](dist/). Verify with
+`sha256sum -c dist/SHA256SUMS`.
 Verify with the published `SHA256SUMS`.
 
 The host needs PCP installed (`pcp` + `pcp-system-tools`). `deploy.sh`
