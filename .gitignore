@@ -7,3 +7,5 @@
 *.key
 dist/deltascope-linux-*
 dist/SHA256SUMS
+dist/deltascope-linux-*
+dist/SHA256SUMS

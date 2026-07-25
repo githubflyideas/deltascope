@@ -13,6 +13,7 @@
     <span class="brand-mark">Δ</span>
     <span class="brand-name">deltascope</span>
     <span class="brand-sub">Whole-machine change diff · Performance Co-Pilot</span>
+    <span class="ver-chip" id="verChip"></span>
     <span class="brand-ver" id="brandVer"></span>
   </div>
   <div class="topbar-right">
@@ -164,7 +165,7 @@
     </div>
     <div class="notice hidden" id="changeError"></div>
     <div id="changeResult"></div>
-    <div class="proc-hint" id="changeHint">Snapshots the machine now and diffs it against the nearest snapshot before the chosen time -- sysctl, packages, kernel modules, network config, listening ports, firewall, mounts, services, cron, config file fingerprints, and security posture (including net.ipv4.ip_forward). Only what changed is shown. Run <code>deltascope snapshot</code> on a schedule (see docs/statediff-cron.md) to build real history; without it, this compares against a snapshot taken just now.</div>
+    <div class="proc-hint" id="changeHint">Snapshots the machine now and diffs it against the nearest snapshot before the chosen time -- sysctl, packages, kernel modules, network config, listening ports, firewall, mounts, services, cron, config file fingerprints, and security posture (including net.ipv4.ip_forward). Only what changed is shown. The server captures a snapshot every 10 minutes on its own, so history builds up without any cron job.</div>
   </section>
 
 </main>

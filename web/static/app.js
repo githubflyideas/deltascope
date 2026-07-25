@@ -72,6 +72,7 @@ async function main() {
   foldSet = new Set(CAT.metrics.filter((m) => m.fold).map((m) => m.metric));
   $("#userChip").textContent = me.user;
   $("#hostChip").textContent = me.archive;
+  if (me.version) $("#verChip").textContent = "v" + me.version;
   if (me.version) {
     $("#brandVer").textContent = "v" + me.version;
     $("#footVer").textContent = "\u00b7 deltascope v" + me.version;

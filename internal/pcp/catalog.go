@@ -391,7 +391,8 @@ func DiffMetrics() []string {
 	for _, c := range Catalog {
 		out = append(out, c.Metric)
 	}
-	return out
+	// Skip metrics this archive has already told us it does not have.
+	return presentMetrics(out)
 }
 
 type CatalogFile struct {

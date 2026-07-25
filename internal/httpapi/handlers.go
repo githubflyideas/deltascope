@@ -32,7 +32,6 @@ type Server struct {
 	Limiter    *auth.RateLimiter
 	Runner     pcp.Runner
 	Archive    string
-	Absent     *pcp.AbsentSet
 	Version    string
 	WebFS      fs.FS
 	SecureCk   bool
@@ -218,7 +217,7 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rep, err := pcp.Compare(ctx, s.Runner, s.Archive, pcp.Windows{
 		AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd,
-		ThresholdPct: threshold, Absent: s.Absent,
+		ThresholdPct: threshold,
 	})
 	if err != nil {
 		log.Printf("diff: %v", err)
@@ -269,7 +268,7 @@ func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	d, err := diagnose.Run(ctx, diagnose.Deps{
 		Runner: s.Runner, Archive: s.Archive,
-		StateStore: s.StateStore, Threshold: threshold, Absent: s.Absent,
+		StateStore: s.StateStore, Threshold: threshold,
 	})
 	if err != nil {
 		log.Printf("diagnose: %v", err)

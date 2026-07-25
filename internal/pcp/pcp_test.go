@@ -550,29 +550,32 @@ func deref(f *float64) float64 {
 	return *f
 }
 
-func TestAbsentSet(t *testing.T) {
-	a := NewAbsentSet()
-	n := a.Learn([]string{
+func TestAbsentMetricLearning(t *testing.T) {
+	ResetAbsent()
+	defer ResetAbsent()
+
+	before := len(DiffMetrics())
+	learned := NoteAbsent([]string{
 		"pmlogsummary: PMNS traversal failed for mem.vmstat.oom_kill: Unknown metric name",
-		"pmlogsummary: PMNS traversal failed for filesys.free: Unknown metric name",
-		"pmlogsummary: PMNS traversal failed for filesys.free: Unknown metric name",
-		"some unrelated warning",
+		"pmlogsummary: PMNS traversal failed for network.tcp.listendrops: Unknown metric name",
+		"pmrep: Invalid metric network.tcpconn.established : Unknown metric name",
 	})
-	if n != 2 || a.Len() != 2 {
-		t.Fatalf("learned %d (len %d), want 2", n, a.Len())
+	if len(learned) != 3 {
+		t.Fatalf("should have learned 3 absent metrics, got %v", learned)
 	}
-	kept, dropped := a.Filter([]string{"kernel.all.cpu.user", "filesys.free", "mem.vmstat.oom_kill"})
-	if len(kept) != 1 || kept[0] != "kernel.all.cpu.user" {
-		t.Errorf("kept = %v", kept)
+	if !IsAbsent("mem.vmstat.oom_kill") || !IsAbsent("network.tcpconn.established") {
+		t.Error("learned metrics should report as absent")
 	}
-	if len(dropped) != 2 {
-		t.Errorf("dropped = %v", dropped)
+	after := len(DiffMetrics())
+	if after != before-3 {
+		t.Errorf("request list should shrink by 3: %d -> %d", before, after)
 	}
-	// a cache claiming everything is absent must not blank the report
-	all := NewAbsentSet()
-	all.Learn([]string{"PMNS traversal failed for a.b: Unknown metric name"})
-	kept2, _ := all.Filter([]string{"a.b"})
-	if len(kept2) != 1 {
-		t.Error("filtering everything away must fall back to asking anyway")
+	// re-noting the same warnings must not double-count
+	if again := NoteAbsent([]string{"pmlogsummary: PMNS traversal failed for mem.vmstat.oom_kill: Unknown metric name"}); len(again) != 0 {
+		t.Errorf("already-known metric should not be relearned: %v", again)
+	}
+	// and a metric that is present must be untouched
+	if IsAbsent("kernel.all.cpu.user") {
+		t.Error("a present metric must not be marked absent")
 	}
 }

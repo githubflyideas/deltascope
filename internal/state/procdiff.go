@@ -37,8 +37,10 @@ type ProcRow struct {
 type ProcDiff struct {
 	// The four snapshots involved: CPU rate needs a pair of snapshots per
 	// window, since a rate requires two cumulative readings.
-	AStart, AEnd time.Time `json:"a_start,a_end"`
-	BStart, BEnd time.Time `json:"b_start,b_end"`
+	AStart time.Time `json:"a_start"`
+	AEnd   time.Time `json:"a_end"`
+	BStart time.Time `json:"b_start"`
+	BEnd   time.Time `json:"b_end"`
 	Rows         []ProcRow `json:"rows"`
 	Restarts     []ProcRow `json:"restarts"`
 	Note         string    `json:"note,omitempty"`

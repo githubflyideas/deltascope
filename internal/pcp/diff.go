@@ -46,9 +46,6 @@ type Windows struct {
 	BStart       time.Time `json:"b_start"`
 	BEnd         time.Time `json:"b_end"`
 	ThresholdPct float64   `json:"threshold_pct"`
-	// Absent, when set, filters out metrics this archive is known not to
-	// contain and is updated with any newly discovered ones.
-	Absent *AbsentSet `json:"-"`
 }
 
 func Compare(ctx context.Context, r Runner, archive string, w Windows) (*DiffReport, error) {
@@ -63,12 +60,14 @@ func Compare(ctx context.Context, r Runner, archive string, w Windows) (*DiffRep
 		return nil, err
 	}
 
-	report := &DiffReport{Window: w, Warnings: dedupe(append(warnA, warnB...))}
+	warnings := dedupe(append(warnA, warnB...))
+	// Learn which metrics are missing so later queries stop asking.
+	NoteAbsent(warnings)
+	report := &DiffReport{Window: w, Warnings: warnings}
 	report.Rows = buildRows(a, b, w.ThresholdPct)
 	report.Findings = EvaluateRules(report.Rows)
 	report.Triage = Triage(report.Rows)
-	w.Absent.Learn(report.Warnings)
-	report.Absent = w.Absent.List()
+	report.Absent = AbsentMetrics()
 	return report, nil
 }
 

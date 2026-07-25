@@ -173,7 +173,6 @@ func cmdServe(args []string) {
 		Limiter:    auth.NewRateLimiter(10, 15*time.Minute),
 		Runner:     pcp.ExecRunner{},
 		Archive:    *archive,
-		Absent:     pcp.NewAbsentSet(),
 		Version:    version,
 		WebFS:      webFS,
 		SecureCk:   *tlsCert != "",

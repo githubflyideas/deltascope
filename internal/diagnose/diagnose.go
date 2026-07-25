@@ -58,7 +58,6 @@ type Deps struct {
 	Archive    string
 	StateStore *state.Store
 	Threshold  float64
-	Absent     *pcp.AbsentSet
 }
 
 // Run picks windows automatically, runs the three engines concurrently,
@@ -92,7 +91,7 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 		defer wg.Done()
 		rep, err := pcp.Compare(ctx, d.Runner, d.Archive, pcp.Windows{
 			AStart: w.AStart, AEnd: w.AEnd, BStart: w.BStart, BEnd: w.BEnd,
-			ThresholdPct: threshold, Absent: d.Absent,
+			ThresholdPct: threshold,
 		})
 		if err != nil {
 			note("Performance metrics unavailable: " + firstLine(err.Error()))

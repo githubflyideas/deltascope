@@ -358,3 +358,6 @@ body.theme-light .report tr[data-bg] { mix-blend-mode: multiply; }
 
 .brand-ver { font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
   border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+
+.ver-chip { font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 10px; }

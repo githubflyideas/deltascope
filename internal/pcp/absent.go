@@ -5,87 +5,83 @@ import (
 	"sync"
 )
 
-// A metric the local pmlogger never recorded will fail on every single
-// query, producing the same warning forever. Remembering which metrics an
-// archive lacks lets us stop asking for them: the warning stops repeating,
-// the command line gets shorter, and the report is no longer dominated by
-// a list of things that were never going to be there.
+// An archive only contains what pmlogger was configured to record. Asking
+// for the rest produces the same "unknown metric name" warnings on every
+// single query, which is noise the operator can do nothing about mid-
+// session. Once a metric is known to be missing we stop requesting it:
+// the warning appears once, subsequent reports are clean, and the queries
+// get smaller.
 //
-// The cache is in-memory on purpose. A restart re-probes, so enabling
-// wider collection in pmlogger takes effect without clearing any state.
-type AbsentSet struct {
-	mu      sync.RWMutex
-	absent  map[string]bool
-}
+// This is deliberately in-memory and per-process. A restart re-probes, so
+// enabling fuller collection in pmlogger takes effect without having to
+// clear any state.
 
-func NewAbsentSet() *AbsentSet {
-	return &AbsentSet{absent: map[string]bool{}}
-}
+var (
+	absentMu sync.RWMutex
+	absent   = map[string]bool{}
+)
 
-var pmnsFailRe = regexp.MustCompile(`(?:PMNS traversal failed for|Invalid metric|Unknown metric name:?)\s+([A-Za-z][A-Za-z0-9._]*)`)
+var absentMetricRe = regexp.MustCompile(`(?:traversal failed for|Invalid metric|Unknown metric name:?)\s+([A-Za-z][A-Za-z0-9._]*)`)
 
-// Learn records metric names that the archive does not contain, taken
-// from pmlogsummary/pmrep stderr.
-func (a *AbsentSet) Learn(warnings []string) int {
-	if a == nil {
-		return 0
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	n := 0
+// NoteAbsent scans warning lines for metric names the archive does not
+// contain and remembers them.
+func NoteAbsent(warnings []string) (learned []string) {
+	absentMu.Lock()
+	defer absentMu.Unlock()
 	for _, w := range warnings {
-		if m := pmnsFailRe.FindStringSubmatch(w); m != nil {
-			if !a.absent[m[1]] {
-				a.absent[m[1]] = true
-				n++
+		for _, m := range absentMetricRe.FindAllStringSubmatch(w, -1) {
+			name := m[1]
+			if !absent[name] {
+				absent[name] = true
+				learned = append(learned, name)
 			}
 		}
 	}
-	return n
+	return learned
 }
 
-// Filter drops metrics already known to be absent. It never returns an
-// empty slice when the input was non-empty: if every metric is thought to
-// be absent, we ask anyway, so a stale cache cannot leave a permanently
-// blank report.
-func (a *AbsentSet) Filter(metrics []string) (kept []string, dropped []string) {
-	if a == nil {
-		return metrics, nil
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	for _, m := range metrics {
-		if a.absent[m] {
-			dropped = append(dropped, m)
-			continue
-		}
-		kept = append(kept, m)
-	}
-	if len(kept) == 0 {
-		return metrics, nil
-	}
-	return kept, dropped
+// IsAbsent reports whether a metric is known to be missing.
+func IsAbsent(metric string) bool {
+	absentMu.RLock()
+	defer absentMu.RUnlock()
+	return absent[metric]
 }
 
-// List returns the known-absent metric names.
-func (a *AbsentSet) List() []string {
-	if a == nil {
-		return nil
-	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	out := make([]string, 0, len(a.absent))
-	for m := range a.absent {
+// AbsentMetrics returns the current known-missing set.
+func AbsentMetrics() []string {
+	absentMu.RLock()
+	defer absentMu.RUnlock()
+	out := make([]string, 0, len(absent))
+	for m := range absent {
 		out = append(out, m)
 	}
 	return out
 }
 
-func (a *AbsentSet) Len() int {
-	if a == nil {
-		return 0
+// ResetAbsent clears the set (used by tests).
+func ResetAbsent() {
+	absentMu.Lock()
+	defer absentMu.Unlock()
+	absent = map[string]bool{}
+}
+
+// presentMetrics filters a request list down to metrics not already known
+// to be missing, never returning an empty list (an empty request would
+// fail outright rather than degrade).
+func presentMetrics(metrics []string) []string {
+	absentMu.RLock()
+	defer absentMu.RUnlock()
+	if len(absent) == 0 {
+		return metrics
 	}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return len(a.absent)
+	out := make([]string, 0, len(metrics))
+	for _, m := range metrics {
+		if !absent[m] {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		return metrics
+	}
+	return out
 }

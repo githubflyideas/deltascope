@@ -1,5 +1,9 @@
 # deltascope prebuilt binaries
 
+**Binaries now ship as GitHub Release assets, not in this directory** --
+they were removed from the repository to keep clones small. Download from
+https://github.com/githubflyideas/deltascope/releases/latest
+
 **Binaries now ship as GitHub Release assets, not in this directory.**
 Download them from https://github.com/githubflyideas/deltascope/releases
 

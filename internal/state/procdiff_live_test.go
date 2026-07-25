@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/json"
 	"context"
 	"testing"
 	"time"
@@ -91,4 +92,30 @@ func deref(f *float64) float64 {
 		return 0
 	}
 	return *f
+}
+
+// TestProcDiffJSONFields locks the wire format. A struct tag written as
+// `json:"a_start,a_end"` on a two-name field silently gives both fields
+// the same JSON name, dropping one from the output entirely -- the
+// frontend then renders "Invalid Date". go vet catches it, but a test
+// makes the contract explicit.
+func TestProcDiffJSONFields(t *testing.T) {
+	now := time.Now()
+	d := ProcDiff{
+		AStart: now.Add(-2 * time.Hour), AEnd: now.Add(-time.Hour),
+		BStart: now.Add(-time.Hour), BEnd: now,
+	}
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"a_start", "a_end", "b_start", "b_end"} {
+		if _, ok := m[k]; !ok {
+			t.Errorf("%s missing from ProcDiff JSON: %s", k, raw)
+		}
+	}
 }

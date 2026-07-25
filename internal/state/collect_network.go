@@ -102,16 +102,10 @@ type firewall struct{}
 func (firewall) Name() string { return "firewall" }
 func (firewall) Collect(ctx context.Context) Section {
 	sec := Section{Name: "firewall", Title: "Firewall"}
-
-	// A whole-ruleset hash detects that something changed but cannot say
-	// what, which makes for a useless alert. Recording a rule count per
-	// table alongside the hash means a change points at a place to look,
-	// without storing the rules themselves (they contain addresses and
-	// would bloat every snapshot).
 	if out, ok := runCmd(ctx, "nft", "list", "ruleset"); ok && strings.TrimSpace(out) != "" {
 		sec.Items = append(sec.Items, Item{Key: "nftables.ruleset.hash", Value: hashBytes([]byte(out))})
 		for chain, n := range countNftRules(out) {
-			sec.Items = append(sec.Items, Item{Key: "nftables.rules." + chain, Value: itoa(n)})
+			sec.Items = append(sec.Items, Item{Key: "nftables.rules:" + chain, Value: itoa(n)})
 		}
 		return sec
 	}
@@ -124,8 +118,11 @@ func (firewall) Collect(ctx context.Context) Section {
 			kept = append(kept, l)
 		}
 		sec.Items = append(sec.Items, Item{Key: "iptables.rules.hash", Value: hashBytes([]byte(strings.Join(kept, "\n")))})
+		// A hash tells you something changed but not where. Rule counts per
+		// table/chain narrow it down to the chain without storing the rules
+		// themselves, which would put addresses and ports in the snapshot.
 		for chain, n := range countIptablesRules(kept) {
-			sec.Items = append(sec.Items, Item{Key: "iptables.rules." + chain, Value: itoa(n)})
+			sec.Items = append(sec.Items, Item{Key: "iptables.rules:" + chain, Value: itoa(n)})
 		}
 		return sec
 	}
@@ -138,7 +135,7 @@ func (firewall) Collect(ctx context.Context) Section {
 }
 
 // countIptablesRules counts "-A CHAIN" rules per table/chain from
-// iptables-save output, which is organised as *table blocks.
+// iptables-save output.
 func countIptablesRules(ls []string) map[string]int {
 	counts := map[string]int{}
 	table := "unknown"
@@ -157,26 +154,34 @@ func countIptablesRules(ls []string) map[string]int {
 	return counts
 }
 
-// countNftRules counts rules per "table/chain" from nft list ruleset
-// output, tracking the current table and chain by brace nesting.
+// countNftRules counts rules per table/chain in "nft list ruleset" output
+// by tracking the enclosing chain block.
 func countNftRules(out string) map[string]int {
 	counts := map[string]int{}
 	table, chain := "", ""
+	depth := 0
 	for _, l := range lines(out) {
 		f := fields(l)
 		switch {
 		case len(f) >= 3 && f[0] == "table":
-			table = f[1] + "-" + f[2]
-			chain = ""
+			table = f[1] + "." + f[2]
 		case len(f) >= 2 && f[0] == "chain":
-			chain = strings.TrimSuffix(f[1], "{")
-			if chain == "" && len(f) >= 3 {
-				chain = f[2]
+			chain = f[1]
+			if _, seen := counts[table+"/"+chain]; !seen {
+				counts[table+"/"+chain] = 0
 			}
-			counts[table+"/"+chain] += 0 // ensure the chain is recorded even if empty
-		case chain != "" && !strings.HasPrefix(l, "}") && !strings.HasPrefix(l, "type ") &&
-			!strings.HasPrefix(l, "policy ") && !strings.HasPrefix(l, "comment "):
-			counts[table+"/"+chain]++
+		case l == "}":
+			if depth > 0 {
+				depth--
+			}
+			chain = ""
+		default:
+			// a rule line inside a chain: not a declaration, not a brace
+			if chain != "" && !strings.HasPrefix(l, "type ") &&
+				!strings.HasPrefix(l, "policy ") && !strings.HasPrefix(l, "comment ") &&
+				!strings.Contains(l, "{") && !strings.Contains(l, "}") {
+				counts[table+"/"+chain]++
+			}
 		}
 	}
 	return counts

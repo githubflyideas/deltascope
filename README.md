@@ -106,12 +106,22 @@ detected — useful for CI gating and cron alerting.
   `deltascope rules export`, edit, reload with `-catalog` / `-rules`.
   Metrics absent from an archive are skipped silently.
 
-## More
+## Command line
 
-- [`docs/statediff-cron.md`](docs/statediff-cron.md) — scheduled change
-  watching
-- [`docs/verify.md`](docs/verify.md) — release impact verification
-- [`profiles/`](profiles/) — full and slim metric catalog presets
+Everything the web UI does is available headless, and exits non-zero when
+it finds something, so it drops into cron or CI without a wrapper:
+
+```bash
+deltascope compare   -a-start ... -b-start ...   # metric regression, exit 2 on worse
+deltascope statediff -since 24h                  # config/environment changes, exit 3
+deltascope proc-diff -since 24h                  # per-process CPU/memory, exit 3
+deltascope verify start -name deploy-42           # baseline, then deploy, then:
+deltascope verify report -name deploy-42 -format md
+deltascope catalog export > catalog.json          # tune metrics/floors, load with -catalog
+deltascope rules export   > rules.json            # tune diagnosis rules, load with -rules
+```
+
+[`profiles/`](profiles/) ships full and slim catalog presets.
 
 ## License
 
