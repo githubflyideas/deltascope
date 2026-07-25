@@ -223,6 +223,11 @@ var minAbsDefault = map[string]float64{
 
 	// Load average: below 0.5 the machine is idle regardless of ratio.
 	"kernel.all.load":     0.5,
+	// Scheduler and interrupt rates: an idle box already does hundreds to
+	// a few thousand per second, so a doubling there means nothing.
+	"kernel.all.pswitch": 10000,
+	"kernel.all.intr":    5000,
+	"kernel.all.sysfork": 10,
 	"kernel.all.runnable": 2,
 	"kernel.all.blocked":  1,
 
@@ -245,9 +250,26 @@ var minAbsDefault = map[string]float64{
 	"mem.vmstat.pgmajfault":    1,
 	"mem.vmstat.pgscan_direct": 1,
 	"mem.vmstat.pgactivate":    50,
+	// Kernel caches grow and shrink on their own; only order-of-magnitude
+	// movement is worth a look.
+	"vfs.dentry.count": 1000000,
+	"vfs.inodes.count": 1000000,
+	"vfs.files.count":  50000,
 	"mem.vmstat.pgdeactivate":  50,
 
 	// Disk IOPS and throughput.
+	// Disk utilisation and queue depth: avactive is the fraction of time
+	// the device was busy (0-1), aveq is the average queue length. Real
+	// saturation means the device is busy most of the time with requests
+	// actually waiting -- 0.002 busy and 0.005 queued is an idle disk, and
+	// without these floors it produced a false "disk is saturated" verdict.
+	"disk.all.avactive": 0.2, // 20% of the time busy
+	"disk.all.aveq":     1,   // one request queued on average
+	"disk.dev.avactive": 0.2,
+	"disk.dev.aveq":     1,
+	"disk.dm.avactive":  0.2,
+	"disk.dm.aveq":      1,
+
 	"disk.all.read":        5,
 	"disk.all.write":       5,
 	"disk.all.total":       5,
@@ -277,18 +299,18 @@ var minAbsDefault = map[string]float64{
 	"network.tcp.insegs":            50,
 	"network.tcp.outsegs":           50,
 	"network.tcp.retranssegs":       1,
-	"network.tcp.outrsts":           1,
-	"network.tcp.attemptfails":      1,
-	"network.tcp.estabresets":       1,
-	"network.tcp.activeopens":       1,
-	"network.tcp.passiveopens":      1,
-	"network.tcp.currestab":         10,
+	"network.tcp.outrsts":           5,
+	"network.tcp.attemptfails":      2,
+	"network.tcp.estabresets":       5,
+	"network.tcp.activeopens":       20,
+	"network.tcp.passiveopens":      20,
+	"network.tcp.currestab":         50,
 	"network.udp.indatagrams":       50,
 	"network.udp.outdatagrams":      50,
-	"network.sockstat.tcp.tw":       10,
+	"network.sockstat.tcp.tw":       500,
 	"network.sockstat.tcp.orphan":   1,
-	"network.sockstat.tcp.inuse":    10,
-	"network.sockstat.tcp.alloc":    10,
+	"network.sockstat.tcp.inuse":    50,
+	"network.sockstat.tcp.alloc":    50,
 	"network.softnet.processed":     100,
 	"network.icmp.inmsgs":           20,
 	"network.icmp.outmsgs":          20,

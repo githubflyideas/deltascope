@@ -72,6 +72,11 @@ async function main() {
   foldSet = new Set(CAT.metrics.filter((m) => m.fold).map((m) => m.metric));
   $("#userChip").textContent = me.user;
   $("#hostChip").textContent = me.archive;
+  if (me.version) {
+    $("#brandVer").textContent = "v" + me.version;
+    $("#footVer").textContent = "\u00b7 deltascope v" + me.version;
+  }
+  initTheme();
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST" });
     location.href = "/login";
@@ -410,16 +415,16 @@ function renderReport(rep) {
   const warnBox = $("#warnBox");
   if (rep.warnings && rep.warnings.length) {
     warnBox.classList.remove("hidden");
-    const names = [...new Set(rep.warnings.map((w) => {
+    const names = (rep.absent && rep.absent.length ? rep.absent : [...new Set(rep.warnings.map((w) => {
       const m = w.match(/for ([\w.]+):/);
       return m ? m[1] : w;
-    }))].sort();
+    }))]).sort();
     $("#warnSummary").textContent =
-      `${names.length} metric(s) not recorded in this archive -- expand for details`;
+      `${names.length} metric(s) absent from this archive \u2014 now skipped automatically`;
     $("#warnPre").innerHTML =
-      `These metrics are skipped and don't affect the rest of the report.\n` +
-      `Enable full collection: see deploy.sh's tiered sampling config, or\n` +
-      `docs/hotproc.config for process accounting.\n\n` +
+      `These are not recorded by the local pmlogger, so they are excluded from\n` +
+      `further queries and do not affect the rest of the report. To collect them,\n` +
+      `apply the tiered sampling config from deploy.sh and restart pmlogger.\n\n` +
       names.map(escapeHtml).join("\n");
   } else {
     warnBox.classList.add("hidden");
@@ -485,7 +490,8 @@ const PALETTE = ["#4cc9f0", "#e8a33d", "#3ddc97", "#ff5d6c", "#b28dff", "#e8c547
 async function loadTrend() {
   const errBox = $("#trendError");
   errBox.classList.add("hidden");
-  chart.showLoading({ text: "Reading archive…", color: "#4cc9f0", textColor: "#8391ad", maskColor: "rgba(13,19,34,.6)" });
+  const lt = document.body.classList.contains("theme-light");
+  chart.showLoading({ text: "Reading archive\u2026", color: lt ? "#0b7fa8" : "#4cc9f0", textColor: lt ? "#6a7489" : "#8391ad", maskColor: lt ? "rgba(246,247,251,.6)" : "rgba(13,19,34,.6)" });
   try {
     const q = new URLSearchParams({
       preset: curPreset,
@@ -862,4 +868,26 @@ function renderDiagnosis(d) {
   }
 
   $("#diagResult").innerHTML = html;
+}
+
+
+// Theme: dark by default, light available for people who find a dark
+// dashboard tiring over a long session. Persisted per browser.
+function initTheme() {
+  const stored = (() => { try { return localStorage.getItem("dscope-theme"); } catch (e) { return null; } })();
+  applyTheme(stored === "light" ? "light" : "dark");
+  $("#themeToggle").addEventListener("click", () => {
+    const next = document.body.classList.contains("theme-light") ? "dark" : "light";
+    applyTheme(next);
+    try { localStorage.setItem("dscope-theme", next); } catch (e) { /* private mode */ }
+  });
+}
+
+function applyTheme(name) {
+  document.body.classList.toggle("theme-light", name === "light");
+  $("#themeToggle").textContent = name === "light" ? "\u25D5" : "\u25D1";
+  if (typeof chart !== "undefined" && chart) {
+    // re-render so axis and tooltip colours follow the theme
+    if (typeof curPreset !== "undefined" && curPreset) loadTrend();
+  }
 }

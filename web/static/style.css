@@ -326,3 +326,35 @@ tr[hidden] { display: none; }
 .dv-next { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 11.5px; }
 .dv-next code { background: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 11.5px; color: var(--ink); }
 .diag-notes { color: var(--muted); font-size: 12px; line-height: 1.8; border: 1px dashed var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
+
+/* Light theme: overrides the custom properties only, so every component
+   follows without touching layout. Chart colours are set from JS. */
+body.theme-light {
+  --bg: #f6f7fb;
+  --grid: rgba(90, 110, 150, .06);
+  --panel: #ffffff;
+  --panel-2: #eef1f7;
+  --line: #d7dce8;
+  --ink: #1c2536;
+  --muted: #6a7489;
+  --a: #0b7fa8;
+  --a-dim: rgba(11, 127, 168, .09);
+  --b: #b5741a;
+  --b-dim: rgba(181, 116, 26, .10);
+  --bad: #cc2b3d;
+  --bad-dim: rgba(204, 43, 61, .08);
+  --good: #17794f;
+  --good-dim: rgba(23, 121, 79, .08);
+  --warn: #9a6f00;
+  --warn-dim: rgba(154, 111, 0, .10);
+}
+body.theme-light .brand-mark { color: #fff; }
+body.theme-light .sev-crit, body.theme-light .sev-warn, body.theme-light .sev-info { color: #fff; }
+body.theme-light .report tr[data-bg] { mix-blend-mode: multiply; }
+
+.theme-toggle { background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; line-height: 1; }
+.theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+
+.brand-ver { font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }

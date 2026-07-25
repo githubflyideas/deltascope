@@ -36,6 +36,11 @@ type Diff struct {
 	A, B     Snapshot      `json:"-"`
 	Sections []SectionDiff `json:"sections"`
 	Total    int           `json:"total"`
+	// Unreadable lists sections that could be collected in one snapshot
+	// but not the other, usually a privilege difference. Their contents
+	// are excluded from the diff because the change is in our access, not
+	// in the machine.
+	Unreadable []string `json:"unreadable,omitempty"`
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -51,6 +56,15 @@ func Compare(a, b Snapshot) Diff {
 		as, bs := amap[name], bmap[name]
 		if as.SkipDiff || bs.SkipDiff {
 			continue // cumulative counters; see CompareProcesses
+		}
+		// If a collector succeeded on one side and was skipped on the
+		// other, the difference is in what we could read, not in the
+		// machine. Snapshots taken with different privileges (the service
+		// user cannot read iptables; a manual run as root can) would
+		// otherwise report every item in the section as added or removed.
+		if (as.Skipped == "") != (bs.Skipped == "") {
+			d.Unreadable = append(d.Unreadable, name)
+			continue
 		}
 		title := bs.Title
 		if title == "" {

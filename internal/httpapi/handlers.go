@@ -32,6 +32,8 @@ type Server struct {
 	Limiter    *auth.RateLimiter
 	Runner     pcp.Runner
 	Archive    string
+	Absent     *pcp.AbsentSet
+	Version    string
 	WebFS      fs.FS
 	SecureCk   bool
 }
@@ -54,6 +56,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/procdiff", s.requireAuth(s.handleProcDiff))
 	mux.Handle("GET /api/statediff", s.requireAuth(s.handleStateDiff))
 	mux.Handle("GET /api/diagnose", s.requireAuth(s.handleDiagnose))
+	mux.HandleFunc("GET /api/version", s.handleVersion)
 
 	return securityHeaders(mux)
 }
@@ -167,6 +170,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"user":    r.Context().Value(ctxUser{}),
 		"archive": s.Archive,
+		"version": s.Version,
 	})
 }
 
@@ -213,7 +217,8 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
 	defer cancel()
 	rep, err := pcp.Compare(ctx, s.Runner, s.Archive, pcp.Windows{
-		AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd, ThresholdPct: threshold,
+		AStart: aStart, AEnd: aEnd, BStart: bStart, BEnd: bEnd,
+		ThresholdPct: threshold, Absent: s.Absent,
 	})
 	if err != nil {
 		log.Printf("diff: %v", err)
@@ -249,6 +254,10 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"series": series, "missing": missing})
 }
 
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{"version": s.Version})
+}
+
 func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 	threshold := 15.0
 	if t := r.URL.Query().Get("threshold"); t != "" {
@@ -260,7 +269,7 @@ func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	d, err := diagnose.Run(ctx, diagnose.Deps{
 		Runner: s.Runner, Archive: s.Archive,
-		StateStore: s.StateStore, Threshold: threshold,
+		StateStore: s.StateStore, Threshold: threshold, Absent: s.Absent,
 	})
 	if err != nil {
 		log.Printf("diagnose: %v", err)

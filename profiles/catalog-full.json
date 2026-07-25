@@ -100,21 +100,24 @@
       "metric": "kernel.all.pswitch",
       "label": "context switches",
       "category": "CPU",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 10000
     },
     {
       "metric": "kernel.all.intr",
       "label": "interrupt rate",
       "category": "CPU",
       "polarity": "neutral",
-      "threshold_pct": 100
+      "threshold_pct": 100,
+      "min_abs": 5000
     },
     {
       "metric": "kernel.all.sysfork",
       "label": "process forks",
       "category": "CPU",
       "polarity": "neutral",
-      "threshold_pct": 100
+      "threshold_pct": 100,
+      "min_abs": 10
     },
     {
       "metric": "kernel.all.uptime",
@@ -411,13 +414,15 @@
       "metric": "disk.all.avactive",
       "label": "disk active time · all disks",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 0.2
     },
     {
       "metric": "disk.all.aveq",
       "label": "I/O queue · all disks",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "disk.dev.read",
@@ -458,13 +463,15 @@
       "metric": "disk.dev.avactive",
       "label": "disk active time · per-disk",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 0.2
     },
     {
       "metric": "disk.dev.aveq",
       "label": "I/O queue · per-disk",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "disk.dm.read",
@@ -498,13 +505,15 @@
       "metric": "disk.dm.avactive",
       "label": "active time · LVM",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 0.2
     },
     {
       "metric": "disk.dm.aveq",
       "label": "I/O queue · LVM",
       "category": "Disk I/O",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "disk.md.read",
@@ -570,19 +579,22 @@
       "metric": "vfs.files.count",
       "label": "open files",
       "category": "Filesystem",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 50000
     },
     {
       "metric": "vfs.inodes.count",
       "label": "kernel inode cache",
       "category": "Filesystem",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 1000000
     },
     {
       "metric": "vfs.dentry.count",
       "label": "dentry cache",
       "category": "Filesystem",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 1000000
     },
     {
       "metric": "filesys.avail",
@@ -682,7 +694,7 @@
       "label": "TCP out RST",
       "category": "Network",
       "polarity": "worse_up",
-      "min_abs": 1
+      "min_abs": 5
     },
     {
       "metric": "network.tcp.timeouts",
@@ -695,35 +707,35 @@
       "label": "TCP established",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10
+      "min_abs": 50
     },
     {
       "metric": "network.tcp.activeopens",
       "label": "TCP active opens",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 1
+      "min_abs": 20
     },
     {
       "metric": "network.tcp.passiveopens",
       "label": "TCP passive opens",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 1
+      "min_abs": 20
     },
     {
       "metric": "network.tcp.estabresets",
       "label": "TCP established resets",
       "category": "Network",
       "polarity": "worse_up",
-      "min_abs": 1
+      "min_abs": 5
     },
     {
       "metric": "network.tcp.attemptfails",
       "label": "TCP attempt fails",
       "category": "Network",
       "polarity": "worse_up",
-      "min_abs": 1
+      "min_abs": 2
     },
     {
       "metric": "network.tcp.listendrops",
@@ -800,21 +812,21 @@
       "label": "TCP sockets in use",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10
+      "min_abs": 50
     },
     {
       "metric": "network.sockstat.tcp.alloc",
       "label": "TCP sockets allocated",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10
+      "min_abs": 50
     },
     {
       "metric": "network.sockstat.tcp.tw",
       "label": "TIME-WAIT connections",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10
+      "min_abs": 500
     },
     {
       "metric": "network.sockstat.tcp.orphan",

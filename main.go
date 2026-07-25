@@ -45,6 +45,8 @@ func main() {
 		cmdCompare(os.Args[2:])
 	case "rules":
 		cmdRules(os.Args[2:])
+	case "version", "-v", "--version":
+		fmt.Printf("deltascope %s\n", version)
 	case "snapshot":
 		cmdSnapshot(os.Args[2:])
 	case "statediff":
@@ -69,6 +71,7 @@ func usage() {
   deltascope user list          list users
   deltascope catalog export     export the built-in metric catalog (edit, load with serve -catalog)
   deltascope rules export       export the built-in diagnosis rules (edit, load with serve -rules)
+  deltascope version            print the version
   deltascope snapshot           capture current whole-machine state and store it
   deltascope statediff          diff two points in time, showing only what changed
   deltascope proc-diff          per-process CPU/memory accounting (needs hotproc archive)
@@ -170,6 +173,8 @@ func cmdServe(args []string) {
 		Limiter:    auth.NewRateLimiter(10, 15*time.Minute),
 		Runner:     pcp.ExecRunner{},
 		Archive:    *archive,
+		Absent:     pcp.NewAbsentSet(),
+		Version:    version,
 		WebFS:      webFS,
 		SecureCk:   *tlsCert != "",
 	}

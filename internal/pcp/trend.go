@@ -17,15 +17,62 @@ type Series struct {
 	Points [][2]any `json:"points"`
 }
 
+// TrendStep picks a sampling step for a window, targeting ~600 points.
+//
+// The lower bound is 60s deliberately: pmlogger's tiered sampling records
+// the warm tier (per-disk, per-NIC, per-core) once a minute, and asking
+// pmrep for a step finer than the archive's own logging interval yields
+// empty output rather than a denser chart. A one-hour window at 60s is 60
+// points, which is plenty for spotting a shape.
 func TrendStep(start, end time.Time) time.Duration {
 	step := end.Sub(start) / 600
 	switch {
-	case step < 10*time.Second:
-		return 10 * time.Second
+	case step < time.Minute:
+		return time.Minute
 	case step > 15*time.Minute:
 		return 15 * time.Minute
 	}
 	return step.Round(time.Second)
+}
+
+// pmrep's CSV timestamp format varies with version and sampling
+// interval: some builds emit fractional seconds, some use an ISO 'T'
+// separator, some append a zone. Accept them all rather than dropping
+// data we could have read.
+var trendTimeLayouts = []string{
+	"2006-01-02 15:04:05",
+	"2006-01-02 15:04:05.000",
+	"2006-01-02 15:04:05.000000",
+	"2006-01-02T15:04:05",
+	"2006-01-02T15:04:05.000",
+	"2006-01-02 15:04:05 MST",
+	"2006-01-02T15:04:05Z07:00",
+	time.RFC3339,
+	"01/02/2006 15:04:05",
+	"15:04:05",
+}
+
+func parseTrendTime(v string) (time.Time, bool) {
+	for _, layout := range trendTimeLayouts {
+		if t, err := time.ParseInLocation(layout, v, time.Local); err == nil {
+			// a time-only layout yields year 0; anchor it to today so the
+			// chart axis stays sane
+			if t.Year() == 0 {
+				now := time.Now()
+				t = time.Date(now.Year(), now.Month(), now.Day(),
+					t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+			}
+			return t, true
+		}
+	}
+	// last resort: a bare epoch (seconds or milliseconds)
+	if f, err := strconv.ParseFloat(v, 64); err == nil && f > 1e8 {
+		if f > 1e12 {
+			return time.UnixMilli(int64(f)), true
+		}
+		return time.Unix(int64(f), 0), true
+	}
+	return time.Time{}, false
 }
 
 var invalidMetricRe = regexp.MustCompile(`Invalid metric ([A-Za-z][A-Za-z0-9._]*)`)
@@ -94,6 +141,14 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 		series[i] = Series{Name: strings.TrimSpace(h)}
 	}
 
+	// Rows whose timestamp we cannot read used to be dropped silently,
+	// which rendered an empty chart with no explanation. Count them and
+	// report, so a format we do not handle is visible instead of looking
+	// like "no data".
+	var skipped int
+	var unparsed string
+	rows := 0
+
 	for {
 		rec, err := cr.Read()
 		if err == io.EOF {
@@ -105,8 +160,12 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 		if len(rec) < 2 {
 			continue
 		}
-		ts, err := time.ParseInLocation("2006-01-02 15:04:05", strings.TrimSpace(rec[0]), time.Local)
-		if err != nil {
+		ts, ok := parseTrendTime(strings.TrimSpace(rec[0]))
+		if !ok {
+			skipped++
+			if unparsed == "" {
+				unparsed = strings.TrimSpace(rec[0])
+			}
 			continue
 		}
 		ms := ts.UnixMilli()
@@ -122,6 +181,10 @@ func ParseTrendCSV(r io.Reader) ([]Series, error) {
 			}
 			series[i-1].Points = append(series[i-1].Points, [2]any{ms, v})
 		}
+		rows++
+	}
+	if rows == 0 && skipped > 0 {
+		return nil, fmt.Errorf("could not read any timestamps from pmrep output (%d rows skipped, first was %q)", skipped, unparsed)
 	}
 	return series, nil
 }

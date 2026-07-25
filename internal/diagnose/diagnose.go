@@ -58,6 +58,7 @@ type Deps struct {
 	Archive    string
 	StateStore *state.Store
 	Threshold  float64
+	Absent     *pcp.AbsentSet
 }
 
 // Run picks windows automatically, runs the three engines concurrently,
@@ -91,7 +92,7 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 		defer wg.Done()
 		rep, err := pcp.Compare(ctx, d.Runner, d.Archive, pcp.Windows{
 			AStart: w.AStart, AEnd: w.AEnd, BStart: w.BStart, BEnd: w.BEnd,
-			ThresholdPct: threshold,
+			ThresholdPct: threshold, Absent: d.Absent,
 		})
 		if err != nil {
 			note("Performance metrics unavailable: " + firstLine(err.Error()))
@@ -242,12 +243,15 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 		}
 	}
 
-	// Related change: prefer a change in the same subsystem as the
-	// sick resource, since that is the plausible cause.
-	if worstBlock != nil {
+	// Related change: only surface a change that plausibly relates to the
+	// sick resource. When a specific resource is degraded, an unrelated
+	// change is noise dressed up as a cause -- a firewall rule edit has
+	// nothing to do with disk queue depth, and pairing them invites a
+	// wrong conclusion. Fall back to "any change" only when no resource
+	// is implicated, where the change itself is the story.
+	if worstBlock != nil && worstBlock.Status != pcp.TriageOK {
 		out.Changed = relatedChange(sd, worstBlock.Key)
-	}
-	if out.Changed == "" {
+	} else {
 		out.Changed = relatedChange(sd, "")
 	}
 }

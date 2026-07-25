@@ -1,5 +1,9 @@
 # deltascope prebuilt binaries
 
+**Binaries now ship as GitHub Release assets, not in this directory.**
+Download them from https://github.com/githubflyideas/deltascope/releases
+
+
 All statically linked, no runtime dependencies (neither glibc nor musl
 needed) -- download and run. The host still needs PCP installed
 (pcp + pcp-system-tools); see deploy.sh at the repo root.
@@ -13,6 +17,7 @@ needed) -- download and run. The host still needs PCP installed
 ## Quick start
 
 ```bash
+curl -LO https://github.com/githubflyideas/deltascope/releases/latest/download/deltascope-linux-amd64
 chmod +x deltascope-linux-amd64
 sudo cp deltascope-linux-amd64 /usr/local/bin/deltascope
 sudo DSCOPE_PASSWORD='a-strong-password' deltascope user add admin -data /var/lib/deltascope
@@ -22,6 +27,7 @@ deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope
 ## Verify
 
 ```bash
+curl -LO https://github.com/githubflyideas/deltascope/releases/latest/download/SHA256SUMS
 sha256sum -c SHA256SUMS
 ```
 

@@ -177,8 +177,10 @@ func TestParseTrendCSV(t *testing.T) {
 
 func TestTrendStep(t *testing.T) {
 	now := time.Now()
-	if s := TrendStep(now.Add(-time.Hour), now); s != 10*time.Second {
-		t.Errorf("1h window step should be 10s, got %v", s)
+	// floor is 60s: a step finer than pmlogger's logging interval returns
+	// empty output rather than a denser chart
+	if s := TrendStep(now.Add(-time.Hour), now); s != time.Minute {
+		t.Errorf("1h window step should be 60s, got %v", s)
 	}
 	if s := TrendStep(now.Add(-14*24*time.Hour), now); s != 15*time.Minute {
 		t.Errorf("14d window step should cap at 15m, got %v", s)
@@ -433,5 +435,144 @@ func TestCatalogMinAbsWired(t *testing.T) {
 		if info.MinAbs <= 0 {
 			t.Errorf("%s has no absolute floor set (MinAbs=%v)", m, info.MinAbs)
 		}
+	}
+}
+
+// TestParseTrendTimeFormats guards the timestamp formats pmrep emits
+// across versions. A format we fail to parse used to be dropped silently,
+// producing an empty chart that looked like "no data in this window".
+func TestParseTrendTimeFormats(t *testing.T) {
+	for _, v := range []string{
+		"2026-07-25 21:53:00",
+		"2026-07-25 21:53:00.000",
+		"2026-07-25 21:53:00.123456",
+		"2026-07-25T21:53:00",
+		"2026-07-25T21:53:00Z",
+		"1784984049",
+		"1784984049000",
+	} {
+		if _, ok := parseTrendTime(v); !ok {
+			t.Errorf("failed to parse timestamp %q", v)
+		}
+	}
+	if _, ok := parseTrendTime("not a time"); ok {
+		t.Error("garbage should not parse")
+	}
+}
+
+// An output whose timestamps we cannot read must report that, not return
+// an empty series that renders as a blank chart.
+func TestParseTrendCSVReportsUnreadableTimestamps(t *testing.T) {
+	csv := "Time,kernel.all.cpu.user\nBOGUS-TS,0.02\nALSO-BOGUS,0.03\n"
+	_, err := ParseTrendCSV(strings.NewReader(csv))
+	if err == nil {
+		t.Fatal("expected an error when no timestamp could be parsed")
+	}
+	if !strings.Contains(err.Error(), "timestamps") {
+		t.Errorf("error should name the cause, got %v", err)
+	}
+}
+
+// TestIdleDiskNotSaturated replays the exact figures from a live host that
+// produced a false CRITICAL "a disk is saturated" verdict. avactive is the
+// fraction of time the device was busy (0.002 == 0.2%) and aveq is the
+// average queue depth (0.005 == essentially nothing queued). The disk was
+// completely idle; the percentage change was large only because the
+// denominator was near zero.
+func TestIdleDiskNotSaturated(t *testing.T) {
+	a := map[string]Value{
+		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.001},
+		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.003},
+		"disk.all.avactive\x00":    {Metric: "disk.all.avactive", Val: 0.001},
+		"disk.all.aveq\x00":        {Metric: "disk.all.aveq", Val: 0.003},
+		"kernel.all.pswitch\x00":   {Metric: "kernel.all.pswitch", Val: 870.9},
+		"network.sockstat.tcp.tw\x00": {Metric: "network.sockstat.tcp.tw", Val: 42.69},
+		"vfs.dentry.count\x00":     {Metric: "vfs.dentry.count", Val: 203200},
+		"network.tcp.outrsts\x00":  {Metric: "network.tcp.outrsts", Val: 0.572},
+	}
+	b := map[string]Value{
+		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.002},
+		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.005},
+		"disk.all.avactive\x00":    {Metric: "disk.all.avactive", Val: 0.002},
+		"disk.all.aveq\x00":        {Metric: "disk.all.aveq", Val: 0.005},
+		"kernel.all.pswitch\x00":   {Metric: "kernel.all.pswitch", Val: 1706.3},
+		"network.sockstat.tcp.tw\x00": {Metric: "network.sockstat.tcp.tw", Val: 140.6},
+		"vfs.dentry.count\x00":     {Metric: "vfs.dentry.count", Val: 246624},
+		"network.tcp.outrsts\x00":  {Metric: "network.tcp.outrsts", Val: 1.654},
+	}
+
+	rows := buildRows(a, b, 15)
+	for _, r := range rows {
+		if r.Verdict != VFlat {
+			name := r.Metric
+			if r.Instance != "" {
+				name += "[" + r.Instance + "]"
+			}
+			t.Errorf("%s on an idle machine should be flat, got %s (%v -> %v)",
+				name, r.Verdict, deref(r.A), deref(r.B))
+		}
+	}
+
+	// and the rule engine must stay silent
+	for _, f := range EvaluateRules(rows) {
+		t.Errorf("no rule should fire on an idle machine, got %q: %s", f.ID, f.Conclusion)
+	}
+}
+
+// The same rule must still fire on a genuinely saturated disk, so the
+// floors suppress noise without suppressing real trouble.
+func TestBusyDiskStillSaturated(t *testing.T) {
+	a := map[string]Value{
+		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.2},
+		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 1.2},
+	}
+	b := map[string]Value{
+		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.94},
+		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 18.5},
+	}
+	rows := buildRows(a, b, 15)
+	fired := false
+	for _, f := range EvaluateRules(rows) {
+		if f.ID == "disk-saturated" {
+			fired = true
+			t.Logf("correctly fired: %s", f.Conclusion)
+		}
+	}
+	if !fired {
+		t.Error("a disk at 94% busy with a queue of 18 must still be reported as saturated")
+	}
+}
+
+func deref(f *float64) float64 {
+	if f == nil {
+		return 0
+	}
+	return *f
+}
+
+func TestAbsentSet(t *testing.T) {
+	a := NewAbsentSet()
+	n := a.Learn([]string{
+		"pmlogsummary: PMNS traversal failed for mem.vmstat.oom_kill: Unknown metric name",
+		"pmlogsummary: PMNS traversal failed for filesys.free: Unknown metric name",
+		"pmlogsummary: PMNS traversal failed for filesys.free: Unknown metric name",
+		"some unrelated warning",
+	})
+	if n != 2 || a.Len() != 2 {
+		t.Fatalf("learned %d (len %d), want 2", n, a.Len())
+	}
+	kept, dropped := a.Filter([]string{"kernel.all.cpu.user", "filesys.free", "mem.vmstat.oom_kill"})
+	if len(kept) != 1 || kept[0] != "kernel.all.cpu.user" {
+		t.Errorf("kept = %v", kept)
+	}
+	if len(dropped) != 2 {
+		t.Errorf("dropped = %v", dropped)
+	}
+	// a cache claiming everything is absent must not blank the report
+	all := NewAbsentSet()
+	all.Learn([]string{"PMNS traversal failed for a.b: Unknown metric name"})
+	kept2, _ := all.Filter([]string{"a.b"})
+	if len(kept2) != 1 {
+		t.Error("filtering everything away must fall back to asking anyway")
 	}
 }

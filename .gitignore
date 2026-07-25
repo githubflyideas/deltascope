@@ -5,3 +5,5 @@
 # local dev
 *.db
 *.key
+dist/deltascope-linux-*
+dist/SHA256SUMS
