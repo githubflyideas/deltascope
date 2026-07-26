@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"regexp"
 	"strings"
 )
 
@@ -103,7 +104,7 @@ func (firewall) Name() string { return "firewall" }
 func (firewall) Collect(ctx context.Context) Section {
 	sec := Section{Name: "firewall", Title: "Firewall"}
 	if out, ok := runCmd(ctx, "nft", "list", "ruleset"); ok && strings.TrimSpace(out) != "" {
-		sec.Items = append(sec.Items, Item{Key: "nftables.ruleset.hash", Value: hashBytes([]byte(out))})
+		sec.Items = append(sec.Items, Item{Key: "nftables.ruleset.hash", Value: hashBytes([]byte(stripNftCounters(out)))})
 		for chain, n := range countNftRules(out) {
 			sec.Items = append(sec.Items, Item{Key: "nftables.rules:" + chain, Value: itoa(n)})
 		}
@@ -117,7 +118,8 @@ func (firewall) Collect(ctx context.Context) Section {
 			}
 			kept = append(kept, l)
 		}
-		sec.Items = append(sec.Items, Item{Key: "iptables.rules.hash", Value: hashBytes([]byte(strings.Join(kept, "\n")))})
+		normalized := stripIptablesCounters(kept)
+		sec.Items = append(sec.Items, Item{Key: "iptables.rules.hash", Value: hashBytes([]byte(strings.Join(normalized, "\n")))})
 		// A hash tells you something changed but not where. Rule counts per
 		// table/chain narrow it down to the chain without storing the rules
 		// themselves, which would put addresses and ports in the snapshot.
@@ -132,6 +134,37 @@ func (firewall) Collect(ctx context.Context) Section {
 		sec.Skipped = "neither nft nor iptables found"
 	}
 	return sec
+}
+
+// stripIptablesCounters removes the live packet/byte counters iptables-save
+// embeds in chain policy lines -- ":INPUT ACCEPT [153:9876]" becomes
+// ":INPUT ACCEPT [-:-]". Those numbers increment continuously as traffic
+// flows through the host and have nothing to do with the ruleset itself,
+// so hashing them made the hash change on essentially every capture even
+// when no rule was ever touched. The chain name and policy (ACCEPT/DROP)
+// are kept, since changing the default policy is a real configuration
+// change worth detecting.
+var iptablesCounterRe = regexp.MustCompile(`^(:\S+ \S+) \[\d+:\d+\]$`)
+
+func stripIptablesCounters(ls []string) []string {
+	out := make([]string, len(ls))
+	for i, l := range ls {
+		if m := iptablesCounterRe.FindStringSubmatch(l); m != nil {
+			out[i] = m[1] + " [-:-]"
+			continue
+		}
+		out[i] = l
+	}
+	return out
+}
+
+// stripNftCounters removes inline "counter packets N bytes N" traffic
+// counters that nft list ruleset prints for any rule using the counter
+// statement, for the same reason as stripIptablesCounters above.
+var nftCounterRe = regexp.MustCompile(`counter packets \d+ bytes \d+`)
+
+func stripNftCounters(s string) string {
+	return nftCounterRe.ReplaceAllString(s, "counter packets - bytes -")
 }
 
 // countIptablesRules counts "-A CHAIN" rules per table/chain from
