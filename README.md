@@ -125,4 +125,4 @@ deltascope rules export   > rules.json            # tune diagnosis rules, load w
 
 ## License
 
-MIT
+apache2.0
