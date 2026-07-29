@@ -299,10 +299,30 @@ func ActiveIDs(active map[string]Active) []string {
 
 func f(v float64) *float64 { return &v }
 
-// States is the built-in catalog. Kept deliberately small for this first
-// pass: enough to prove the chain end-to-end, not a claim of coverage.
-// Thresholds are chosen to describe a genuinely notable condition, not
-// merely a non-zero one.
+// States is the built-in catalog.
+//
+// Thresholds describe a genuinely notable condition, not merely a non-zero
+// one. Three kinds appear, and which one a state uses is a judgement about
+// that specific state rather than a global policy:
+//
+//   - Scale-relative (BGteMachineFrac, BGtePerCPU) for whole-machine sums,
+//     where a bare number is wrong on some class of host by construction.
+//   - Absolute for quantities that already mean the same thing everywhere:
+//     a percentage, a per-core figure, or a counter whose first non-zero
+//     value is the finding (an OOM kill, a listen-queue drop).
+//   - Change-relative for the few conditions that only exist as movement,
+//     principally available memory falling.
+//
+// Several states exist specifically to be used as NEGATIVE conditions.
+// state.cpu.user_high earns its place mainly by separating "this guest is
+// busy" from "this guest is starved", and the pairs
+// saturated/queue_deep, nearly_full/critically_full, and
+// pressure_high/pressure_full exist so a diagnosis can require the
+// stronger form and suppress the weaker one.
+//
+// Counter-valued states are compared against B's mean rate rather than a
+// total, because that is what pmlogsummary reports for a counter: a
+// sustained rate, not the raw increment.
 var States = []State{
 	// ---- CPU ----
 	// kernel.all.cpu.* are whole-machine sums in ms/s, so every threshold
@@ -394,6 +414,53 @@ var States = []State{
 		When: []Cond{{Metric: MetricCoresBusy, BGtePerCPU: f(1)}},
 	},
 
+	{
+		ID:     "state.cpu.load_high",
+		Domain: "cpu",
+		Description: "The load average is several times the core count. Load counts tasks runnable OR blocked on " +
+			"uninterruptible I/O, so it is deliberately kept as a separate state from runqueue_high: a high load " +
+			"with a short run queue means the tasks are stuck in I/O, not competing for CPU, and the two want " +
+			"different investigations.",
+		When: []Cond{{Metric: "kernel.all.load", BGtePerCPU: f(4)}},
+	},
+	{
+		ID:     "state.cpu.blocked_high",
+		Domain: "cpu",
+		Description: "Many tasks are in uninterruptible sleep waiting on I/O. This is the other half of a high load " +
+			"average, and the half that points at storage rather than at compute.",
+		When: []Cond{{Metric: "kernel.all.blocked", BGtePerCPU: f(2)}},
+	},
+	{
+		ID:     "state.cpu.hardirq_high",
+		Domain: "cpu",
+		Description: "A substantial share of CPU is spent servicing hardware interrupts, which points at device or " +
+			"driver behaviour rather than at anything the workload is asking for.",
+		When: []Cond{{Metric: "kernel.all.cpu.irq.hard", BGteMachineFrac: f(0.10)}},
+	},
+	{
+		ID:     "state.cpu.softirq_high",
+		Domain: "cpu",
+		Description: "Softirq processing is consuming real CPU. On most machines this is network receive processing, " +
+			"which is why it pairs with the softnet states to tell a NIC-driven CPU problem from a workload one.",
+		When: []Cond{{Metric: "kernel.all.cpu.irq.soft", BGteMachineFrac: f(0.15)}},
+	},
+	{
+		ID:     "state.cpu.context_switch_storm",
+		Domain: "cpu",
+		Description: "Context switches per core are far above what useful work requires. Scaled per-CPU because the " +
+			"metric is a whole-machine count and a bigger machine legitimately switches more. Typically lock " +
+			"contention, a thundering herd, or far more runnable threads than cores.",
+		When: []Cond{{Metric: "kernel.all.pswitch", BGtePerCPU: f(50000)}},
+	},
+	{
+		ID:     "state.cpu.fork_storm",
+		Domain: "cpu",
+		Description: "Processes are being created at a high sustained rate -- a fork bomb, a runaway supervisor, or a " +
+			"shell loop spawning a command per iteration. Worth naming separately because the CPU cost shows up as " +
+			"system time and looks like generic kernel overhead.",
+		When: []Cond{{Metric: "kernel.all.sysfork", BGtePerCPU: f(100)}},
+	},
+
 	// ---- Memory ----
 	{
 		ID:          "state.mem.available_low",
@@ -426,6 +493,81 @@ var States = []State{
 		When:        []Cond{{Metric: "mem.vmstat.pgmajfault", BGte: f(50)}},
 	},
 
+	{
+		ID:     "state.mem.available_critical",
+		Domain: "memory",
+		Description: "Available memory is at an absolute level where the next large allocation is in danger, " +
+			"regardless of whether it changed. The change-relative available_low cannot see a machine that has been " +
+			"sitting at 200 MB free all week -- that is not a regression, it is a standing risk, and it is exactly " +
+			"the state that turns into an OOM kill under any new load.",
+		When: []Cond{{Metric: "mem.util.available", BLte: f(524288)}}, // 512 MB, in Kbyte
+	},
+	{
+		ID:     "state.mem.swap_exhausted",
+		Domain: "memory",
+		Description: "Swap is nearly full, so the escape valve for memory pressure is gone. Combined with active " +
+			"swapping this means the next pressure event goes straight to the OOM killer.",
+		When: []Cond{{Metric: "swap.free", BLte: f(67108864)}}, // 64 MB, in byte
+	},
+	{
+		ID:     "state.mem.swapping_in",
+		Domain: "memory",
+		Description: "Pages are being read back FROM swap, which is the half of swap activity that actually costs " +
+			"latency. Writing pages out can be housekeeping; reading them back means something is waiting on disk " +
+			"for memory it already thought it had.",
+		When: []Cond{{Metric: "swap.pagesin", BGte: f(1)}},
+	},
+	{
+		ID:     "state.mem.oom_killing",
+		Domain: "memory",
+		Description: "The kernel has killed a process to reclaim memory. Never noise: an OOM kill is a completed " +
+			"failure, not a warning about one.",
+		When: []Cond{{Metric: "mem.vmstat.oom_kill", BGte: f(1)}},
+	},
+	{
+		ID:     "state.mem.kswapd_active",
+		Domain: "memory",
+		Description: "Background reclaim is running. Distinguished from direct reclaim because kswapd works ahead of " +
+			"allocations and costs no latency directly; it means pressure exists but is still being absorbed.",
+		When: []Cond{{Metric: "mem.vmstat.pgscan_kswapd", BGte: f(1000)}},
+	},
+	{
+		ID:     "state.mem.alloc_stalling",
+		Domain: "memory",
+		Description: "Allocations are stalling outright. This is the most direct evidence that memory pressure is " +
+			"costing application latency rather than merely existing.",
+		When: []Cond{{Metric: "mem.vmstat.allocstall", BGte: f(1)}},
+	},
+	{
+		ID:     "state.mem.compaction_stalling",
+		Domain: "memory",
+		Description: "Allocations are stalling in memory compaction, which means physically contiguous pages have " +
+			"run short even though total free memory may look adequate -- fragmentation rather than exhaustion.",
+		When: []Cond{{Metric: "mem.vmstat.compact_stall", BGte: f(1)}},
+	},
+	{
+		ID:     "state.mem.pressure_full",
+		Domain: "memory",
+		Description: "PSI 'full' means EVERY runnable task was stalled on memory at once, not just some. It is a " +
+			"far stronger signal than 'some' and deserves its own name so a diagnosis can require it.",
+		When: []Cond{{Metric: "kernel.all.pressure.memory.full.avg", BGte: f(1)}},
+	},
+	{
+		ID:     "state.mem.dirty_high",
+		Domain: "memory",
+		Description: "A large volume of dirty pages is waiting to be written back. This is where a write-heavy " +
+			"workload turns into a latency spike, when writeback finally throttles the writers.",
+		When: []Cond{{Metric: "mem.util.dirty", BGte: f(524288)}}, // 512 MB in Kbyte
+	},
+	{
+		ID:     "state.mem.writeback_stuck",
+		Domain: "memory",
+		Description: "Pages are sitting in writeback, meaning the kernel has handed them to storage and is waiting. " +
+			"Sustained writeback with dirty pages piling up behind it is storage failing to keep up, not a memory " +
+			"problem as such.",
+		When: []Cond{{Metric: "mem.util.writeback", BGte: f(51200)}}, // 50 MB in Kbyte
+	},
+
 	// ---- I/O ----
 	{
 		ID:          "state.io.saturated",
@@ -449,6 +591,59 @@ var States = []State{
 		When:        []Cond{{Metric: "disk.all.write_bytes", BGte: f(51200)}}, // 50 MB/s
 	},
 
+	{
+		ID:     "state.io.pressure_full",
+		Domain: "io",
+		Description: "PSI 'full' for I/O: every runnable task was stalled on storage simultaneously. On a machine " +
+			"doing anything else at all this is close to a total stall.",
+		When: []Cond{{Metric: "kernel.all.pressure.io.full.avg", BGte: f(5)}},
+	},
+	{
+		ID:     "state.io.queue_deep",
+		Domain: "io",
+		Description: "Requests are queued deeply on a device. Separate from saturated because a deep queue on a " +
+			"device that is NOT busy all the time means slow completions rather than too much work -- a failing " +
+			"disk or a throttled cloud volume.",
+		When: []Cond{{Metric: "disk.dev.aveq", BGte: f(8)}},
+	},
+	{
+		ID:     "state.io.read_heavy",
+		Domain: "io",
+		Description: "Sustained read throughput, the counterpart to write_heavy. Which side dominates changes the " +
+			"investigation entirely: reads point at a cold cache or a scan, writes at ingest or logging.",
+		When: []Cond{{Metric: "disk.all.read_bytes", BGte: f(51200)}}, // 50 MB/s in Kbyte/s
+	},
+	{
+		ID:     "state.io.iops_heavy",
+		Domain: "io",
+		Description: "High IOPS with the throughput that implies small requests -- a random-access pattern, which is " +
+			"what actually exhausts a device's IOPS budget long before its bandwidth.",
+		When: []Cond{{Metric: "disk.all.total", BGte: f(5000)}},
+	},
+	{
+		ID:     "state.fs.nearly_full",
+		Domain: "filesystem",
+		Description: "A filesystem is nearly out of space. Absolute by nature and it does not need to have changed " +
+			"to matter: a filesystem that has been at 96% for a month is a scheduled outage, and a pure change-diff " +
+			"reports it as flat.",
+		When: []Cond{{Metric: "filesys.full", BGte: f(90)}},
+	},
+	{
+		ID:     "state.fs.critically_full",
+		Domain: "filesystem",
+		Description: "A filesystem is effectively out of space. Separated from nearly_full because the severity is " +
+			"different in kind: at this level writes are already failing or about to.",
+		When: []Cond{{Metric: "filesys.full", BGte: f(98)}},
+	},
+	{
+		ID:     "state.fs.fd_high",
+		Domain: "filesystem",
+		Description: "A large number of open file descriptors machine-wide. The failure mode is abrupt -- accept() " +
+			"and open() start failing with EMFILE while every performance metric still looks healthy -- so this is " +
+			"worth surfacing before it is reached.",
+		When: []Cond{{Metric: "vfs.files.count", BGte: f(500000)}},
+	},
+
 	// ---- Network ----
 	{
 		ID:          "state.net.retransmit_high",
@@ -467,5 +662,112 @@ var States = []State{
 		Domain:      "network",
 		Description: "A large TIME-WAIT pool, which combined with high churn can exhaust ephemeral ports.",
 		When:        []Cond{{Metric: "network.sockstat.tcp.tw", BGte: f(10000)}},
+	},
+	{
+		ID:     "state.net.listen_dropping",
+		Domain: "network",
+		Description: "The kernel is dropping incoming connections at the listen queue. Unambiguous: connections that " +
+			"reached this machine were discarded because the application was not accepting fast enough. Clients see " +
+			"this as a timeout, and nothing in a latency percentile explains it.",
+		When: []Cond{{Metric: "network.tcp.listendrops", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.listen_overflow",
+		Domain: "network",
+		Description: "The accept queue itself overflowed, meaning the backlog is too small or the application is " +
+			"stalled in its accept loop. More specific than listendrops and points directly at somaxconn or the " +
+			"listen() backlog.",
+		When: []Cond{{Metric: "network.tcp.listenoverflows", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.syn_flood_defense",
+		Domain: "network",
+		Description: "SYN cookies are being emitted, which the kernel only does once the SYN backlog is full. Either " +
+			"a SYN flood or a legitimate connection surge the backlog is too small for.",
+		When: []Cond{{Metric: "network.tcp.syncookiessent", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.reset_storm",
+		Domain: "network",
+		Description: "This host is sending many RSTs, which usually means connections to closed ports or an " +
+			"application closing sockets with data still queued. Distinct from receiving resets, since this is " +
+			"behaviour originating here.",
+		When: []Cond{{Metric: "network.tcp.outrsts", BGte: f(50)}},
+	},
+	{
+		ID:     "state.net.connect_failing",
+		Domain: "network",
+		Description: "Outbound connection attempts are failing, so this host is the client of something that is " +
+			"down, unreachable, or refusing it. Worth stating plainly because a machine can look perfectly healthy " +
+			"while nothing it depends on is reachable.",
+		When: []Cond{{Metric: "network.tcp.attemptfails", BGte: f(10)}},
+	},
+	{
+		ID:     "state.net.tcp_timeouts_high",
+		Domain: "network",
+		Description: "TCP timers are firing: segments went unacknowledged long enough for a retransmission timeout. " +
+			"A stronger statement than a raw retransmit count, which includes fast retransmits that cost almost " +
+			"nothing.",
+		When: []Cond{{Metric: "network.tcp.timeouts", BGte: f(10)}},
+	},
+	{
+		ID:     "state.net.nic_errors",
+		Domain: "network",
+		Description: "The NIC is reporting frame errors, which is a physical-layer problem -- cable, transceiver, or " +
+			"port -- not something any amount of tuning will fix.",
+		When: []Cond{{Metric: "network.interface.in.errors", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.nic_dropping_in",
+		Domain: "network",
+		Description: "The NIC or its driver is dropping received packets, typically ring-buffer exhaustion when the " +
+			"host cannot drain the queue fast enough. Pairs with softirq_high to distinguish a CPU-starved receive " +
+			"path from a link problem.",
+		When: []Cond{{Metric: "network.interface.in.drops", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.softnet_dropping",
+		Domain: "network",
+		Description: "The kernel's softirq network backlog is overflowing, which is unambiguously a receive-side CPU " +
+			"problem: packets arrived and were discarded because no CPU processed them in time.",
+		When: []Cond{{Metric: "network.softnet.dropped", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.softnet_squeezed",
+		Domain: "network",
+		Description: "Softirq processing is exhausting its per-invocation budget, the precursor to outright backlog " +
+			"drops. A leading indicator of the same problem softnet_dropping reports after the fact.",
+		When: []Cond{{Metric: "network.softnet.time_squeeze", BGte: f(100)}},
+	},
+	{
+		ID:     "state.net.close_wait_leak",
+		Domain: "network",
+		Description: "Many sockets sit in CLOSE-WAIT, which is an application bug rather than a network condition: " +
+			"the peer closed and this side never called close(). Those descriptors are never released, so the machine " +
+			"eventually runs out of them.",
+		When: []Cond{{Metric: "network.tcpconn.close_wait", BGte: f(500)}},
+	},
+	{
+		ID:     "state.net.orphan_high",
+		Domain: "network",
+		Description: "Many orphaned sockets: connections whose owning process is gone but which the kernel is still " +
+			"draining. Past the orphan limit the kernel resets them outright, which surfaces to peers as unexplained " +
+			"connection loss.",
+		When: []Cond{{Metric: "network.sockstat.tcp.orphan", BGte: f(1000)}},
+	},
+	{
+		ID:     "state.net.udp_receive_errors",
+		Domain: "network",
+		Description: "UDP datagrams are being dropped for lack of receive buffer space. Since UDP has no " +
+			"retransmission, these are lost permanently -- which for DNS or metrics traffic means silent, " +
+			"hard-to-attribute failures elsewhere.",
+		When: []Cond{{Metric: "network.udp.recvbuferrors", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.receive_pruning",
+		Domain: "network",
+		Description: "The kernel is pruning data from TCP receive queues under memory pressure, which discards data " +
+			"already acknowledged to the sender. Rare, and always a sign that socket memory limits are being hit.",
+		When: []Cond{{Metric: "network.tcp.prunecalled", BGte: f(1)}},
 	},
 }

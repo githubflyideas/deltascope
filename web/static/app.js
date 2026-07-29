@@ -1221,21 +1221,45 @@ function renderReasoning(d) {
   // audited if the reader can see that it was actually checked.
   const states = d.states || [];
   if (states.length) {
-    const rows = states.map((st) => {
+    const activeCount = states.filter((x) => x.active).length;
+
+    // Grouped by domain, and the active ones first within each group. A flat
+    // list was fine at 17 states; at ~60 the reader needs the shape of the
+    // machine, and the handful that hold must not be buried among the ones
+    // that don't.
+    const byDomain = new Map();
+    states.forEach((st) => {
+      const k = st.domain || "other";
+      if (!byDomain.has(k)) byDomain.set(k, []);
+      byDomain.get(k).push(st);
+    });
+
+    const stateRow = (st) => {
       const cls = st.active ? "v-worse" : "v-flat";
       const mark = st.active ? "\u25CF" : "\u25CB";
       const label = st.active ? t("reasoning_active") : t("reasoning_inactive");
       return `<tr class="${cls}">
         <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code></span>
           ${st.evidence && st.evidence.length ? `<span class="m-name">${st.evidence.map(escapeHtml).join(" \u00b7 ")}</span>` : ""}</td>
-        <td>${escapeHtml(st.domain || "")}</td>
         <td>${label}</td>
       </tr>`;
+    };
+
+    const groups = [...byDomain.entries()].map(([domain, list]) => {
+      const act = list.filter((x) => x.active);
+      const inact = list.filter((x) => !x.active);
+      const rows = [...act, ...inact].map(stateRow).join("");
+      // Groups with nothing active start collapsed: the negative evidence
+      // stays available for auditing without pushing the findings off screen.
+      const open = act.length ? " open" : "";
+      return `<details class="cat-block"${open}><summary class="cat-head">
+        <span>${escapeHtml(domain)}</span><span>${act.length} / ${list.length} ${t("reasoning_active")}</span></summary>
+        <table class="report"><tbody>${rows}</tbody></table></details>`;
     }).join("");
-    const activeCount = states.filter((x) => x.active).length;
-    html += `<details class="cat-block" open><summary class="cat-head">
-      <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length} ${t("reasoning_active")}</span></summary>
-      <table class="report"><tbody>${rows}</tbody></table></details>`;
+
+    html += `<div class="cat-head" style="margin-top:18px">
+        <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length} ${t("reasoning_active")}</span>
+      </div>${groups}`;
   }
 
   $("#reasoningResult").innerHTML = html;

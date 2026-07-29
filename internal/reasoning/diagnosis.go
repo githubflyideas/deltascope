@@ -193,6 +193,58 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.user_high"},
 	},
 
+	{
+		ID:       "diagnosis.load_without_cpu_demand",
+		Severity: "warn",
+		Conclusion: "The load average is high but the CPUs are not the constraint: the tasks counted in it are " +
+			"blocked in uninterruptible I/O, not queued for compute, so adding CPU would change nothing",
+		Next:        []string{"vmstat 1 5", "iostat -x 1 5", "ps -eo state,pid,comm | awk '$1 ~ /D/'"},
+		RequiresAll: []string{"state.cpu.load_high", "state.cpu.blocked_high"},
+		// If the run queue is genuinely long, the load is about CPU after
+		// all and the CPU diagnoses describe it.
+		RequiresNone: []string{"state.cpu.runqueue_high"},
+	},
+	{
+		ID:       "diagnosis.interrupt_overhead",
+		Severity: "warn",
+		Conclusion: "CPU is being consumed servicing interrupts rather than running work, which points at a device, " +
+			"a driver, or an interrupt affinity problem rather than at anything the workload is asking for",
+		Next:         []string{"cat /proc/interrupts", "mpstat -I SUM -P ALL 1 5", "ethtool -S <nic> | grep -i irq"},
+		RequiresAny:  []string{"state.cpu.hardirq_high", "state.cpu.softirq_high"},
+		RequiresNone: []string{"state.cpu.user_high"},
+	},
+	{
+		ID:       "diagnosis.network_receive_cpu_bound",
+		Severity: "crit",
+		Conclusion: "The receive path is CPU-bound: softirq processing cannot keep up with arriving packets and the " +
+			"kernel is discarding them, so this is packet loss caused by this machine rather than by the network",
+		Next: []string{
+			"cat /proc/net/softnet_stat",
+			"mpstat -P ALL 1 5",
+			"check RPS/RSS queue spreading and NIC IRQ affinity",
+		},
+		RequiresAll: []string{"state.cpu.softirq_high"},
+		RequiresAny: []string{"state.net.softnet_dropping", "state.net.softnet_squeezed", "state.net.nic_dropping_in"},
+	},
+	{
+		ID:       "diagnosis.scheduler_thrashing",
+		Severity: "warn",
+		Conclusion: "Context switching far exceeds what useful work requires while tasks queue for CPU: threads are " +
+			"spending their time being scheduled rather than running, typically lock contention or many more " +
+			"runnable threads than cores",
+		Next:        []string{"pidstat -w 1 5", "perf sched latency", "top -H"},
+		RequiresAll: []string{"state.cpu.context_switch_storm"},
+		RequiresAny: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
+	},
+	{
+		ID:       "diagnosis.process_churn",
+		Severity: "warn",
+		Conclusion: "Processes are being created at a rate that is itself the workload: the CPU cost appears as " +
+			"kernel time and is easily mistaken for generic overhead, but the cause is the fork rate",
+		Next:        []string{"execsnoop", "pidstat 1 5", "ps -ef --forest | head -40"},
+		RequiresAll: []string{"state.cpu.fork_storm"},
+	},
+
 	// ---- Memory ----
 	{
 		ID:       "diagnosis.memory_pressure_swapping",
@@ -223,6 +275,87 @@ var Diagnoses = []Diagnosis{
 		RequiresAny: []string{"state.mem.pressure_high", "state.mem.swapping", "state.mem.available_low"},
 	},
 
+	{
+		ID:       "diagnosis.oom_killing",
+		Severity: "crit",
+		Conclusion: "The kernel has killed at least one process to reclaim memory. This is not a warning about a " +
+			"future failure -- something has already been terminated, and whatever it was is now missing",
+		Next: []string{
+			"dmesg -T | grep -i -A5 'killed process'",
+			"journalctl -k --since '1 hour ago' | grep -i oom",
+			"ps aux --sort=-rss | head -15",
+		},
+		RequiresAll: []string{"state.mem.oom_killing"},
+	},
+	{
+		ID:       "diagnosis.memory_exhaustion_imminent",
+		Severity: "crit",
+		Conclusion: "Available memory is critically low and swap has no room left: the escape valve is gone, so the " +
+			"next significant allocation goes to the OOM killer rather than to swap",
+		Next:        []string{"free -m", "ps aux --sort=-rss | head -15", "cat /proc/meminfo"},
+		RequiresAll: []string{"state.mem.available_critical", "state.mem.swap_exhausted"},
+		// Already-killing is a stronger and separate statement.
+		RequiresNone: []string{"state.mem.oom_killing"},
+	},
+	{
+		ID:       "diagnosis.standing_memory_risk",
+		Severity: "warn",
+		Conclusion: "Available memory sits at a level where any new load will fail, with no regression to point at: " +
+			"this is a standing condition rather than a change, and a comparison against yesterday cannot see it " +
+			"because yesterday was the same",
+		Next:        []string{"free -m", "ps aux --sort=-rss | head -15", "review the machine's memory sizing"},
+		RequiresAll: []string{"state.mem.available_critical"},
+		RequiresNone: []string{
+			"state.mem.oom_killing", "state.mem.swapping", "state.mem.available_low",
+			"state.mem.swap_exhausted",
+		},
+	},
+	{
+		ID:       "diagnosis.swap_thrashing",
+		Severity: "crit",
+		Conclusion: "Pages are being read back from swap, so tasks are waiting on disk for memory they already " +
+			"believed they had -- the latency cost of swap, as opposed to the housekeeping cost of merely writing " +
+			"pages out",
+		Next:        []string{"vmstat 1 5", "sar -W 1 5", "ps aux --sort=-rss | head -15"},
+		RequiresAll: []string{"state.mem.swapping_in"},
+		RequiresAny: []string{"state.mem.pressure_high", "state.mem.available_low", "state.mem.major_faults_high"},
+	},
+	{
+		ID:       "diagnosis.allocation_stalling",
+		Severity: "crit",
+		Conclusion: "Allocations are stalling in the kernel: memory pressure is no longer merely present, it is " +
+			"costing application latency directly on every allocation that has to wait",
+		Next:        []string{"grep -E 'allocstall|pgscan' /proc/vmstat", "sar -B 1 5", "free -m"},
+		RequiresAny: []string{"state.mem.alloc_stalling", "state.mem.pressure_full"},
+	},
+	{
+		ID:       "diagnosis.memory_fragmentation",
+		Severity: "warn",
+		Conclusion: "Allocations are stalling in compaction rather than for lack of memory: contiguous pages have run " +
+			"short, which is fragmentation and behaves differently from exhaustion -- free memory can look adequate " +
+			"the whole time",
+		Next: []string{
+			"cat /proc/buddyinfo",
+			"grep -E 'compact_' /proc/vmstat",
+			"cat /sys/kernel/mm/transparent_hugepage/enabled",
+		},
+		RequiresAll:  []string{"state.mem.compaction_stalling"},
+		RequiresNone: []string{"state.mem.available_critical"},
+	},
+	{
+		ID:       "diagnosis.writeback_backpressure",
+		Severity: "warn",
+		Conclusion: "Dirty pages are accumulating faster than storage can absorb them, so writers will be throttled " +
+			"when the dirty limit is reached -- a latency cliff rather than a gradual slowdown",
+		Next: []string{
+			"grep -E 'Dirty|Writeback' /proc/meminfo",
+			"iostat -x 1 5",
+			"sysctl vm.dirty_ratio vm.dirty_background_ratio",
+		},
+		RequiresAll: []string{"state.mem.dirty_high"},
+		RequiresAny: []string{"state.mem.writeback_stuck", "state.io.saturated", "state.io.pressure_high"},
+	},
+
 	// ---- I/O ----
 	{
 		ID:       "diagnosis.io_bound",
@@ -251,6 +384,58 @@ var Diagnoses = []Diagnosis{
 		RequiresAll: []string{"state.io.write_heavy", "state.io.pressure_high"},
 	},
 
+	{
+		ID:       "diagnosis.storage_degraded",
+		Severity: "crit",
+		Conclusion: "A device has requests queued deeply while not being busy enough to justify it: completions are " +
+			"slow rather than demand being high, which is a failing device, a throttled cloud volume, or a " +
+			"misbehaving network filesystem -- not a workload problem",
+		Next: []string{
+			"iostat -x 1 5",
+			"dmesg -T | tail -50",
+			"smartctl -a /dev/<dev>",
+			"check the volume's provisioned IOPS and burst balance",
+		},
+		RequiresAll:  []string{"state.io.queue_deep"},
+		RequiresNone: []string{"state.io.saturated"},
+	},
+	{
+		ID:       "diagnosis.random_io_bound",
+		Severity: "warn",
+		Conclusion: "The I/O pattern is small and random rather than sequential, which exhausts a device's IOPS " +
+			"budget long before its bandwidth -- throughput graphs will look unremarkable while the device is at its " +
+			"limit",
+		Next:        []string{"iostat -x 1 5", "biolatency", "pidstat -d 1 5"},
+		RequiresAll: []string{"state.io.iops_heavy"},
+		RequiresAny: []string{"state.io.saturated", "state.io.pressure_high", "state.io.queue_deep"},
+	},
+	{
+		ID:       "diagnosis.filesystem_full",
+		Severity: "crit",
+		Conclusion: "A filesystem is effectively out of space: writes are failing or about to. Nothing about this is " +
+			"a performance question, and no performance metric will report it",
+		Next:        []string{"df -h", "du -xh --max-depth=2 / | sort -rh | head -20", "lsof +L1"},
+		RequiresAll: []string{"state.fs.critically_full"},
+	},
+	{
+		ID:       "diagnosis.filesystem_filling",
+		Severity: "warn",
+		Conclusion: "A filesystem is nearly full. This is a standing condition rather than a regression, so a window " +
+			"comparison reports it as flat right up until the moment writes start failing",
+		Next:        []string{"df -h", "du -xh --max-depth=2 / | sort -rh | head -20"},
+		RequiresAll: []string{"state.fs.nearly_full"},
+		// The critical form says it better.
+		RequiresNone: []string{"state.fs.critically_full"},
+	},
+	{
+		ID:       "diagnosis.fd_exhaustion_risk",
+		Severity: "warn",
+		Conclusion: "Open file descriptors are accumulating machine-wide. The failure is abrupt when it comes -- " +
+			"accept() and open() begin failing while every performance metric still looks healthy",
+		Next:        []string{"lsof | wc -l", "sysctl fs.file-nr fs.file-max", "ls /proc/*/fd | wc -l"},
+		RequiresAny: []string{"state.fs.fd_high", "state.net.close_wait_leak"},
+	},
+
 	// ---- Network ----
 	{
 		ID:       "diagnosis.network_loss",
@@ -267,5 +452,94 @@ var Diagnoses = []Diagnosis{
 			"of exhaustion, which surfaces as intermittent connection failures rather than as slowness",
 		Next:        []string{"ss -s", "sysctl net.ipv4.ip_local_port_range", "sysctl net.ipv4.tcp_tw_reuse"},
 		RequiresAll: []string{"state.net.conn_churn_high", "state.net.timewait_high"},
+	},
+	{
+		ID:       "diagnosis.accept_queue_overflow",
+		Severity: "crit",
+		Conclusion: "Incoming connections are being dropped at the listen queue: they reached this machine and were " +
+			"discarded because the application was not accepting fast enough. Clients experience a timeout, and no " +
+			"latency percentile on this host will explain it because the request never became a request",
+		Next: []string{
+			"ss -ltn",
+			"sysctl net.core.somaxconn net.ipv4.tcp_max_syn_backlog",
+			"check the application's listen() backlog and accept loop",
+		},
+		RequiresAny: []string{"state.net.listen_dropping", "state.net.listen_overflow"},
+	},
+	{
+		ID:       "diagnosis.syn_backlog_saturated",
+		Severity: "warn",
+		Conclusion: "SYN cookies are being emitted, so the SYN backlog filled: either a SYN flood or a legitimate " +
+			"connection surge the backlog is too small for. The two look identical here and are told apart by " +
+			"whether the sources are plausible",
+		Next: []string{
+			"ss -s",
+			"sysctl net.ipv4.tcp_max_syn_backlog",
+			"ss -tn state syn-recv | awk '{print $4}' | cut -d: -f1 | sort | uniq -c | sort -rn | head",
+		},
+		RequiresAll: []string{"state.net.syn_flood_defense"},
+	},
+	{
+		ID:       "diagnosis.nic_link_problem",
+		Severity: "crit",
+		Conclusion: "The NIC is reporting frame errors, which is a physical-layer fault -- cable, transceiver, or " +
+			"switch port. No amount of kernel or application tuning addresses this",
+		Next:        []string{"ip -s link", "ethtool <nic>", "ethtool -S <nic> | grep -i err"},
+		RequiresAll: []string{"state.net.nic_errors"},
+	},
+	{
+		ID:       "diagnosis.dependency_unreachable",
+		Severity: "warn",
+		Conclusion: "Outbound connection attempts from this host are failing, so something it depends on is down, " +
+			"unreachable, or refusing connections. This machine can look entirely healthy while nothing it needs " +
+			"is answering",
+		Next: []string{
+			"ss -tn state syn-sent",
+			"dmesg -T | tail -30",
+			"check DNS resolution and the health of upstream services",
+		},
+		RequiresAll: []string{"state.net.connect_failing"},
+	},
+	{
+		ID:       "diagnosis.socket_descriptor_leak",
+		Severity: "warn",
+		Conclusion: "Sockets are accumulating in CLOSE-WAIT: the peer closed and this side never called close(). " +
+			"That is an application bug rather than a network condition, and those descriptors are never reclaimed",
+		Next: []string{
+			"ss -tanp state close-wait | head -20",
+			"ss -tan state close-wait | wc -l",
+		},
+		RequiresAll: []string{"state.net.close_wait_leak"},
+	},
+	{
+		ID:       "diagnosis.udp_datagram_loss",
+		Severity: "warn",
+		Conclusion: "UDP datagrams are being dropped for lack of receive buffer space. UDP does not retransmit, so " +
+			"these are gone for good -- for DNS or metrics traffic that means silent failures that will be " +
+			"attributed to something else entirely",
+		Next:        []string{"netstat -su", "ss -uan", "sysctl net.core.rmem_max net.core.rmem_default"},
+		RequiresAll: []string{"state.net.udp_receive_errors"},
+	},
+	{
+		ID:       "diagnosis.socket_memory_pressure",
+		Severity: "crit",
+		Conclusion: "The kernel is pruning TCP receive queues, discarding data it had already acknowledged to the " +
+			"sender. Socket memory limits are being hit, and the peer has no way to know its data was dropped",
+		Next: []string{
+			"sysctl net.ipv4.tcp_mem net.core.rmem_max",
+			"netstat -s | grep -i prune",
+			"ss -tm | head -20",
+		},
+		RequiresAll: []string{"state.net.receive_pruning"},
+	},
+	{
+		ID:       "diagnosis.tcp_path_degraded",
+		Severity: "crit",
+		Conclusion: "TCP retransmission timers are firing, not just fast retransmits: segments are going " +
+			"unacknowledged long enough to stall the connections carrying them. Each timeout costs at least a " +
+			"retransmission timeout of latency, which no application tuning recovers",
+		Next:        []string{"ss -ti | grep -B1 -i retrans", "mtr -rw <peer>", "netstat -s | grep -i timeout"},
+		RequiresAll: []string{"state.net.tcp_timeouts_high"},
+		RequiresAny: []string{"state.net.retransmit_high", "state.net.nic_dropping_in"},
 	},
 }
