@@ -133,10 +133,40 @@ func (processes) Collect(ctx context.Context) Section {
 		sec.Items = append(sec.Items, procItem(c.name, c.a.ticks, c.a.rssKB, c.a.startAt, c.a.count))
 	}
 
+	// The host's uptime at capture time is what lets a later comparison turn
+	// a process's start tick into a wall-clock instant. Without it a
+	// cumulative tick counter is only comparable against another reading of
+	// the same process -- precisely the assumption that fails for a process
+	// that started mid-window.
+	if up, ok := readUptimeSeconds(); ok {
+		sec.Meta = map[string]string{"uptime_sec": strconv.FormatFloat(up, 'f', 2, 64)}
+	}
+
 	if len(sec.Items) == 0 {
 		sec.Skipped = "no userspace processes found"
 	}
 	return sec
+}
+
+// readUptimeSeconds reads the host's uptime. /proc/uptime is used rather
+// than /proc/stat's btime because it needs no clock arithmetic and is
+// immune to the wall clock being stepped by NTP between snapshots -- the
+// process start tick it will be combined with is measured on the same
+// monotonic boot timeline.
+func readUptimeSeconds() (float64, bool) {
+	raw, ok := readFile("/proc/uptime")
+	if !ok {
+		return 0, false
+	}
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil || v <= 0 {
+		return 0, false
+	}
+	return v, true
 }
 
 // procWeight ranks by memory footprint plus CPU consumed, in roughly

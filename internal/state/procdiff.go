@@ -3,6 +3,7 @@ package state
 import (
 	"math"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -22,12 +23,12 @@ type ProcRow struct {
 	Name string `json:"name"`
 	// CPUPctA/B are percent of one core, derived from the cumulative tick
 	// delta across the interval between the two snapshots.
-	CPUPctA   *float64 `json:"cpu_pct_a"`
-	CPUPctB   *float64 `json:"cpu_pct_b"`
-	CPUDelta  *float64 `json:"cpu_delta_pct"`
-	RSSKBA    *float64 `json:"rss_kb_a"`
-	RSSKBB    *float64 `json:"rss_kb_b"`
-	RSSDelta  *float64 `json:"rss_delta_pct"`
+	CPUPctA   *float64    `json:"cpu_pct_a"`
+	CPUPctB   *float64    `json:"cpu_pct_b"`
+	CPUDelta  *float64    `json:"cpu_delta_pct"`
+	RSSKBA    *float64    `json:"rss_kb_a"`
+	RSSKBB    *float64    `json:"rss_kb_b"`
+	RSSDelta  *float64    `json:"rss_delta_pct"`
 	Verdict   ProcVerdict `json:"verdict"`
 	Restarted bool        `json:"restarted"`
 	Instances int         `json:"instances"`
@@ -48,13 +49,13 @@ type ProcRow struct {
 type ProcDiff struct {
 	// The four snapshots involved: CPU rate needs a pair of snapshots per
 	// window, since a rate requires two cumulative readings.
-	AStart time.Time `json:"a_start"`
-	AEnd   time.Time `json:"a_end"`
-	BStart time.Time `json:"b_start"`
-	BEnd   time.Time `json:"b_end"`
-	Rows         []ProcRow `json:"rows"`
-	Restarts     []ProcRow `json:"restarts"`
-	Note         string    `json:"note,omitempty"`
+	AStart   time.Time `json:"a_start"`
+	AEnd     time.Time `json:"a_end"`
+	BStart   time.Time `json:"b_start"`
+	BEnd     time.Time `json:"b_end"`
+	Rows     []ProcRow `json:"rows"`
+	Restarts []ProcRow `json:"restarts"`
+	Note     string    `json:"note,omitempty"`
 }
 
 const clockTicksPerSec = 100 // USER_HZ, fixed at 100 on all mainstream Linux
@@ -78,6 +79,40 @@ func procSection(s Snapshot) map[string]Item {
 	return nil
 }
 
+// procUptime reads the host uptime recorded alongside the process section.
+// Absent in snapshots taken before that field existed, which is why every
+// caller must handle !ok rather than treating 0 as a valid reading.
+func procUptime(s Snapshot) (float64, bool) {
+	for _, sec := range s.Sections {
+		if sec.Name != "processes" {
+			continue
+		}
+		v, ok := sec.Meta["uptime_sec"]
+		if !ok {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || f <= 0 {
+			return 0, false
+		}
+		return f, true
+	}
+	return 0, false
+}
+
+// startedAgo converts a process start tick into how long before the
+// snapshot the process began. Both quantities live on the same monotonic
+// boot timeline, so this is unaffected by the wall clock being stepped.
+func startedAgo(startTicks uint64, uptimeSec float64) time.Duration {
+	age := uptimeSec - float64(startTicks)/clockTicksPerSec
+	if age < 0 {
+		// Cannot happen on a consistent pair of readings; if it does the
+		// snapshot is self-inconsistent and we decline to guess.
+		return 0
+	}
+	return time.Duration(age * float64(time.Second))
+}
+
 // CompareProcesses computes per-process CPU rate and memory for two
 // windows, each defined by a pair of snapshots (a rate needs two
 // cumulative readings). Window A is a1->a2, window B is b1->b2.
@@ -97,15 +132,37 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 	elapsedA := a2.Taken.Sub(a1.Taken)
 	elapsedB := b2.Taken.Sub(b1.Taken)
 
+	// Uptime at the end of each window, used to date a process that did not
+	// exist at the start of it. Absent on older snapshots, in which case the
+	// lifetime-bounded path is simply unavailable.
+	upA, hasUpA := procUptime(a2)
+	upB, hasUpB := procUptime(b2)
+
 	// rate computes a window's CPU percent and end-of-window RSS.
-	rate := func(first, second map[string]Item, name string, elapsed time.Duration) (cpu, rss *float64, start uint64, inst int, present bool) {
+	// rate computes a window's CPU percent and end-of-window RSS.
+	//
+	// Two readings of the same process give an exact rate over the interval,
+	// and that is always preferred. When they are unavailable -- the process
+	// did not exist at the start of the window, or the name's aggregate
+	// lifetime shifted because a transient instance came or went -- the
+	// process's own lifetime provides a second, weaker basis: total ticks
+	// consumed over the time it has actually been alive. That is a lifetime
+	// average rather than a windowed rate, so it is reported as approximate.
+	//
+	// Returning nothing in those cases, which is what this did before, has a
+	// specific consequence: culpritByCPU skips rows with no CPU figure, so a
+	// process that started mid-window and immediately pegged a core could not
+	// be named as the culprit no matter how much CPU it burned. A runaway
+	// process is *more* likely to be newly started, not less.
+	rate := func(first, second map[string]Item, name string, elapsed time.Duration,
+		uptime float64, hasUptime bool) (cpu, rss *float64, start uint64, inst int, approx, present bool) {
 		i2, ok2 := second[name]
 		if !ok2 {
-			return nil, nil, 0, 0, false
+			return nil, nil, 0, 0, false, false
 		}
 		t2, r2, s2, c2, ok := DecodeProcItem(i2.Value)
 		if !ok {
-			return nil, nil, 0, 0, false
+			return nil, nil, 0, 0, false, false
 		}
 		rssv := float64(r2)
 		rss = &rssv
@@ -116,11 +173,22 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 				if t1, _, s1, _, ok := DecodeProcItem(i1.Value); ok && s1 == s2 && t2 >= t1 {
 					// same process lifetime and monotonic ticks: a valid rate
 					c := cpuPercent(t2-t1, elapsed)
-					cpu = &c
+					return &c, rss, start, inst, false, present
 				}
 			}
 		}
-		return cpu, rss, start, inst, present
+
+		// Fall back to the lifetime average, bounded by the window. A
+		// long-lived process's whole-life average says nothing about what it
+		// did in the last hour; only a process born inside the window has a
+		// lifetime short enough for the average to describe the window at all.
+		if hasUptime && s2 > 0 {
+			if age := startedAgo(s2, uptime); age > 0 && age <= elapsed {
+				c := cpuPercent(t2, age)
+				return &c, rss, start, inst, true, present
+			}
+		}
+		return nil, rss, start, inst, false, present
 	}
 
 	names := map[string]bool{}
@@ -132,16 +200,17 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 	}
 
 	for name := range names {
-		cpuA, rssA, startA, _, inA := rate(pa1, pa2, name, elapsedA)
-		cpuB, rssB, startB, instB, inB := rate(pb1, pb2, name, elapsedB)
+		cpuA, rssA, startA, _, _, inA := rate(pa1, pa2, name, elapsedA, upA, hasUpA)
+		cpuB, rssB, startB, instB, approxB, inB := rate(pb1, pb2, name, elapsedB, upB, hasUpB)
 
 		row := ProcRow{
-			Name:      name,
-			CPUPctA:   cpuA,
-			CPUPctB:   cpuB,
-			RSSKBA:    rssA,
-			RSSKBB:    rssB,
-			Instances: instB,
+			Name:       name,
+			CPUPctA:    cpuA,
+			CPUPctB:    cpuB,
+			RSSKBA:     rssA,
+			RSSKBB:     rssB,
+			Instances:  instB,
+			CPUApproxB: approxB,
 		}
 		if inA && inB && startA > 0 && startB > startA {
 			row.Restarted = true

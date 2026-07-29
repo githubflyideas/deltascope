@@ -28,6 +28,17 @@ type Section struct {
 	// it. Such sections get a purpose-built comparison instead (see
 	// CompareProcesses).
 	SkipDiff bool `json:"skip_diff,omitempty"`
+	// Meta carries facts about the section as a whole rather than about any
+	// one Item. The process section uses it to record the host's uptime,
+	// which is what makes a cumulative per-process tick counter convertible
+	// into a wall-clock start time.
+	//
+	// Deliberately not an Item: Items are diffed and displayed by key, and
+	// process Items are keyed by comm, so any reserved key we picked could
+	// collide with a real process name. Snapshots written before this field
+	// existed have it nil, and every reader must treat absence as
+	// "unknown" rather than as zero.
+	Meta map[string]string `json:"meta,omitempty"`
 }
 
 // Snapshot is a full flattening of a machine's enumerable state at one point in time.
