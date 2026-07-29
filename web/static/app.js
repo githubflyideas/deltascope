@@ -859,9 +859,28 @@ const PV = {
 };
 
 function pctVal(v) { return v === null || v === undefined ? "\u2014" : v.toFixed(1) + "%"; }
+// A process born inside the window has no baseline reading, so its CPU
+// figure is a lifetime average rather than a rate measured over the window.
+// It is the best number available and must not be presented as if it were
+// measured, hence the tilde and the tooltip.
+function pctValApprox(v, approx) {
+  if (v === null || v === undefined) return "\u2014";
+  if (!approx) return pctVal(v);
+  return `<span class="approx" title="${escapeHtml(t("approx_hint"))}">~${v.toFixed(1)}%</span>`;
+}
 function deltaVal(v) {
   if (v === null || v === undefined) return "\u2014";
   return (v > 0 ? "+" : "") + v.toFixed(0) + "%";
+}
+// A process that rose from an idle baseline has no percentage change to
+// show -- the change from zero is infinite. Printing an em dash there makes
+// a flagged row look flagged for no reason, so the reason is named instead.
+// The two value columns already carry the numbers.
+function deltaValFrom(v, fromZero) {
+  if ((v === null || v === undefined) && fromZero) {
+    return `<span class="from-idle">${t("from_idle")}</span>`;
+  }
+  return deltaVal(v);
 }
 function memVal(kb) {
   if (kb === null || kb === undefined) return "\u2014";
@@ -901,10 +920,10 @@ function renderProcDiff(rep) {
     const inst = r.instances > 1 ? ` <code>${r.instances}\u00d7</code>` : "";
     return `<tr class="${v.cls}">
       <td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}${inst}</td>
-      <td>${pctVal(r.cpu_pct_a)}</td><td>${pctVal(r.cpu_pct_b)}</td>
-      <td class="delta-cell">${deltaVal(r.cpu_delta_pct)}</td>
+      <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td>
+      <td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
       <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
-      <td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td>
+      <td class="delta-cell">${deltaValFrom(r.rss_delta_pct, r.from_zero)}</td>
       <td>${t(v.key)}</td>
     </tr>`;
   }).join("");
@@ -1056,8 +1075,8 @@ function renderDiagnosis(d) {
       const v = PV[r.verdict] || PV.flat;
       const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
       return `<tr class="${v.cls}"><td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}</td>
-        <td>${pctVal(r.cpu_pct_a)}</td><td>${pctVal(r.cpu_pct_b)}</td><td class="delta-cell">${deltaVal(r.cpu_delta_pct)}</td>
-        <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td><td class="delta-cell">${deltaVal(r.rss_delta_pct)}</td></tr>`;
+        <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td><td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
+        <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td><td class="delta-cell">${deltaValFrom(r.rss_delta_pct, r.from_zero)}</td></tr>`;
     }).join("");
     html += `<details class="cat-block" open><summary class="cat-head">
       <span>${t("per_process")}</span><span>${d.processes.length} ${t("shown")}</span></summary>

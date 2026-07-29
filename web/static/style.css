@@ -301,6 +301,15 @@ tr[hidden] { display: none; }
 .restart-chip { font-family: var(--mono); font-size: 14px; background: var(--bg); padding: 3px 10px; border-radius: 999px; }
 .restart-chip em { color: var(--muted); font-style: normal; }
 .restart-tag { color: #b28dff; font-weight: 700; cursor: help; }
+.report .approx { border-bottom: 1px dotted currentColor; cursor: help; opacity: .9; }
+/* A rise from an idle baseline has no percentage to show. This label sits
+   in the delta column in place of a number, so it must read as an
+   explanation rather than as a value -- hence the smaller, unbolded,
+   italic treatment against the bold numbers around it. */
+.report td.delta-cell .from-idle {
+  font-size: 11px; font-style: italic; font-weight: 500;
+  letter-spacing: .02em; opacity: .85; white-space: nowrap;
+}
 .proc-name { text-align: left; font-family: var(--sans); }
 .proc-hint { color: var(--muted); font-size: 14.5px; border: 1px dashed var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 8px; line-height: 1.6; }
 

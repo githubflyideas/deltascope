@@ -29,8 +29,19 @@ type ProcRow struct {
 	RSSKBB    *float64 `json:"rss_kb_b"`
 	RSSDelta  *float64 `json:"rss_delta_pct"`
 	Verdict   ProcVerdict `json:"verdict"`
-	Restarted bool     `json:"restarted"`
-	Instances int      `json:"instances"`
+	Restarted bool        `json:"restarted"`
+	Instances int         `json:"instances"`
+	// CPUApproxB marks CPUPctB as a lifetime average over a process born
+	// inside the window, rather than an exact rate between two readings.
+	// It is the honest figure available for a process with no baseline
+	// reading, and the UI must label it so nobody reads it as measured.
+	CPUApproxB bool `json:"cpu_approx_b,omitempty"`
+	// FromZero marks a row judged worse on absolute evidence because it
+	// rose from an idle baseline, where no percentage change exists. The
+	// UI and the JSON export need this to explain why a row with an empty
+	// delta column is nonetheless flagged; without it the report looks
+	// like it flagged a row for no reason.
+	FromZero bool `json:"from_zero,omitempty"`
 }
 
 // ProcDiff is the full process comparison.
@@ -144,7 +155,10 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 		default:
 			row.CPUDelta = pctChange(cpuA, cpuB, minCPUPct)
 			row.RSSDelta = pctChange(rssA, rssB, minRSSKB)
-			row.Verdict = worstOf(row.CPUDelta, row.RSSDelta, thresholdPct)
+			cpuM := measure{delta: row.CPUDelta, a: cpuA, b: cpuB, minAbs: minCPUPct, burstAt: cpuBurstFloorPct}
+			rssM := measure{delta: row.RSSDelta, a: rssA, b: rssB, minAbs: minRSSKB, burstAt: rssBurstFloorKB}
+			row.Verdict = worstOf(cpuM, rssM, thresholdPct)
+			row.FromZero = emergedFromZero(cpuM) || emergedFromZero(rssM)
 		}
 		d.Rows = append(d.Rows, row)
 		if row.Restarted {
@@ -178,21 +192,81 @@ func pctChange(a, b *float64, minAbs float64) *float64 {
 	return &d
 }
 
-func worstOf(cpuD, rssD *float64, threshold float64) ProcVerdict {
+// Burst floors are the absolute levels at which a rise from an idle
+// baseline is a finding in its own right.
+//
+// They sit well above the significance floors that gate the ratio path,
+// and that gap is deliberate. A ratio carries two pieces of evidence --
+// the relative size of the change AND the absolute level -- while a rise
+// from zero carries only the second, so it has to be stronger to earn the
+// same verdict. 25% of a core sustained across a window does not happen by
+// accident; 1% does.
+const (
+	cpuBurstFloorPct = 25     // percent of one core
+	rssBurstFloorKB  = 262144 // 256 MB
+)
+
+// measure is one dimension of a process row with everything needed to
+// judge it: the ratio if one could be computed, the raw values, and the
+// two floors.
+type measure struct {
+	delta   *float64
+	a, b    *float64
+	minAbs  float64
+	burstAt float64
+}
+
+// worstOf reduces a row's dimensions to a single verdict.
+//
+// The subtle case is a nil ratio. pctChange returns nil when the baseline
+// is zero, because the percentage change from zero is infinite and there
+// is no honest number to report. Treating that as "no signal" was wrong in
+// the one direction that matters most: a process that consumed no CPU in
+// the baseline window and a full core in the compare window -- the
+// cleanest runaway signature there is, and the exact case the README
+// advertises -- was judged flat and then filtered out of the report.
+//
+// So a nil ratio is no longer the end of the judgement. If the baseline
+// was effectively idle and the current value clears the burst floor, the
+// row is worse on absolute evidence alone. The ratio stays nil, because
+// inventing a percentage for a division by zero would be worse than
+// showing none; the two value columns already read "0.0% -> 100.0%".
+func worstOf(cpu, rss measure, threshold float64) ProcVerdict {
 	worst := PVFlat
-	consider := func(d *float64) {
-		if d == nil {
+	consider := func(m measure) {
+		if m.delta != nil {
+			if *m.delta >= threshold {
+				worst = PVWorse
+			} else if *m.delta <= -threshold && worst != PVWorse {
+				worst = PVBetter
+			}
 			return
 		}
-		if *d >= threshold {
+		if emergedFromZero(m) {
 			worst = PVWorse
-		} else if *d <= -threshold && worst != PVWorse {
-			worst = PVBetter
 		}
 	}
-	consider(cpuD)
-	consider(rssD)
+	consider(cpu)
+	consider(rss)
 	return worst
+}
+
+// emergedFromZero reports whether this dimension went from an effectively
+// idle baseline to a level notable on its own terms. Both sides must be
+// known: a missing baseline is a different situation (PVAppeared) and is
+// classified before this is reached.
+func emergedFromZero(m measure) bool {
+	if m.a == nil || m.b == nil || m.burstAt <= 0 {
+		return false
+	}
+	// "Effectively idle" rather than exactly zero: a process that used a
+	// few milliseconds of CPU in an hour is idle for every purpose that
+	// matters here, and requiring an exact 0.0 would make the verdict
+	// depend on whether a sampling tick happened to land.
+	if *m.a >= m.minAbs {
+		return false
+	}
+	return *m.b >= m.burstAt
 }
 
 func sortProcRows(rows []ProcRow) {
@@ -210,6 +284,11 @@ func sortProcRows(rows []ProcRow) {
 	})
 }
 
+// rowMagnitude orders rows that share a verdict. Rows judged worse on
+// absolute evidence have no ratio at all, and ranking them by a magnitude
+// of zero would sort the clearest runaway to the bottom of its own
+// section -- so a burst is scored by how far past its floor it went,
+// expressed as a ratio so it stays comparable with a percentage change.
 func rowMagnitude(r ProcRow) float64 {
 	m := 0.0
 	if r.CPUDelta != nil && math.Abs(*r.CPUDelta) > m {
@@ -217,6 +296,16 @@ func rowMagnitude(r ProcRow) float64 {
 	}
 	if r.RSSDelta != nil && math.Abs(*r.RSSDelta) > m {
 		m = math.Abs(*r.RSSDelta)
+	}
+	if r.CPUDelta == nil && r.CPUPctB != nil && *r.CPUPctB >= cpuBurstFloorPct {
+		if v := *r.CPUPctB / cpuBurstFloorPct * 100; v > m {
+			m = v
+		}
+	}
+	if r.RSSDelta == nil && r.RSSKBB != nil && *r.RSSKBB >= rssBurstFloorKB {
+		if v := *r.RSSKBB / rssBurstFloorKB * 100; v > m {
+			m = v
+		}
 	}
 	return m
 }
