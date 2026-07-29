@@ -243,11 +243,27 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 // pctChange applies the same two-bar rule as the metric engine: a change
 // must be both relatively large and absolutely meaningful. Below the
 // absolute floor it returns nil, meaning "not a signal".
+//
+// The floor also governs the DENOMINATOR, which is the part that was
+// missing. Requiring only that ONE side clear the floor lets a baseline of
+// 0.0005% of a core survive as a divisor, and a percentage computed against
+// noise is a number with no meaning attached:
+//
+//	0.00055% -> 1.7% of a core   reported as   +308991%
+//
+// Those figures then dominated every ranking that sorts by delta, so a
+// process using 1.7% of a core outranked one using 17%. A baseline under the
+// floor is not a baseline; it is indistinguishable from idle, and the honest
+// report is no ratio at all -- which the absolute-evidence path in worstOf
+// now handles on its own terms.
 func pctChange(a, b *float64, minAbs float64) *float64 {
 	if a == nil || b == nil {
 		return nil
 	}
 	if math.Abs(*a) < minAbs && math.Abs(*b) < minAbs {
+		return nil
+	}
+	if math.Abs(*a) < minAbs {
 		return nil
 	}
 	if *a == 0 {

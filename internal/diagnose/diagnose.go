@@ -273,18 +273,48 @@ func worstTriage(blocks []pcp.TriageBlock) *pcp.TriageBlock {
 	return best
 }
 
+// culpritCPUScore ranks candidates for "which process is responsible".
+//
+// The previous scoring added a delta percentage to a percent-of-a-core:
+//
+//	v := *r.CPUPctB      // percent of one core
+//	v += *r.CPUDelta     // percent CHANGE -- a different quantity entirely
+//
+// Those are not the same unit and their sum means nothing. On a live host it
+// picked gnome-shell at 5.3% of a core (+14799%) over firefox at 17.3%
+// (+6518%) -- naming the wrong process, and naming it confidently.
+//
+// What "responsible" should mean is how much CPU this process is consuming
+// now. That is CPUPctB, full stop. A large increase is corroborating evidence
+// that the consumption is new, so it breaks ties and adds a bounded nudge,
+// but it cannot outweigh the consumption itself: a process that went from
+// 0.1% to 1% of a core has a spectacular ratio and is not the reason the
+// machine is busy.
+func culpritCPUScore(r state.ProcRow) float64 {
+	if r.CPUPctB == nil {
+		return 0
+	}
+	score := *r.CPUPctB
+	// A confirmed increase is worth at most a 50% bonus on the process's own
+	// consumption: enough to prefer a newly-hot process over an equally-large
+	// one that was always that size, never enough to promote a small consumer.
+	if r.CPUDelta != nil && *r.CPUDelta > 20 {
+		score *= 1.5
+	} else if r.FromZero {
+		// No ratio exists, but the row rose from an idle baseline -- the same
+		// evidence in the form the data actually took.
+		score *= 1.5
+	}
+	return score
+}
+
 func culpritByCPU(rows []state.ProcRow) string {
 	best, bestVal := "", 0.0
 	for _, r := range rows {
-		if r.CPUPctB == nil {
+		if r.CPUPctB == nil || *r.CPUPctB < 5 {
 			continue
 		}
-		// prefer a large increase; fall back to sheer size
-		v := *r.CPUPctB
-		if r.CPUDelta != nil && *r.CPUDelta > 20 {
-			v += *r.CPUDelta
-		}
-		if v > bestVal && *r.CPUPctB >= 5 {
+		if v := culpritCPUScore(r); v > bestVal {
 			best, bestVal = r.Name, v
 		}
 	}
@@ -293,9 +323,18 @@ func culpritByCPU(rows []state.ProcRow) string {
 	}
 	for _, r := range rows {
 		if r.Name == best {
-			s := fmt.Sprintf("%s at %.0f%% of a core", best, *r.CPUPctB)
-			if r.CPUDelta != nil {
+			pct := fmt.Sprintf("%.0f%%", *r.CPUPctB)
+			if r.CPUApproxB {
+				// Lifetime average, not a measured windowed rate. Saying so
+				// costs one character and stops a reader over-trusting it.
+				pct = "~" + pct
+			}
+			s := fmt.Sprintf("%s at %s of a core", best, pct)
+			switch {
+			case r.CPUDelta != nil:
 				s += fmt.Sprintf(" (%+.0f%%)", *r.CPUDelta)
+			case r.FromZero:
+				s += " (was idle)"
 			}
 			if r.Restarted {
 				s += ", restarted in this window"
@@ -306,14 +345,37 @@ func culpritByCPU(rows []state.ProcRow) string {
 	return best
 }
 
+// culpritByRSS ranks by growth rather than by size, because for memory the
+// question is usually "what grew" -- the largest process on a host is often
+// supposed to be the largest (a database given most of the RAM), so naming it
+// every time would be noise.
+//
+// Growth is weighted by the absolute footprint so that a process that grew
+// 40% to 4 GB outranks one that grew 400% to 40 MB. Ranking on the percentage
+// alone had the same unit-blindness as the CPU path: it made a rounding error
+// on a small process look more important than gigabytes.
 func culpritByRSS(rows []state.ProcRow) string {
 	best, bestVal := "", 0.0
 	for _, r := range rows {
-		if r.RSSDelta == nil || r.RSSKBB == nil {
+		if r.RSSKBB == nil {
 			continue
 		}
-		if *r.RSSDelta > bestVal && *r.RSSDelta > 20 {
-			best, bestVal = r.Name, *r.RSSDelta
+		var growth float64
+		switch {
+		case r.RSSDelta != nil && *r.RSSDelta > 20:
+			growth = *r.RSSDelta
+		case r.FromZero && r.RSSKBA != nil && *r.RSSKBB > *r.RSSKBA:
+			// Rose from a footprint too small to form a ratio against.
+			// Treated as large-but-bounded growth so it competes without
+			// automatically winning.
+			growth = 100
+		default:
+			continue
+		}
+		// MB of current footprint scales the growth, keeping both halves of
+		// "grew a lot" and "is a lot" in the score.
+		if v := growth * (*r.RSSKBB / 1024); v > bestVal {
+			best, bestVal = r.Name, v
 		}
 	}
 	if best == "" {
@@ -321,7 +383,12 @@ func culpritByRSS(rows []state.ProcRow) string {
 	}
 	for _, r := range rows {
 		if r.Name == best {
-			s := fmt.Sprintf("%s memory %+.0f%% (now %s)", best, *r.RSSDelta, humanKB(*r.RSSKBB))
+			var s string
+			if r.RSSDelta != nil {
+				s = fmt.Sprintf("%s memory %+.0f%% (now %s)", best, *r.RSSDelta, humanKB(*r.RSSKBB))
+			} else {
+				s = fmt.Sprintf("%s memory grew from idle to %s", best, humanKB(*r.RSSKBB))
+			}
 			if r.Restarted {
 				s += ", restarted in this window"
 			}
