@@ -23,9 +23,9 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab is-active" data-tab="diag" data-i18n="tab_diagnose">Diagnose</button>
+  <button class="tab" data-tab="diag" data-i18n="tab_diagnose">Diagnose</button>
   <button class="tab" data-tab="diff" data-i18n="tab_diff">Regression Diff</button>
-  <button class="tab" data-tab="trend" data-i18n="tab_trend">Trends</button>
+  <button class="tab is-active" data-tab="trend" data-i18n="tab_trend">Trends</button>
   <button class="tab" data-tab="proc" data-i18n="tab_proc">Process Accounting</button>
   <button class="tab" data-tab="change" data-i18n="tab_change">Change Accounting</button>
   <button class="tab" data-tab="reasoning" data-i18n="tab_reasoning">Reasoning (beta)</button>
@@ -34,7 +34,7 @@
 <main>
   
 
-  <section class="view" id="view-diag">
+  <section class="view hidden" id="view-diag">
     <div class="diag-hero">
       <button class="btn btn-primary btn-diag" id="diagRun" data-i18n="diag_run">Diagnose this machine</button>
       <span class="diag-window" id="diagWindow"></span>
@@ -107,7 +107,7 @@
   </section>
 
   
-  <section class="view hidden" id="view-trend">
+  <section class="view" id="view-trend">
     <div class="trend-controls">
       <div class="seg" id="presetSeg"></div>
       <div class="seg" id="rangeSeg">

@@ -227,7 +227,10 @@ async function main() {
   );
 
   diffInit();   // prepare the regression tab's window pickers
-  diagInit();   // Diagnose is the default tab: run it on load
+  trendInit();  // Performance Metrics (trends) is the default tab: draw it on load
+  // Diagnose is no longer the landing tab, so it is not run on load -- its
+  // tab handler calls diagInit() the first time it is opened. Running it
+  // eagerly here would fire an /api/diagnose the user never asked for.
 }
 
 
@@ -1144,6 +1147,16 @@ const THEME_ICON = {
   "iris-dark": "\u25D0", "iris-light": "\u25D5",
 };
 
+// loginDefaultLang honours a previously stored choice but otherwise falls
+// back to English rather than the browser locale.
+function loginDefaultLang() {
+  try {
+    const stored = localStorage.getItem("dscope-lang");
+    if (stored && LANG_NAMES[stored]) return stored;
+  } catch (e) { /* private mode */ }
+  return "en";
+}
+
 function initLang() {
   const sel = $("#langSelect");
   Object.keys(LANG_NAMES).forEach((code) => {
@@ -1152,7 +1165,14 @@ function initLang() {
     opt.textContent = LANG_NAMES[code];
     sel.appendChild(opt);
   });
-  setLang(detectLang());
+  // The login page defaults to English rather than following the browser
+  // locale: it is the first thing an operator or a screen-sharing session
+  // sees, English is the lingua franca for this kind of tool, and a
+  // returning user's explicit choice is still honoured (detectLang reads
+  // the stored preference first). Inside the app proper, browser-locale
+  // detection stays the default so a first-time user lands in their own
+  // language.
+  setLang(page === "login" ? loginDefaultLang() : detectLang());
   sel.value = currentLang;
   sel.addEventListener("change", () => {
     setLang(sel.value);
