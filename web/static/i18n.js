@@ -1228,9 +1228,14 @@ id: {
 },
 };
 
+// Ordered by approximate total speakers (native + second-language), so the
+// dropdown leads with the languages the most users read. Rough global
+// counts: English ~1.5B, Chinese ~1.1B, Spanish ~560M, French ~310M,
+// Portuguese ~260M, Russian ~255M, Indonesian ~200M, German ~135M,
+// Japanese ~125M, Korean ~80M.
 const LANG_NAMES = {
   en: "English", zh: "中文", es: "Español", fr: "Français", pt: "Português",
-  de: "Deutsch", ru: "Русский", ja: "日本語", ko: "한국어", id: "Bahasa Indonesia",
+  ru: "Русский", id: "Bahasa Indonesia", de: "Deutsch", ja: "日本語", ko: "한국어",
 };
 
 let currentLang = "en";

@@ -8,9 +8,9 @@ different — not a wall of dashboards, a diagnosis.
 
 ## One click
 
-The **Diagnose** tab runs all three engines at once against the last hour
-versus the same hour yesterday, correlates them, and answers in one
-sentence:
+The **Diagnose** tab runs all four engines at once against the last hour
+up to now versus the same hour yesterday, correlates them, and answers in
+one sentence:
 
 > 🔴 **CPU is degraded: user CPU +2733%**
 > Responsible — `mysqld` at 310% of a core (+7650%)
@@ -51,7 +51,7 @@ directly, across three layers:
   measured rate.
 - **Reasoning chain** — 59 named states (`state.cpu.core_pegged`,
   `state.mem.oom_killing`, `state.net.listen_dropping`) evaluated
-  independently, then 39 diagnoses matched over combinations of them
+  independently, then 46 diagnoses matched over combinations of them
   including negation. The negation is the point: hypervisor CPU
   contention and an ordinary busy guest both show a long run queue, and
   what separates them is that under contention the guest's own userspace
@@ -93,9 +93,10 @@ time windows, run a comparison. The server captures a state snapshot
 every 10 minutes on its own, so process and change accounting start
 accumulating history immediately, no cron job required.
 
-The web UI is available in English, 中文, Español, Français, Português,
-Deutsch, Русский, 日本語, 한국어, and Bahasa Indonesia, with six colour
-themes (three families, each in a dark and light variant). Any report you
+The web UI is available in ten languages — English, 中文, Español,
+Français, Português, Русский, Bahasa Indonesia, Deutsch, 日本語, and
+한국어 — with six colour themes (three families, each in a dark and light
+variant). Any report you
 run can be exported as a single JSON file — useful for handing raw
 comparison data to a colleague, or to an AI, without re-deriving it from
 the UI.
