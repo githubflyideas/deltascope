@@ -16,6 +16,7 @@ import (
 
 	"github.com/githubflyideas/deltascope/internal/auth"
 	"github.com/githubflyideas/deltascope/internal/diagnose"
+	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
@@ -58,6 +59,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/procdiff", s.requireAuth(s.handleProcDiff))
 	mux.Handle("GET /api/statediff", s.requireAuth(s.handleStateDiff))
 	mux.Handle("GET /api/diagnose", s.requireAuth(s.handleDiagnose))
+	mux.Handle("GET /api/reasoning", s.requireAuth(s.handleReasoning))
 	mux.HandleFunc("GET /api/version", s.handleVersion)
 
 	return securityHeaders(mux)
@@ -357,6 +359,63 @@ func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, d)
+}
+
+// handleReasoning runs the experimental two-layer chain: metric rows are
+// first reduced to named states (state.cpu.steal_high, ...), then
+// diagnoses are matched against combinations of those states including
+// negation. This runs alongside the original rule engine rather than
+// replacing it, so both can be compared against the same real data
+// before deciding whether to migrate.
+func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
+	threshold := 15.0
+	if t := r.URL.Query().Get("threshold"); t != "" {
+		if v, err := strconv.ParseFloat(t, 64); err == nil && v >= 0 && v <= 10000 {
+			threshold = v
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
+	defer cancel()
+
+	// Same window selection as the main Diagnose tab, so the two views are
+	// directly comparable.
+	w2 := diagnose.PickWindow(time.Now())
+	rep, err := pcp.Compare(ctx, s.Runner, s.Archive, pcp.Windows{
+		AStart: w2.AStart, AEnd: w2.AEnd, BStart: w2.BStart, BEnd: w2.BEnd,
+		ThresholdPct: threshold,
+	})
+	if err != nil {
+		log.Printf("reasoning: %v", err)
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	active := reasoning.Evaluate(reasoning.States, rep.Rows)
+	results := reasoning.Diagnose(reasoning.Diagnoses, active)
+
+	// Report every state that was evaluated, not just the active ones, so
+	// the UI can show what was checked and found NOT to hold -- the
+	// negative evidence is what makes a diagnosis auditable.
+	type stateView struct {
+		ID       string   `json:"id"`
+		Domain   string   `json:"domain"`
+		Active   bool     `json:"active"`
+		Evidence []string `json:"evidence,omitempty"`
+	}
+	states := make([]stateView, 0, len(reasoning.States))
+	for _, st := range reasoning.States {
+		v := stateView{ID: st.ID, Domain: st.Domain}
+		if a, on := active[st.ID]; on {
+			v.Active, v.Evidence = true, a.Evidence
+		}
+		states = append(states, v)
+	}
+
+	writeJSON(w, map[string]any{
+		"window":    w2,
+		"states":    states,
+		"diagnoses": results,
+	})
 }
 
 func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {

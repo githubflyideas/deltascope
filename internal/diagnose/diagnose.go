@@ -63,7 +63,7 @@ type Deps struct {
 // Run picks windows automatically, runs the three engines concurrently,
 // and correlates the results.
 func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
-	w := pickWindow(time.Now())
+	w := PickWindow(time.Now())
 	threshold := d.Threshold
 	if threshold <= 0 {
 		threshold = 15
@@ -168,7 +168,10 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 // pickWindow defaults to "the last full hour vs the same hour yesterday",
 // which is the comparison people actually reach for. Anchored to the hour
 // so repeated runs are stable and comparable.
-func pickWindow(now time.Time) Window {
+// PickWindow is exported so other entry points (the reasoning chain) can
+// select the identical comparison window, keeping the two views directly
+// comparable against the same data.
+func PickWindow(now time.Time) Window {
 	bEnd := now.Truncate(time.Hour)
 	if now.Sub(bEnd) < 10*time.Minute {
 		// too early in the hour to have useful data; step back one

@@ -204,10 +204,12 @@ async function main() {
       $("#view-trend").classList.toggle("hidden", t.dataset.tab !== "trend");
       $("#view-proc").classList.toggle("hidden", t.dataset.tab !== "proc");
       $("#view-change").classList.toggle("hidden", t.dataset.tab !== "change");
+      $("#view-reasoning").classList.toggle("hidden", t.dataset.tab !== "reasoning");
       if (t.dataset.tab === "trend") trendInit();
       if (t.dataset.tab === "proc") procInit();
       if (t.dataset.tab === "change") changeInit();
       if (t.dataset.tab === "diag") diagInit();
+      if (t.dataset.tab === "reasoning") reasoningInit();
     })
   );
 
@@ -303,6 +305,7 @@ document.addEventListener("dscope-lang-changed", () => {
   if (lastProcReport) renderProcDiff(lastProcReport);
   if (lastChangeReport) renderStateDiff(lastChangeReport);
   if (lastDiagnosis) renderDiagnosis(lastDiagnosis);
+  if (lastReasoning) renderReasoning(lastReasoning);
   if (typeof chart !== "undefined" && chart && typeof curPreset !== "undefined" && curPreset) loadTrend();
 });
 
@@ -1129,4 +1132,88 @@ function applyTheme(name) {
   if (typeof chart !== "undefined" && chart) {
     if (typeof curPreset !== "undefined" && curPreset) loadTrend();
   }
+}
+
+let reasoningReady = false;
+let lastReasoning = null;
+
+function reasoningInit() {
+  if (reasoningReady) return;
+  reasoningReady = true;
+  $("#reasoningRun").addEventListener("click", runReasoning);
+  runReasoning();
+}
+
+async function runReasoning() {
+  const btn = $("#reasoningRun");
+  const err = $("#reasoningError");
+  err.classList.add("hidden");
+  btn.disabled = true;
+  btn.textContent = t("reasoning_running");
+  try {
+    const d = await api("/api/reasoning");
+    lastReasoning = d;
+    renderReasoning(d);
+    $("#reasoningEmpty").classList.add("hidden");
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove("hidden");
+    $("#reasoningResult").innerHTML = "";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t("reasoning_run");
+  }
+}
+
+function renderReasoning(d) {
+  const w = d.window || {};
+  const fmt = (x) => x ? new Date(x).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  $("#reasoningWindow").textContent = w.label
+    ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}` : "";
+
+  let html = "";
+  const diags = d.diagnoses || [];
+
+  if (!diags.length) {
+    html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_no_diagnosis")}</div>`;
+  } else {
+    html += diags.map((r) => {
+      const sv = SEV_STYLE[r.severity] || SEV_STYLE.info;
+      return `<div class="diag-verdict ${sv.cls}">
+        <div class="dv-top"><span class="dv-badge">${sv.icon} ${t(sv.key)}</span>
+          <code class="rsn-id">${escapeHtml(r.id)}</code></div>
+        <div class="dv-headline">${escapeHtml(r.conclusion)}</div>
+        <div class="dv-chain">
+          <div class="dv-link"><span class="dv-label">${t("reasoning_triggered_by")}</span>
+            <span>${(r.states || []).map((x) => `<code>${escapeHtml(x)}</code>`).join(" ")}</span></div>
+        </div>
+        ${r.evidence && r.evidence.length ? `<div class="dv-evidence">${t("evidence_label")} ${r.evidence.map(escapeHtml).join(" \u00b7 ")}</div>` : ""}
+        ${r.next && r.next.length ? `<div class="dv-next">${t("next_label")} ${r.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
+  // Show every state that was checked, including the ones that did NOT
+  // hold: a diagnosis that hinges on something being absent can only be
+  // audited if the reader can see that it was actually checked.
+  const states = d.states || [];
+  if (states.length) {
+    const rows = states.map((st) => {
+      const cls = st.active ? "v-worse" : "v-flat";
+      const mark = st.active ? "\u25CF" : "\u25CB";
+      const label = st.active ? t("reasoning_active") : t("reasoning_inactive");
+      return `<tr class="${cls}">
+        <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code></span>
+          ${st.evidence && st.evidence.length ? `<span class="m-name">${st.evidence.map(escapeHtml).join(" \u00b7 ")}</span>` : ""}</td>
+        <td>${escapeHtml(st.domain || "")}</td>
+        <td>${label}</td>
+      </tr>`;
+    }).join("");
+    const activeCount = states.filter((x) => x.active).length;
+    html += `<details class="cat-block" open><summary class="cat-head">
+      <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length} ${t("reasoning_active")}</span></summary>
+      <table class="report"><tbody>${rows}</tbody></table></details>`;
+  }
+
+  $("#reasoningResult").innerHTML = html;
 }

@@ -28,6 +28,7 @@
   <button class="tab" data-tab="trend" data-i18n="tab_trend">Trends</button>
   <button class="tab" data-tab="proc" data-i18n="tab_proc">Process Accounting</button>
   <button class="tab" data-tab="change" data-i18n="tab_change">Change Accounting</button>
+  <button class="tab" data-tab="reasoning" data-i18n="tab_reasoning">Reasoning (beta)</button>
 </nav>
 
 <main>
@@ -164,6 +165,16 @@
     <div class="notice hidden" id="changeError"></div>
     <div id="changeResult"></div>
     <div class="proc-hint" id="changeHint" data-i18n="change_hint">Snapshots the machine now and diffs it against the nearest snapshot before the chosen time — sysctl, packages, kernel modules, network config, listening ports, firewall, mounts, services, cron, config file fingerprints, and security posture. Only what changed is shown. The server captures a snapshot every 10 minutes on its own, so history builds up without any cron job.</div>
+  </section>
+
+  <section class="view hidden" id="view-reasoning">
+    <div class="diag-hero">
+      <button class="btn btn-primary btn-diag" id="reasoningRun" data-i18n="reasoning_run">Run reasoning chain</button>
+      <span class="diag-window" id="reasoningWindow"></span>
+    </div>
+    <div class="notice hidden" id="reasoningError"></div>
+    <div id="reasoningResult"></div>
+    <div class="empty-hint" id="reasoningEmpty" data-i18n="reasoning_empty">An experimental second diagnosis engine, running alongside the original one. Raw metrics are first reduced to named states, then diagnoses are matched against combinations of those states — including what is deliberately absent. Both engines see the same data, so you can compare them.</div>
   </section>
 
 </main>

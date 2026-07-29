@@ -131,7 +131,7 @@ func TestChangesOnlyIsInfo(t *testing.T) {
 
 func TestPickWindowIsHourAnchored(t *testing.T) {
 	now := time.Date(2026, 7, 25, 14, 37, 0, 0, time.UTC)
-	w := pickWindow(now)
+	w := PickWindow(now)
 	if w.BEnd.Minute() != 0 || w.BStart.Minute() != 0 {
 		t.Errorf("window should be hour-anchored, got %v..%v", w.BStart, w.BEnd)
 	}

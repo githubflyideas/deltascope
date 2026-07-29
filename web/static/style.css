@@ -489,3 +489,6 @@ body.theme-iris-light .report tr[data-bg] { mix-blend-mode: multiply; }
 .lang-select:hover { color: var(--ink); border-color: var(--muted); }
 .login-lang { position: absolute; top: 18px; right: 18px; }
 .login-card { position: relative; }
+
+.rsn-id { margin-left: auto; font-size: 11px; color: var(--muted); opacity: .8; }
+.diag-verdict .dv-top { display: flex; align-items: center; gap: 10px; }
