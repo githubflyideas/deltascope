@@ -77,8 +77,8 @@ func renderProcDiff(w io.Writer, d state.ProcDiff, color bool) {
 		}
 		line := fmt.Sprintf("  %s%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			r.Name, mark,
-			pct(r.CPUPctA), pct(r.CPUPctB), delta(r.CPUDelta),
-			mem(r.RSSKBA), mem(r.RSSKBB), delta(r.RSSDelta),
+			pct(r.CPUPctA), pctApprox(r.CPUPctB, r.CPUApproxB), deltaFrom(r.CPUDelta, r.FromZero),
+			mem(r.RSSKBA), mem(r.RSSKBB), deltaFrom(r.RSSDelta, r.FromZero),
 			verdict)
 		fmt.Fprintln(tw, c(col, line))
 	}
@@ -97,6 +97,30 @@ func delta(v *float64) string {
 		return "—"
 	}
 	return fmt.Sprintf("%+.0f%%", *v)
+}
+
+// deltaFrom explains an absent percentage instead of printing a dash next
+// to a row that was nonetheless flagged. A rise from an idle baseline has
+// no ratio -- the change from zero is infinite -- and "from idle" tells the
+// reader why the row is here, which a dash does not.
+func deltaFrom(v *float64, fromZero bool) string {
+	if v == nil && fromZero {
+		return "from idle"
+	}
+	return delta(v)
+}
+
+// pctApprox marks a lifetime average, which is what a process born inside
+// the window has instead of a rate measured across it. It is the best
+// figure available and must not read as if it were measured.
+func pctApprox(v *float64, approx bool) string {
+	if v == nil {
+		return "—"
+	}
+	if approx {
+		return fmt.Sprintf("~%.1f%%", *v)
+	}
+	return fmt.Sprintf("%.1f%%", *v)
 }
 
 func mem(v *float64) string {

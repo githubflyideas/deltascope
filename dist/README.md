@@ -36,10 +36,14 @@ sha256sum -c SHA256SUMS
 
 ## Notes
 
-- The binary's SQLite driver is the statically linked mattn/go-sqlite3
-  (cgo, static musl/glibc); the default source build uses pure-Go
-  modernc.org/sqlite. Both produce the exact same database file format
-  and are interchangeable.
+- From 3.2.0 these binaries are built with CGO disabled, so the SQLite
+  driver is pure-Go modernc.org/sqlite -- the same driver the default
+  source build uses. Earlier releases shipped the cgo mattn/go-sqlite3
+  driver linked against static musl. Both produce the identical database
+  file format, so an existing deltascope.db is read and written by either
+  without conversion; the change removes the musl toolchain from the
+  release path rather than altering any behaviour. Build the cgo variant
+  yourself with `-tags cgosqlite` if you prefer it.
 - el6 caveat: PCP in CentOS 6's EPEL is old and pmrep may be missing
   (trends won't work), and older PCP can't hand an entire archive
   directory to `-a`, limiting cross-day comparisons. The binary runs,

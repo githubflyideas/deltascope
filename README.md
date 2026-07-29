@@ -44,7 +44,22 @@ directly, across three layers:
   restart detection, so "today mysqld pegged the CPU and nginx ate 90% of
   memory, yesterday both were idle" is one command away. Read directly
   from `/proc` into the local snapshot store: no PCP hotproc PMDA, no
-  pmlogger configuration, no waiting for an archive to fill.
+  pmlogger configuration, no waiting for an archive to fill. A process
+  that rose from an idle baseline is reported on absolute evidence rather
+  than as an infinite percentage, and one that started mid-window still
+  gets a CPU figure — labelled `~` because it is a lifetime average, not a
+  measured rate.
+- **Reasoning chain** — 59 named states (`state.cpu.core_pegged`,
+  `state.mem.oom_killing`, `state.net.listen_dropping`) evaluated
+  independently, then 39 diagnoses matched over combinations of them
+  including negation. The negation is the point: hypervisor CPU
+  contention and an ordinary busy guest both show a long run queue, and
+  what separates them is that under contention the guest's own userspace
+  is *not* the thing consuming CPU. Every state is reported whether or not
+  it held, so a conclusion that hinges on something being absent can be
+  audited. Thresholds scale with the machine where the underlying metric
+  is a whole-machine sum, and peaks are read alongside means so a core
+  saturated for 20 minutes of an hour isn't averaged into invisibility.
 
 A triage dashboard on top organizes all of this the way an engineer
 actually thinks about a machine: CPU / memory / disk / network, plus a
@@ -112,6 +127,16 @@ detected — useful for CI gating and cron alerting.
 - **Conclusions over data.** A diagnosis rule engine and a triage
   dashboard sit on top of the raw metrics, because a wall of graphs
   isn't an answer.
+- **A number and its scale travel together.** One saturated core is
+  1000 ms/s whether the host has 4 cores or 64, so a threshold written as
+  a fraction of the whole machine cannot see it — and a threshold written
+  as a bare number is wrong on one class of host by construction. Which
+  form a given condition uses is decided per condition, not globally.
+- **No invented numbers.** Where a percentage change would require
+  dividing by an idle baseline, none is shown: the absolute values are
+  reported instead, and the row is judged on those. A figure derived from
+  a weaker basis than the usual one is labelled as such rather than
+  presented as measured.
 - **Own the display layer.** PCP reports whatever it's configured to
   collect, loopback traffic and snap-package loop devices included —
   deciding what's worth showing is deltascope's job, not PCP's. Known
