@@ -901,11 +901,19 @@ function pctVal(v) { return v === null || v === undefined ? "\u2014" : v.toFixed
 function pctValApprox(v, approx) {
   if (v === null || v === undefined) return "\u2014";
   if (!approx) return pctVal(v);
-  return `<span class="approx" title="${escapeHtml(t("approx_hint"))}">~${v.toFixed(1)}%</span>`;
+  // No "~" prefix: it read as noise to users who did not know what it meant.
+  // The dotted underline carries the "this figure is qualified" signal and
+  // the tooltip explains it in full, so the number stays clean.
+  return `<span class="approx" title="${escapeHtml(t("approx_hint"))}">${v.toFixed(1)}%</span>`;
 }
 function deltaVal(v) {
   if (v === null || v === undefined) return "\u2014";
-  return (v > 0 ? "+" : "") + v.toFixed(0) + "%";
+  // An arrow in addition to sign+colour: colour alone fails for
+  // colour-blind readers, and a bare "+37%" reads as "37% more" only if you
+  // already know the column is a change. The arrow states the direction
+  // unambiguously. ↑ rose, ↓ fell.
+  const arrow = v > 0 ? "\u2191" : (v < 0 ? "\u2193" : "");
+  return arrow + (v > 0 ? "+" : "") + v.toFixed(0) + "%";
 }
 // A process that rose from an idle baseline has no percentage change to
 // show -- the change from zero is infinite. Printing an em dash there makes
@@ -965,10 +973,20 @@ function renderProcDiff(rep) {
 
   html += `<div class="cat-block"><div class="cat-head">
       <span>${t("process_cpu_accounting")}</span><span>${active.length} / ${rows.length} ${t("changed_label").toLowerCase()}</span></div>
-    <table class="report"><thead><tr>
-      <th>${t("th_process")}</th><th>${t("th_cpu_a")}</th><th>${t("th_cpu_b")}</th><th>${t("th_dcpu")}</th>
-      <th>${t("th_mem_a")}</th><th>${t("th_mem_b")}</th><th>${t("th_dmem")}</th><th>${t("th_verdict")}</th>
-    </tr></thead><tbody>${trs}</tbody></table></div>`;
+    <table class="report"><thead>
+      <tr class="grp-head">
+        <th></th>
+        <th colspan="3" class="grp grp-cpu">${t("group_cpu")}</th>
+        <th colspan="3" class="grp grp-mem">${t("group_mem")}</th>
+        <th></th>
+      </tr>
+      <tr>
+        <th>${t("th_process")}</th>
+        <th>A</th><th>B</th><th>${t("th_delta")}</th>
+        <th>A</th><th>B</th><th>${t("th_delta")}</th>
+        <th>${t("th_verdict")}</th>
+      </tr></thead><tbody>${trs}</tbody></table>
+    <div class="table-legend">${t("legend_ab")}</div></div>`;
 
   $("#procResult").innerHTML = html;
 }
@@ -1115,8 +1133,17 @@ function renderDiagnosis(d) {
     }).join("");
     html += `<details class="cat-block" open><summary class="cat-head">
       <span>${t("per_process")}</span><span>${d.processes.length} ${t("shown")}</span></summary>
-      <table class="report"><thead><tr><th>${t("th_process")}</th><th>${t("th_cpu_a")}</th><th>${t("th_cpu_b")}</th><th>${t("th_dcpu")}</th>
-      <th>${t("th_mem_a")}</th><th>${t("th_mem_b")}</th><th>${t("th_dmem")}</th></tr></thead><tbody>${trs}</tbody></table></details>`;
+      <table class="report"><thead>
+        <tr class="grp-head">
+          <th></th>
+          <th colspan="3" class="grp grp-cpu">${t("group_cpu")}</th>
+          <th colspan="3" class="grp grp-mem">${t("group_mem")}</th>
+        </tr>
+        <tr><th>${t("th_process")}</th>
+          <th>A</th><th>B</th><th>${t("th_delta")}</th>
+          <th>A</th><th>B</th><th>${t("th_delta")}</th></tr>
+      </thead><tbody>${trs}</tbody></table>
+      <div class="table-legend">${t("legend_ab")}</div></details>`;
   }
 
   if (d.changes && d.changes.length) {

@@ -315,6 +315,18 @@ tr[hidden] { display: none; }
    centre and made the status dot float away from the name it marks. */
 .report td.proc-name { text-align: left; font-family: var(--sans); padding-left: 4px; }
 .report td.proc-name .p-dot { display: inline-block; width: 1.4em; }
+
+/* Grouped process-table header: a CPU band and a Memory band above the
+   A/B/Δ sub-columns, so it is obvious which three numbers belong together
+   and what is being compared. Without it the row was seven bare numbers. */
+.report tr.grp-head th { text-align: center; font-size: 12px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted); padding-bottom: 2px; font-weight: 600; }
+.report tr.grp-head th.grp { border-bottom: 2px solid var(--line); }
+.report tr.grp-head th.grp-cpu { border-bottom-color: var(--b); }
+.report tr.grp-head th.grp-mem { border-bottom-color: var(--a); }
+/* A one-line key beneath each process table: A/B/Δ mean nothing until the
+   reader is told what A and B are. */
+.table-legend { color: var(--muted); font-size: 12.5px; margin: 8px 2px 0; line-height: 1.5; }
 .proc-hint { color: var(--muted); font-size: 14.5px; border: 1px dashed var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 8px; line-height: 1.6; }
 
 /* Triage dashboard -- four hardware resources + "the software gremlin" */

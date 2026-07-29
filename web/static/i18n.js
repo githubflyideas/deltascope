@@ -87,6 +87,8 @@ en: {
   th_delta: "\u0394", th_verdict: "Verdict", th_unit: "Unit",
   th_process: "Process", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Mem A", th_mem_b: "Mem B", th_dmem: "\u0394Mem",
+  group_cpu: "CPU (% of one core)", group_mem: "Memory (RSS)",
+  legend_ab: "A = baseline window · B = compare window · Δ shows the change (↑ rose, ↓ fell)",
   th_item: "Item", th_change: "Change",
 
   no_finding: "No known diagnosis pattern matched — see the detail and trend charts below.",
@@ -96,7 +98,7 @@ en: {
   instances: "instances",
   no_significant_change: "No significant change",
   from_idle: "from idle",
-  approx_hint: "Lifetime average: this process started inside the window, so there is no baseline reading to measure a rate against",
+  approx_hint: "Lifetime average — this process started inside the window, so there is no baseline reading to measure a rate against",
   diagnosing: "Diagnosing…",
   responsible_label: "Responsible",
   changed_label: "Changed",
@@ -208,6 +210,8 @@ zh: {
   th_delta: "\u0394", th_verdict: "判定", th_unit: "单位",
   th_process: "进程", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "内存 A", th_mem_b: "内存 B", th_dmem: "\u0394内存",
+  group_cpu: "CPU（单核占比）", group_mem: "内存 (RSS)",
+  legend_ab: "A = 基线窗口 · B = 对比窗口 · Δ 为变化幅度（↑ 升高，↓ 降低）",
   th_item: "项", th_change: "变化",
 
   no_finding: "未命中已知诊断模式 —— 请查看下方明细与趋势曲线。",
@@ -217,7 +221,7 @@ zh: {
   instances: "个实例",
   no_significant_change: "无显著变化",
   from_idle: "从空闲起",
-  approx_hint: "生命周期均值：该进程在本窗口内启动，没有基线读数可用于计算速率",
+  approx_hint: "生命周期均值——该进程在本窗口内启动，没有基线读数可用于计算速率",
   diagnosing: "诊断中…",
   responsible_label: "责任方",
   changed_label: "变更",
@@ -329,6 +333,8 @@ es: {
   th_delta: "\u0394", th_verdict: "Veredicto", th_unit: "Unidad",
   th_process: "Proceso", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Mem A", th_mem_b: "Mem B", th_dmem: "\u0394Mem",
+  group_cpu: "CPU (% de un núcleo)", group_mem: "Memoria (RSS)",
+  legend_ab: "A = ventana base · B = ventana de comparación · Δ muestra el cambio (↑ subió, ↓ bajó)",
   th_item: "Elemento", th_change: "Cambio",
 
   no_finding: "No coincide ningún patrón de diagnóstico conocido — revisa el detalle y los gráficos de tendencia abajo.",
@@ -450,6 +456,8 @@ fr: {
   th_delta: "\u0394", th_verdict: "Verdict", th_unit: "Unité",
   th_process: "Processus", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Mém A", th_mem_b: "Mém B", th_dmem: "\u0394Mém",
+  group_cpu: "CPU (% d'un cœur)", group_mem: "Mémoire (RSS)",
+  legend_ab: "A = fenêtre de référence · B = fenêtre de comparaison · Δ indique la variation (↑ hausse, ↓ baisse)",
   th_item: "Élément", th_change: "Changement",
 
   no_finding: "Aucun schéma de diagnostic connu ne correspond — consultez le détail et les graphiques de tendance ci-dessous.",
@@ -571,6 +579,8 @@ pt: {
   th_delta: "\u0394", th_verdict: "Veredito", th_unit: "Unidade",
   th_process: "Processo", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Mem A", th_mem_b: "Mem B", th_dmem: "\u0394Mem",
+  group_cpu: "CPU (% de um núcleo)", group_mem: "Memória (RSS)",
+  legend_ab: "A = janela base · B = janela de comparação · Δ mostra a variação (↑ subiu, ↓ caiu)",
   th_item: "Item", th_change: "Mudança",
 
   no_finding: "Nenhum padrão de diagnóstico conhecido encontrado — veja o detalhe e os gráficos de tendência abaixo.",
@@ -692,6 +702,8 @@ de: {
   th_delta: "\u0394", th_verdict: "Urteil", th_unit: "Einheit",
   th_process: "Prozess", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Sp. A", th_mem_b: "Sp. B", th_dmem: "\u0394Sp.",
+  group_cpu: "CPU (% eines Kerns)", group_mem: "Speicher (RSS)",
+  legend_ab: "A = Basisfenster · B = Vergleichsfenster · Δ zeigt die Änderung (↑ gestiegen, ↓ gefallen)",
   th_item: "Element", th_change: "Änderung",
 
   no_finding: "Kein bekanntes Diagnosemuster gefunden — siehe Detail und Trenddiagramme unten.",
@@ -813,6 +825,8 @@ ru: {
   th_delta: "\u0394", th_verdict: "Вердикт", th_unit: "Единица",
   th_process: "Процесс", th_cpu_a: "ЦП A", th_cpu_b: "ЦП B", th_dcpu: "\u0394ЦП",
   th_mem_a: "Пам. A", th_mem_b: "Пам. B", th_dmem: "\u0394Пам.",
+  group_cpu: "CPU (% одного ядра)", group_mem: "Память (RSS)",
+  legend_ab: "A = базовое окно · B = окно сравнения · Δ показывает изменение (↑ рост, ↓ падение)",
   th_item: "Элемент", th_change: "Изменение",
 
   no_finding: "Известный шаблон диагностики не найден — см. детали и графики трендов ниже.",
@@ -934,6 +948,8 @@ ja: {
   th_delta: "\u0394", th_verdict: "判定", th_unit: "単位",
   th_process: "プロセス", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "メモリ A", th_mem_b: "メモリ B", th_dmem: "\u0394メモリ",
+  group_cpu: "CPU（1コア比）", group_mem: "メモリ (RSS)",
+  legend_ab: "A = 基準ウィンドウ · B = 比較ウィンドウ · Δ は変化量（↑ 増加、↓ 減少）",
   th_item: "項目", th_change: "変更",
 
   no_finding: "既知の診断パターンには一致しませんでした — 下記の詳細とトレンドグラフをご確認ください。",
@@ -1055,6 +1071,8 @@ ko: {
   th_delta: "\u0394", th_verdict: "판정", th_unit: "단위",
   th_process: "프로세스", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "메모리 A", th_mem_b: "메모리 B", th_dmem: "\u0394메모리",
+  group_cpu: "CPU (코어 1개 %)", group_mem: "메모리 (RSS)",
+  legend_ab: "A = 기준 창 · B = 비교 창 · Δ 는 변화량 (↑ 증가, ↓ 감소)",
   th_item: "항목", th_change: "변경",
 
   no_finding: "알려진 진단 패턴과 일치하지 않습니다 — 아래 세부 정보와 추세 그래프를 확인하세요.",
@@ -1176,6 +1194,8 @@ id: {
   th_delta: "\u0394", th_verdict: "Putusan", th_unit: "Satuan",
   th_process: "Proses", th_cpu_a: "CPU A", th_cpu_b: "CPU B", th_dcpu: "\u0394CPU",
   th_mem_a: "Mem A", th_mem_b: "Mem B", th_dmem: "\u0394Mem",
+  group_cpu: "CPU (% dari satu inti)", group_mem: "Memori (RSS)",
+  legend_ab: "A = jendela dasar · B = jendela banding · Δ menunjukkan perubahan (↑ naik, ↓ turun)",
   th_item: "Item", th_change: "Perubahan",
 
   no_finding: "Tidak ada pola diagnosis yang cocok — lihat detail dan grafik tren di bawah.",
