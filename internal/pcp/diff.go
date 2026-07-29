@@ -158,6 +158,14 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 // values are near zero -- 0.005 -> 0.097 is "+1840%" but on an idle
 // machine it is nothing at all. When neither side reaches minAbs the row
 // is flat regardless of ratio.
+// Judge is judge exported for callers that synthesize rows outside this
+// package (the reasoning layer's derived per-core metrics). A derived row
+// must be judged by exactly the same rules as a real one, or the
+// dual-significance floor would apply to some rows and not others.
+func Judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64, bool, Verdict) {
+	return judge(a, b, pol, thresholdPct, minAbs)
+}
+
 func judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64, bool, Verdict) {
 	if a == nil || b == nil {
 		return nil, true, VWatch

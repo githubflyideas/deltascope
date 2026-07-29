@@ -109,8 +109,15 @@ func Evaluate(states []State, rows []pcp.DiffRow) map[string]Active {
 // scale-relative thresholds can be resolved for a host other than the
 // one running deltascope.
 func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active {
+	// Derived rows are computed here rather than by the caller so that
+	// every entry point into the state layer sees them. A state that
+	// depends on a derived metric would otherwise silently never fire
+	// depending on which code path built the row set.
 	byMetric := map[string][]pcp.DiffRow{}
 	for _, r := range rows {
+		byMetric[r.Metric] = append(byMetric[r.Metric], r)
+	}
+	for _, r := range Derive(rows) {
 		byMetric[r.Metric] = append(byMetric[r.Metric], r)
 	}
 
@@ -270,6 +277,32 @@ var States = []State{
 		Domain:      "cpu",
 		Description: "PSI reports tasks stalling on CPU availability. Already a percentage, so it needs no scaling.",
 		When:        []Cond{{Metric: "kernel.all.pressure.cpu.some.avg", BGte: f(10)}},
+	},
+	{
+		ID:     "state.cpu.core_pegged",
+		Domain: "cpu",
+		Description: "At least one individual core is saturated. Deliberately NOT scale-relative: one pegged core " +
+			"is 1000 ms/s on every machine, and expressing it as a fraction of total capacity is exactly what makes " +
+			"it invisible on anything bigger than 2 cores. This is the state that catches a single runaway process.",
+		When: []Cond{{Metric: MetricBusiestCore, BGte: f(coreSaturatedMsPerSec)}},
+	},
+	{
+		ID:     "state.cpu.serialized",
+		Domain: "cpu",
+		Description: "A core is pegged while the machine as a whole has capacity to spare -- the workload is " +
+			"serialized onto one core and more cores will not help. Both halves matter: without the imbalance " +
+			"condition this would also fire on a uniformly busy machine, which is a different problem entirely.",
+		When: []Cond{
+			{Metric: MetricBusiestCore, BGte: f(coreSaturatedMsPerSec)},
+			{Metric: MetricCoreImbalance, BGte: f(400)},
+		},
+	},
+	{
+		ID:     "state.cpu.all_cores_pegged",
+		Domain: "cpu",
+		Description: "Every core is individually saturated, which is a genuinely different situation from a high " +
+			"machine-wide average: there is no headroom anywhere, so even a small new task will queue.",
+		When: []Cond{{Metric: MetricCoresBusy, BGtePerCPU: f(1)}},
 	},
 
 	// ---- Memory ----

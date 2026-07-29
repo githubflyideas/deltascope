@@ -147,6 +147,27 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.steal_high"},
 	},
 	{
+		ID:       "diagnosis.single_core_saturated",
+		Severity: "crit",
+		Conclusion: "One CPU core is saturated while the rest of the machine has capacity to spare: a single " +
+			"thread or process is the bottleneck, so the machine looks idle in every whole-machine average " +
+			"even though something is running as fast as it possibly can and no faster",
+		Next:        []string{"top -H", "pidstat -t 1 5", "mpstat -P ALL 1 5", "perf top -p <pid>"},
+		RequiresAll: []string{"state.cpu.serialized"},
+		// If every core is pegged this is not a serialization problem, it
+		// is a capacity problem, and the diagnosis below is the right one.
+		RequiresNone: []string{"state.cpu.all_cores_pegged"},
+	},
+	{
+		ID:       "diagnosis.cpu_capacity_exhausted",
+		Severity: "crit",
+		Conclusion: "Every core on this machine is individually saturated: there is no CPU headroom left anywhere, " +
+			"so any additional work will queue rather than run",
+		Next:         []string{"mpstat -P ALL 1 5", "ps aux --sort=-%cpu | head -15", "uptime"},
+		RequiresAll:  []string{"state.cpu.all_cores_pegged"},
+		RequiresNone: []string{"state.cpu.steal_high"},
+	},
+	{
 		ID:       "diagnosis.kernel_cpu_overhead",
 		Severity: "warn",
 		Conclusion: "An unusual share of CPU is being spent in the kernel rather than in application code, which " +
