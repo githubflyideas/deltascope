@@ -32,8 +32,17 @@ type Value struct {
 
 func (v Value) Key() string { return v.Metric + "\x00" + v.Instance }
 
+// PCPTime formats an instant for pmlogsummary's -S/-T flags.
+//
+// The instant is converted to the server's local timezone first. pmlogsummary
+// interprets an unzoned "@ Mon Jan _2 ..." string in the archive's local time
+// (the server's), so an instant carrying a different zone -- which now happens
+// because the browser sends timestamps with an explicit offset -- must be
+// projected into that zone or the query would ask for the wrong wall-clock
+// moment. Converting here keeps the archive query aligned with how the archive
+// itself is timestamped.
 func PCPTime(t time.Time) string {
-	return "@ " + t.Format("Mon Jan _2 15:04:05 2006")
+	return "@ " + t.Local().Format("Mon Jan _2 15:04:05 2006")
 }
 
 var summaryLine = regexp.MustCompile(

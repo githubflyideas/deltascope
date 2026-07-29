@@ -310,7 +310,11 @@ tr[hidden] { display: none; }
   font-size: 11px; font-style: italic; font-weight: 500;
   letter-spacing: .02em; opacity: .85; white-space: nowrap;
 }
-.proc-name { text-align: left; font-family: var(--sans); }
+/* The process-name column is the row's label and must read left-to-right
+   like one: the default numeric right-alignment pushed names toward the
+   centre and made the status dot float away from the name it marks. */
+.report td.proc-name { text-align: left; font-family: var(--sans); padding-left: 4px; }
+.report td.proc-name .p-dot { display: inline-block; width: 1.4em; }
 .proc-hint { color: var(--muted); font-size: 14.5px; border: 1px dashed var(--line); border-radius: 8px; padding: 14px 16px; margin-top: 8px; line-height: 1.6; }
 
 /* Triage dashboard -- four hardware resources + "the software gremlin" */

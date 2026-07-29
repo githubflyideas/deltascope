@@ -539,7 +539,27 @@ func (s *Server) procDiffFromSnapshots(aStart, aEnd, bStart, bEnd time.Time, thr
 }
 
 
+// parseLocal accepts a timestamp from the browser and returns an absolute
+// instant.
+//
+// The browser now sends an ISO 8601 string with an explicit offset (or a
+// trailing Z), so the instant is unambiguous no matter how the browser's
+// timezone relates to the server's. This matters: the datetime pickers
+// report the user's *local wall-clock* time, and until the browser started
+// attaching an offset the server reinterpreted "18:54" in its OWN timezone.
+// When the two disagreed -- a laptop a few hours ahead of a UTC server --
+// the requested window landed in the server's future, the archive had no
+// data there, and the chart came back empty with no error to explain it.
+//
+// The naive layouts are kept as a fallback so an older cached page, or a
+// hand-built API call, still works: those are interpreted in the server's
+// timezone exactly as before.
 func parseLocal(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
 	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.Local); err == nil {
 		return t, nil
 	}

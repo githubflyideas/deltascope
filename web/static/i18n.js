@@ -147,7 +147,7 @@ zh: {
   tab_diff: "性能对比",
   tab_trend: "历史趋势",
   tab_proc: "进程对账",
-  tab_change: "变更对账",
+  tab_change: "配置对账",
 
   diag_run: "诊断这台机器",
   diag_empty: "一次点击。deltascope 同时对比上一小时与昨天同时段的三层数据——系统指标、进程占用、配置状态——然后告诉你哪块资源出了问题、是哪个进程导致的、以及发生了什么变更。",

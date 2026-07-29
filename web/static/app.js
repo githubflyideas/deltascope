@@ -34,6 +34,19 @@ function toLocalInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// A <input type="datetime-local"> value is bare wall-clock text ("2026-07-29T18:54")
+// with no timezone. Sending it as-is forced the server to guess which zone it
+// meant, and it guessed its own -- so a browser even a few hours off from the
+// server asked for a window in the server's future and got an empty result with
+// no error. Attaching the browser's actual UTC offset makes the instant
+// unambiguous end to end; the server already accepts RFC3339.
+function inputToISO(val) {
+  if (!val) return val;
+  const d = new Date(val); // parsed in the browser's local zone
+  if (isNaN(d)) return val; // let the server surface a parse error
+  return d.toISOString();   // absolute UTC instant, e.g. 2026-07-29T09:54:00.000Z
+}
+
 // unitLabel gives the Y-axis a short, human header naming what the
 // numbers actually mean, so nobody has to infer it from a bare suffix.
 function unitLabel(unit) {
@@ -317,8 +330,8 @@ async function runDiff() {
   btn.textContent = t("comparing");
   try {
     const q = new URLSearchParams({
-      a_start: $("#aStart").value, a_end: $("#aEnd").value,
-      b_start: $("#bStart").value, b_end: $("#bEnd").value,
+      a_start: inputToISO($("#aStart").value), a_end: inputToISO($("#aEnd").value),
+      b_start: inputToISO($("#bStart").value), b_end: inputToISO($("#bEnd").value),
       threshold: $("#threshold").value || "15",
     });
     const rep = await api("/api/diff?" + q.toString());
@@ -677,8 +690,8 @@ async function loadTrend() {
   try {
     const q = new URLSearchParams({
       preset: curPreset,
-      start: $("#tStart").value,
-      end: $("#tEnd").value,
+      start: inputToISO($("#tStart").value),
+      end: inputToISO($("#tEnd").value),
     });
     const data = await api("/api/trend?" + q.toString());
     let yesterday = null;
@@ -686,7 +699,7 @@ async function loadTrend() {
       const dayMs = 86400e3;
       const ys = new Date(new Date($("#tStart").value) - dayMs);
       const ye = new Date(new Date($("#tEnd").value) - dayMs);
-      const qy = new URLSearchParams({ preset: curPreset, start: toLocalInput(ys), end: toLocalInput(ye) });
+      const qy = new URLSearchParams({ preset: curPreset, start: inputToISO(toLocalInput(ys)), end: inputToISO(toLocalInput(ye)) });
       try {
         const yd = await api("/api/trend?" + qy.toString());
         // shift yesterday's timestamps forward one day to overlay on today's axis
@@ -834,8 +847,8 @@ async function runProcDiff() {
   btn.disabled = true; btn.textContent = t("accounting");
   try {
     const q = new URLSearchParams({
-      a_start: $("#pcAStart").value, a_end: $("#pcAEnd").value,
-      b_start: $("#pcBStart").value, b_end: $("#pcBEnd").value,
+      a_start: inputToISO($("#pcAStart").value), a_end: inputToISO($("#pcAEnd").value),
+      b_start: inputToISO($("#pcBStart").value), b_end: inputToISO($("#pcBEnd").value),
     });
     const rep = await api("/api/procdiff?" + q.toString());
     lastProcReport = rep;
@@ -853,8 +866,11 @@ async function runProcDiff() {
 const PV = {
   worse:    { icon: "\u{1F534}", key: "verdict_worse", cls: "v-worse" },
   better:   { icon: "\u{1F7E2}", key: "verdict_better", cls: "v-better" },
-  appeared: { icon: "\u2295", key: "verdict_appeared", cls: "v-new" },
-  gone:     { icon: "\u2296", key: "verdict_gone", cls: "v-gone" },
+  // Status dots, matching the 🔴/🟢 language of the other verdicts. The old
+  // ⊕/⊖ glyphs read as expand/collapse controls -- users tried to click them
+  // to open a subtree that does not exist.
+  appeared: { icon: "\u{1F7E3}", key: "verdict_appeared", cls: "v-new" },
+  gone:     { icon: "\u26AA", key: "verdict_gone", cls: "v-gone" },
   flat:     { icon: "\u00B7", key: "verdict_flat", cls: "v-flat" },
 };
 
@@ -919,7 +935,7 @@ function renderProcDiff(rep) {
     const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
     const inst = r.instances > 1 ? ` <code>${r.instances}\u00d7</code>` : "";
     return `<tr class="${v.cls}">
-      <td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}${inst}</td>
+      <td class="proc-name"><span class="p-dot">${v.icon}</span>${escapeHtml(r.name)}${mark}${inst}</td>
       <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td>
       <td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
       <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
@@ -1074,7 +1090,7 @@ function renderDiagnosis(d) {
     const trs = d.processes.map((r) => {
       const v = PV[r.verdict] || PV.flat;
       const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
-      return `<tr class="${v.cls}"><td class="proc-name">${v.icon} ${escapeHtml(r.name)}${mark}</td>
+      return `<tr class="${v.cls}"><td class="proc-name"><span class="p-dot">${v.icon}</span>${escapeHtml(r.name)}${mark}</td>
         <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td><td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
         <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td><td class="delta-cell">${deltaValFrom(r.rss_delta_pct, r.from_zero)}</td></tr>`;
     }).join("");

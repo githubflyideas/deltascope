@@ -129,17 +129,25 @@ func TestChangesOnlyIsInfo(t *testing.T) {
 	t.Logf("headline: %s / changed: %s", out.Headline, out.Changed)
 }
 
-func TestPickWindowIsHourAnchored(t *testing.T) {
+func TestPickWindowEndsAtNowNotTheLastFullHour(t *testing.T) {
+	// The whole point of the change: the window must include the hour in
+	// progress, so a problem that started a few minutes ago is visible on
+	// the very first run rather than after the next clock hour ticks over.
 	now := time.Date(2026, 7, 25, 14, 37, 0, 0, time.UTC)
 	w := PickWindow(now)
-	if w.BEnd.Minute() != 0 || w.BStart.Minute() != 0 {
-		t.Errorf("window should be hour-anchored, got %v..%v", w.BStart, w.BEnd)
+	if !w.BEnd.Equal(now) {
+		t.Errorf("B should end at now (%v), got %v", now, w.BEnd)
 	}
 	if w.BEnd.Sub(w.BStart) != time.Hour {
 		t.Errorf("compare window should be one hour, got %v", w.BEnd.Sub(w.BStart))
 	}
+	// The day-over-day baseline must still line up exactly one day earlier,
+	// or the comparison stops being like-for-like.
 	if w.AStart.AddDate(0, 0, 1) != w.BStart {
-		t.Errorf("baseline should be exactly one day earlier: %v vs %v", w.AStart, w.BStart)
+		t.Errorf("baseline A must be exactly one day before B: %v vs %v", w.AStart, w.BStart)
+	}
+	if w.AEnd.AddDate(0, 0, 1) != w.BEnd {
+		t.Errorf("baseline A end must be exactly one day before B end: %v vs %v", w.AEnd, w.BEnd)
 	}
 }
 

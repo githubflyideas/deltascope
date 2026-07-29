@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/githubflyideas/deltascope/internal/pcp"
+	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/state"
 )
 
@@ -17,19 +18,23 @@ import (
 // independent engines rather than presenting them as three separate
 // reports the reader has to join up themselves.
 type Diagnosis struct {
-	Window    Window   `json:"window"`
-	Severity  string   `json:"severity"` // crit | warn | info | ok
-	Headline  string   `json:"headline"`
-	Culprit   string   `json:"culprit,omitempty"`
-	Changed   string   `json:"changed,omitempty"`
-	Next      []string `json:"next,omitempty"`
-	Evidence  []string `json:"evidence,omitempty"`
+	Window   Window   `json:"window"`
+	Severity string   `json:"severity"` // crit | warn | info | ok
+	Headline string   `json:"headline"`
+	Culprit  string   `json:"culprit,omitempty"`
+	Changed  string   `json:"changed,omitempty"`
+	Next     []string `json:"next,omitempty"`
+	Evidence []string `json:"evidence,omitempty"`
 
 	// Full detail from each engine, for the folded-out sections.
 	Triage    []pcp.TriageBlock `json:"triage,omitempty"`
 	Findings  []pcp.Finding     `json:"findings,omitempty"`
 	Processes []state.ProcRow   `json:"processes,omitempty"`
 	Changes   []ChangeSummary   `json:"changes,omitempty"`
+	// Reasoning carries the per-core / named-state diagnoses that the
+	// aggregate metric engine cannot see. It also drives the CPU triage
+	// block's escalation, so the one-click view and the reasoning tab agree.
+	Reasoning []reasoning.Result `json:"reasoning,omitempty"`
 
 	Notes []string `json:"notes,omitempty"`
 }
@@ -72,8 +77,8 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 	out := &Diagnosis{Window: w}
 
 	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
+		wg        sync.WaitGroup
+		mu        sync.Mutex
 		metricRep *pcp.DiffReport
 		procDiff  state.ProcDiff
 		stateDiff state.Diff
@@ -157,6 +162,15 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 	if metricRep != nil {
 		out.Triage = metricRep.Triage
 		out.Findings = metricRep.Findings
+		// The triage blocks come straight from the metric engine, which
+		// only looks at whole-machine aggregates. A single pegged core is
+		// invisible there by construction (one core is 1000 ms/s regardless
+		// of machine size -- see internal/reasoning). Fold the per-core
+		// reasoning states back into the CPU block so the one-click page
+		// agrees with the reasoning chain instead of showing a green light
+		// next to a diagnosis that says a core is saturated.
+		out.Reasoning = reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, metricRep.Rows))
+		escalateCPUFromReasoning(out)
 	}
 	out.Processes = topProcesses(procDiff.Rows, 12)
 	out.Changes = summarizeChanges(stateDiff, 40)
@@ -165,25 +179,75 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 	return out, nil
 }
 
-// pickWindow defaults to "the last full hour vs the same hour yesterday",
-// which is the comparison people actually reach for. Anchored to the hour
-// so repeated runs are stable and comparable.
-// PickWindow is exported so other entry points (the reasoning chain) can
-// select the identical comparison window, keeping the two views directly
+// cpuReasoningHeadline maps a reasoning diagnosis ID to the short phrase
+// the CPU triage block should show when the aggregate metrics missed it.
+// Only the CPU diagnoses that the aggregate view is structurally blind to
+// are listed; anything the metric engine can already see is left to it.
+var cpuReasoningHeadline = map[string]struct {
+	status   pcp.TriageStatus
+	headline string
+}{
+	"diagnosis.single_core_saturated":       {pcp.TriageBad, "one core saturated (serialized workload)"},
+	"diagnosis.cpu_capacity_exhausted":      {pcp.TriageBad, "every core saturated"},
+	"diagnosis.intermittent_cpu_saturation": {pcp.TriageWarn, "a core hit its limit intermittently"},
+}
+
+// escalateCPUFromReasoning raises the CPU triage block when a per-core
+// reasoning diagnosis fired that the aggregate metric engine could not see.
+// It only ever raises severity, never lowers it: if the metric engine
+// already flagged CPU red for its own reasons, that stands.
+func escalateCPUFromReasoning(out *Diagnosis) {
+	rank := map[pcp.TriageStatus]int{pcp.TriageOK: 0, pcp.TriageWarn: 1, pcp.TriageBad: 2}
+	for _, r := range out.Reasoning {
+		info, ok := cpuReasoningHeadline[r.ID]
+		if !ok {
+			continue
+		}
+		for i := range out.Triage {
+			b := &out.Triage[i]
+			if b.Key != "cpu" {
+				continue
+			}
+			if rank[info.status] > rank[b.Status] {
+				b.Status = info.status
+				b.Headline = info.headline
+			}
+		}
+	}
+}
+
+// PickWindow defaults to "the trailing hour up to now vs the same clock
+// span yesterday" -- the comparison people reach for when something is
+// wrong right now.
+//
+// It used to anchor B to the last COMPLETE clock hour (truncate to the
+// hour, step back). Repeated runs were then byte-identical, but at the cost
+// of never looking at the hour in progress -- which is exactly where a
+// problem that just started lives. A process that began pegging a core at
+// 18:05 stayed invisible until 19:00, because the window sat at 17:00-18:00
+// no matter how many times it was re-run. A one-click "what is wrong now"
+// is defeated if "now" is excluded by construction, and that is the single
+// most common thing the tool is pointed at.
+//
+// So B now ends at now and runs back one hour; A is the identical clock
+// span exactly one day earlier, so the day-over-day baseline still lines up
+// (18:54 today vs 18:54 yesterday). The tradeoff is deliberate: two runs a
+// minute apart no longer produce identical windows. For a live-triage tool
+// freshness beats reproducibility, and anyone who needs a frozen window can
+// set one explicitly in the manual compare view.
+//
+// PickWindow is exported so both entry points -- one-click diagnosis and
+// the reasoning chain -- select the identical window and stay directly
 // comparable against the same data.
 func PickWindow(now time.Time) Window {
-	bEnd := now.Truncate(time.Hour)
-	if now.Sub(bEnd) < 10*time.Minute {
-		// too early in the hour to have useful data; step back one
-		bEnd = bEnd.Add(-time.Hour)
-	}
+	bEnd := now
 	bStart := bEnd.Add(-time.Hour)
 	return Window{
 		AStart: bStart.AddDate(0, 0, -1),
 		AEnd:   bEnd.AddDate(0, 0, -1),
 		BStart: bStart,
 		BEnd:   bEnd,
-		Label:  "last hour vs the same hour yesterday",
+		Label:  "the last hour up to now vs the same hour yesterday",
 	}
 }
 
@@ -205,16 +269,42 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 
 	worstBlock := worstTriage(out.Triage)
 
+	// A per-core reasoning diagnosis outranks a bare triage colour but not
+	// a full rule-engine conclusion: the reasoning chain knows "one core is
+	// pegged and the rest are idle" is a serialized workload, which is a
+	// real conclusion, whereas the triage block only knows a colour. It
+	// sits just below crit findings for the same reason those do -- a rule
+	// that fired already understands the whole combination.
+	var reasonCrit, reasonWarn *reasoning.Result
+	for i := range out.Reasoning {
+		r := &out.Reasoning[i]
+		if _, relevant := cpuReasoningHeadline[r.ID]; !relevant {
+			continue
+		}
+		if r.Severity == "crit" && reasonCrit == nil {
+			reasonCrit = r
+		}
+		if r.Severity == "warn" && reasonWarn == nil {
+			reasonWarn = r
+		}
+	}
+
 	switch {
 	case crit != nil:
 		out.Severity, out.Headline = "crit", crit.Conclusion
 		out.Evidence, out.Next = crit.Evidence, crit.Next
+	case reasonCrit != nil:
+		out.Severity, out.Headline = "crit", reasonCrit.Conclusion
+		out.Evidence, out.Next = reasonCrit.Evidence, reasonCrit.Next
 	case worstBlock != nil && worstBlock.Status == pcp.TriageBad:
 		out.Severity = "crit"
 		out.Headline = worstBlock.Label + " is degraded: " + worstBlock.Headline
 	case warn != nil:
 		out.Severity, out.Headline = "warn", warn.Conclusion
 		out.Evidence, out.Next = warn.Evidence, warn.Next
+	case reasonWarn != nil:
+		out.Severity, out.Headline = "warn", reasonWarn.Conclusion
+		out.Evidence, out.Next = reasonWarn.Evidence, reasonWarn.Next
 	case worstBlock != nil && worstBlock.Status == pcp.TriageWarn:
 		out.Severity = "warn"
 		out.Headline = worstBlock.Label + " needs watching: " + worstBlock.Headline
@@ -516,4 +606,3 @@ func firstLine(s string) string {
 	}
 	return s
 }
-
