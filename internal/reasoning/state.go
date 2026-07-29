@@ -49,6 +49,22 @@ type Cond struct {
 	BGte *float64 `json:"b_gte,omitempty"`
 	BLte *float64 `json:"b_lte,omitempty"`
 
+	// Scale-relative absolute conditions. These express a threshold in
+	// terms of the machine's own size rather than as a bare number,
+	// because the aggregate PCP metrics are whole-machine sums: 2000 ms/s
+	// of user time is most of a 2-core VM and background noise on a
+	// 64-core box, so a fixed threshold is wrong on one of them by
+	// construction. Resolved against the host at evaluation time.
+	//
+	//   BGteCores:      "N cores' worth of CPU time" -> N*1000 ms/s
+	//   BGteMachineFrac: fraction of TOTAL CPU capacity -> f*NCPU*1000 ms/s
+	//   BGtePerCPU:     per-CPU quantity -> n*NCPU (run queue, etc)
+	//
+	// At most one of these should be set alongside a plain BGte.
+	BGteCores       *float64 `json:"b_gte_cores,omitempty"`
+	BGteMachineFrac *float64 `json:"b_gte_machine_frac,omitempty"`
+	BGtePerCPU      *float64 `json:"b_gte_per_cpu,omitempty"`
+
 	// Change-relative conditions, evaluated against the A→B delta.
 	DeltaGte *float64 `json:"delta_gte,omitempty"`
 	DeltaLte *float64 `json:"delta_lte,omitempty"`
@@ -86,6 +102,13 @@ type Active struct {
 // Evaluate returns every state that holds for the given rows, keyed by
 // state ID for O(1) lookup by the diagnosis layer.
 func Evaluate(states []State, rows []pcp.DiffRow) map[string]Active {
+	return EvaluateOn(states, rows, Host())
+}
+
+// EvaluateOn is Evaluate against an explicit machine description, so
+// scale-relative thresholds can be resolved for a host other than the
+// one running deltascope.
+func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active {
 	byMetric := map[string][]pcp.DiffRow{}
 	for _, r := range rows {
 		byMetric[r.Metric] = append(byMetric[r.Metric], r)
@@ -99,7 +122,7 @@ func Evaluate(states []State, rows []pcp.DiffRow) map[string]Active {
 		evidence := make([]string, 0, len(st.When))
 		matched := true
 		for _, c := range st.When {
-			row, ok := firstMatch(c, byMetric[c.Metric])
+			row, ok := firstMatch(c, byMetric[c.Metric], m)
 			if !ok {
 				matched = false
 				break
@@ -117,16 +140,16 @@ func Evaluate(states []State, rows []pcp.DiffRow) map[string]Active {
 // condition. Instance-level metrics (per-disk, per-NIC) can have many
 // rows; one instance meeting the condition makes the state true, since
 // "some disk is saturated" is the useful reading, not "every disk is".
-func firstMatch(c Cond, rows []pcp.DiffRow) (pcp.DiffRow, bool) {
+func firstMatch(c Cond, rows []pcp.DiffRow, m Machine) (pcp.DiffRow, bool) {
 	for _, row := range rows {
-		if condMatch(c, row) {
+		if condMatch(c, row, m) {
 			return row, true
 		}
 	}
 	return pcp.DiffRow{}, false
 }
 
-func condMatch(c Cond, row pcp.DiffRow) bool {
+func condMatch(c Cond, row pcp.DiffRow, m Machine) bool {
 	if c.Verdict != "" && string(row.Verdict) != c.Verdict {
 		return false
 	}
@@ -134,6 +157,15 @@ func condMatch(c Cond, row pcp.DiffRow) bool {
 		return false
 	}
 	if c.BGte != nil && (row.B == nil || *row.B < *c.BGte) {
+		return false
+	}
+	if c.BGteCores != nil && (row.B == nil || *row.B < m.cores(*c.BGteCores)) {
+		return false
+	}
+	if c.BGteMachineFrac != nil && (row.B == nil || *row.B < m.fractionOfMachine(*c.BGteMachineFrac)) {
+		return false
+	}
+	if c.BGtePerCPU != nil && (row.B == nil || *row.B < m.perCPU(*c.BGtePerCPU)) {
 		return false
 	}
 	if c.BLte != nil && (row.B == nil || *row.B > *c.BLte) {
@@ -198,31 +230,45 @@ func f(v float64) *float64 { return &v }
 // merely a non-zero one.
 var States = []State{
 	// ---- CPU ----
+	// kernel.all.cpu.* are whole-machine sums in ms/s, so every threshold
+	// here is expressed against machine size rather than as a bare number.
 	{
 		ID:          "state.cpu.steal_high",
 		Domain:      "cpu",
-		Description: "Hypervisor is taking CPU away from this guest. Absolute: steal time is meaningful regardless of whether it changed.",
-		// kernel.all.cpu.steal is in ms/s aggregated across all cores;
-		// 100 ms/s is 10% of one core's worth of stolen time.
-		When: []Cond{{Metric: "kernel.all.cpu.steal", BGte: f(100)}},
+		Description: "Hypervisor is taking CPU away from this guest. Absolute: steal matters regardless of whether it changed, and 10% of total capacity is well past noise on any machine size.",
+		When:        []Cond{{Metric: "kernel.all.cpu.steal", BGteMachineFrac: f(0.10)}},
 	},
 	{
-		ID:          "state.cpu.runqueue_high",
-		Domain:      "cpu",
-		Description: "More runnable tasks than the machine is comfortably dispatching.",
-		When:        []Cond{{Metric: "kernel.all.runnable", BGte: f(8)}},
+		ID:     "state.cpu.runqueue_high",
+		Domain: "cpu",
+		Description: "Substantially more runnable tasks than the machine has CPUs to run them on. " +
+			"kernel.all.runnable counts tasks that are RUNNING as well as those waiting, so a healthy " +
+			"machine sits near its core count by definition -- the threshold has to clear that baseline " +
+			"before it means anything. 3x capacity is a queue nobody is draining.",
+		When: []Cond{{Metric: "kernel.all.runnable", BGtePerCPU: f(3)}},
 	},
 	{
 		ID:          "state.cpu.user_high",
 		Domain:      "cpu",
 		Description: "This guest's own userspace is genuinely busy. Used mainly as a negative condition, to separate 'we are busy' from 'we are being starved'.",
-		// 2000 ms/s == two full cores of user time.
-		When: []Cond{{Metric: "kernel.all.cpu.user", BGte: f(2000)}},
+		When:        []Cond{{Metric: "kernel.all.cpu.user", BGteMachineFrac: f(0.50)}},
+	},
+	{
+		ID:          "state.cpu.system_high",
+		Domain:      "cpu",
+		Description: "Kernel-mode CPU is disproportionately high, which points at syscall or interrupt overhead rather than application work.",
+		When:        []Cond{{Metric: "kernel.all.cpu.sys", BGteMachineFrac: f(0.30)}},
+	},
+	{
+		ID:          "state.cpu.iowait_high",
+		Domain:      "cpu",
+		Description: "CPUs are idle waiting on I/O completion rather than doing work.",
+		When:        []Cond{{Metric: "kernel.all.cpu.wait.total", BGteMachineFrac: f(0.20)}},
 	},
 	{
 		ID:          "state.cpu.pressure_high",
 		Domain:      "cpu",
-		Description: "PSI reports tasks stalling on CPU availability.",
+		Description: "PSI reports tasks stalling on CPU availability. Already a percentage, so it needs no scaling.",
 		When:        []Cond{{Metric: "kernel.all.pressure.cpu.some.avg", BGte: f(10)}},
 	},
 
@@ -230,10 +276,8 @@ var States = []State{
 	{
 		ID:          "state.mem.available_low",
 		Domain:      "memory",
-		Description: "Available memory has fallen far enough that reclaim pressure is plausible.",
-		// Relative, not absolute: 'low' depends entirely on machine size,
-		// and a fixed byte threshold would be wrong on most hosts.
-		When: []Cond{{Metric: "mem.util.available", Verdict: "worse", DeltaLte: f(-25)}},
+		Description: "Available memory has fallen sharply. Relative by necessity: 'low' depends entirely on machine size, and a fixed byte threshold would be wrong on most hosts.",
+		When:        []Cond{{Metric: "mem.util.available", Verdict: "worse", DeltaLte: f(-25)}},
 	},
 	{
 		ID:          "state.mem.swapping",
@@ -247,12 +291,24 @@ var States = []State{
 		Description: "Reclaim is happening synchronously in the allocation path, so allocations stall.",
 		When:        []Cond{{Metric: "mem.vmstat.pgscan_direct", BGte: f(1)}},
 	},
+	{
+		ID:          "state.mem.pressure_high",
+		Domain:      "memory",
+		Description: "PSI reports tasks stalling on memory.",
+		When:        []Cond{{Metric: "kernel.all.pressure.memory.some.avg", BGte: f(5)}},
+	},
+	{
+		ID:          "state.mem.major_faults_high",
+		Domain:      "memory",
+		Description: "Major page faults are frequent: pages are being fetched from disk rather than found in memory.",
+		When:        []Cond{{Metric: "mem.vmstat.pgmajfault", BGte: f(50)}},
+	},
 
 	// ---- I/O ----
 	{
 		ID:          "state.io.saturated",
 		Domain:      "io",
-		Description: "A disk is busy most of the time with requests actually queued behind it.",
+		Description: "A disk is busy nearly all the time with requests actually queued behind it. Both conditions matter: high utilisation with an empty queue is a disk doing its job.",
 		When: []Cond{
 			{Metric: "disk.dev.avactive", BGte: f(0.7)},
 			{Metric: "disk.dev.aveq", BGte: f(2)},
@@ -263,5 +319,31 @@ var States = []State{
 		Domain:      "io",
 		Description: "PSI reports tasks stalling on I/O.",
 		When:        []Cond{{Metric: "kernel.all.pressure.io.some.avg", BGte: f(10)}},
+	},
+	{
+		ID:          "state.io.write_heavy",
+		Domain:      "io",
+		Description: "Sustained write throughput, useful for telling a write-driven stall from a read-driven one.",
+		When:        []Cond{{Metric: "disk.all.write_bytes", BGte: f(51200)}}, // 50 MB/s
+	},
+
+	// ---- Network ----
+	{
+		ID:          "state.net.retransmit_high",
+		Domain:      "network",
+		Description: "TCP is retransmitting at a rate that indicates real packet loss, not the occasional stray retransmit every link has.",
+		When:        []Cond{{Metric: "network.tcp.retranssegs", BGte: f(10)}},
+	},
+	{
+		ID:          "state.net.conn_churn_high",
+		Domain:      "network",
+		Description: "Connections are being opened at a high rate, which stresses the socket table and ephemeral port range.",
+		When:        []Cond{{Metric: "network.tcp.activeopens", BGte: f(200)}},
+	},
+	{
+		ID:          "state.net.timewait_high",
+		Domain:      "network",
+		Description: "A large TIME-WAIT pool, which combined with high churn can exhaust ephemeral ports.",
+		When:        []Cond{{Metric: "network.sockstat.tcp.tw", BGte: f(10000)}},
 	},
 }

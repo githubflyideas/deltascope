@@ -1168,8 +1168,12 @@ async function runReasoning() {
 function renderReasoning(d) {
   const w = d.window || {};
   const fmt = (x) => x ? new Date(x).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  // The core count is shown because every scale-relative threshold is
+  // derived from it -- a reader checking whether a verdict is reasonable
+  // needs to know what "50% of capacity" was measured against.
+  const ncpu = d.machine && d.machine.ncpu ? ` \u00b7 ${d.machine.ncpu} CPU` : "";
   $("#reasoningWindow").textContent = w.label
-    ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}` : "";
+    ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}${ncpu}` : "";
 
   let html = "";
   const diags = d.diagnoses || [];

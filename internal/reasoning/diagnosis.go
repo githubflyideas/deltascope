@@ -124,6 +124,7 @@ func collectEvidence(states []string, active map[string]Active) []string {
 // pass -- the point is to prove the state→diagnosis indirection works,
 // not to claim broad coverage yet.
 var Diagnoses = []Diagnosis{
+	// ---- CPU ----
 	{
 		ID:       "diagnosis.vm_cpu_contention",
 		Severity: "crit",
@@ -139,12 +140,23 @@ var Diagnoses = []Diagnosis{
 	{
 		ID:       "diagnosis.cpu_saturated_own_workload",
 		Severity: "warn",
-		Conclusion: "This machine's own workload is saturating the CPU: userspace is consuming multiple cores " +
-			"and tasks are queuing, with no meaningful steal time — the load originates here",
+		Conclusion: "This machine's own workload is saturating the CPU: userspace is consuming most of the machine's " +
+			"capacity and tasks are queuing, with no meaningful steal time — the load originates here",
 		Next:         []string{"pidstat 1 5", "top -H", "ps aux --sort=-%cpu | head -15"},
 		RequiresAll:  []string{"state.cpu.user_high", "state.cpu.runqueue_high"},
 		RequiresNone: []string{"state.cpu.steal_high"},
 	},
+	{
+		ID:       "diagnosis.kernel_cpu_overhead",
+		Severity: "warn",
+		Conclusion: "An unusual share of CPU is being spent in the kernel rather than in application code, which " +
+			"points at syscall volume, interrupt load, or contention inside the kernel rather than at the workload itself",
+		Next:         []string{"pidstat 1 5", "perf top", "cat /proc/interrupts"},
+		RequiresAll:  []string{"state.cpu.system_high"},
+		RequiresNone: []string{"state.cpu.user_high"},
+	},
+
+	// ---- Memory ----
 	{
 		ID:       "diagnosis.memory_pressure_swapping",
 		Severity: "crit",
@@ -165,12 +177,58 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.mem.swapping"},
 	},
 	{
+		ID:       "diagnosis.thrashing",
+		Severity: "crit",
+		Conclusion: "The machine is thrashing: major page faults are frequent and memory is under pressure, so the " +
+			"working set no longer fits in RAM and pages are being fetched back from disk as fast as they are evicted",
+		Next:        []string{"free -m", "vmstat 1 5", "ps aux --sort=-rss | head -15"},
+		RequiresAll: []string{"state.mem.major_faults_high"},
+		RequiresAny: []string{"state.mem.pressure_high", "state.mem.swapping", "state.mem.available_low"},
+	},
+
+	// ---- I/O ----
+	{
 		ID:       "diagnosis.io_bound",
 		Severity: "crit",
 		Conclusion: "Storage is the bottleneck: a disk is busy nearly all the time with requests queued behind it, " +
 			"and tasks are stalling on I/O",
 		Next:        []string{"iostat -x 1 5", "pidstat -d 1 5", "iotop -o"},
 		RequiresAll: []string{"state.io.saturated"},
-		RequiresAny: []string{"state.io.pressure_high"},
+		RequiresAny: []string{"state.io.pressure_high", "state.cpu.iowait_high"},
+	},
+	{
+		ID:       "diagnosis.io_slow_not_busy",
+		Severity: "warn",
+		Conclusion: "Tasks are stalling on I/O even though no disk is saturated: the storage is responding slowly " +
+			"rather than being overloaded — typical of a degraded device, a throttled cloud volume, or a network filesystem",
+		Next:        []string{"iostat -x 1 5", "dmesg -T | tail -50", "check cloud volume IOPS/throughput limits"},
+		RequiresAll: []string{"state.io.pressure_high"},
+		// The distinction from io_bound above is precisely this absence.
+		RequiresNone: []string{"state.io.saturated"},
+	},
+	{
+		ID:       "diagnosis.write_pressure",
+		Severity: "warn",
+		Conclusion: "Sustained heavy writing is driving I/O stalls: the write path, not reads, is where the pressure is",
+		Next:        []string{"iotop -o -a", "iostat -x 1 5", "grep -E 'Dirty|Writeback' /proc/meminfo"},
+		RequiresAll: []string{"state.io.write_heavy", "state.io.pressure_high"},
+	},
+
+	// ---- Network ----
+	{
+		ID:       "diagnosis.network_loss",
+		Severity: "warn",
+		Conclusion: "TCP is retransmitting heavily, which means real packet loss between this host and its peers — " +
+			"link quality, an overloaded middlebox, or a congested path rather than anything on this machine",
+		Next:        []string{"ss -ti | grep -B1 retrans", "mtr -rw <peer>", "check NIC errors and drops"},
+		RequiresAll: []string{"state.net.retransmit_high"},
+	},
+	{
+		ID:       "diagnosis.port_exhaustion_risk",
+		Severity: "warn",
+		Conclusion: "High connection churn combined with a large TIME-WAIT pool: the ephemeral port range is at risk " +
+			"of exhaustion, which surfaces as intermittent connection failures rather than as slowness",
+		Next: []string{"ss -s", "sysctl net.ipv4.ip_local_port_range", "sysctl net.ipv4.tcp_tw_reuse"},
+		RequiresAll: []string{"state.net.conn_churn_high", "state.net.timewait_high"},
 	},
 }

@@ -413,6 +413,7 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]any{
 		"window":    w2,
+		"machine":   reasoning.Host(),
 		"states":    states,
 		"diagnoses": results,
 	})
