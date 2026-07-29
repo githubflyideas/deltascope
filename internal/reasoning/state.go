@@ -65,6 +65,36 @@ type Cond struct {
 	BGteMachineFrac *float64 `json:"b_gte_machine_frac,omitempty"`
 	BGtePerCPU      *float64 `json:"b_gte_per_cpu,omitempty"`
 
+	// Peak conditions, evaluated against window B's MAXIMUM sample rather
+	// than its mean.
+	//
+	// These exist because the comparison window is an hour and the mean
+	// over an hour is a poor description of a short, severe event. A
+	// process that pegs a core for 20 of 60 minutes contributes 333 ms/s
+	// to the hourly mean -- a third of a core, under every threshold worth
+	// setting -- while the machine was genuinely saturated for a third of
+	// the window. Averaging is precisely the operation that destroys the
+	// signal, and the mean was the only thing this layer looked at.
+	//
+	// pmlogsummary already reports min/max/count alongside the mean, and
+	// DiffRow has carried them since the sample-statistics work; they were
+	// used only for a hover tooltip. Reading them here costs nothing.
+	BMaxGte         *float64 `json:"b_max_gte,omitempty"`
+	BMaxGteCores    *float64 `json:"b_max_gte_cores,omitempty"`
+	BMaxMachineFrac *float64 `json:"b_max_gte_machine_frac,omitempty"`
+
+	// MinSamples requires at least this many samples behind the window's
+	// statistics. A peak condition on a 3-sample window describes an
+	// artifact; on a 1400-sample window it describes something that
+	// happened. Peak conditions should always carry one.
+	MinSamples int `json:"min_samples,omitempty"`
+
+	// PeakRatioGte requires B's peak to exceed B's mean by this factor,
+	// which is what "spiky rather than steadily loaded" actually means. A
+	// steady 900 ms/s and a bursty 900-peak/90-mean both have a high peak
+	// and want opposite conclusions.
+	PeakRatioGte *float64 `json:"peak_ratio_gte,omitempty"`
+
 	// Change-relative conditions, evaluated against the A→B delta.
 	DeltaGte *float64 `json:"delta_gte,omitempty"`
 	DeltaLte *float64 `json:"delta_lte,omitempty"`
@@ -178,6 +208,37 @@ func condMatch(c Cond, row pcp.DiffRow, m Machine) bool {
 	if c.BLte != nil && (row.B == nil || *row.B > *c.BLte) {
 		return false
 	}
+	// Peak conditions require the row to actually carry statistics. A
+	// pmlogsummary build that omits min/max leaves BMax nil, and treating
+	// a missing peak as zero would silently disable every peak state; not
+	// matching is the honest outcome.
+	if c.MinSamples > 0 && row.BCount < c.MinSamples {
+		return false
+	}
+	if c.BMaxGte != nil && (row.BMax == nil || *row.BMax < *c.BMaxGte) {
+		return false
+	}
+	if c.BMaxGteCores != nil && (row.BMax == nil || *row.BMax < m.cores(*c.BMaxGteCores)) {
+		return false
+	}
+	if c.BMaxMachineFrac != nil && (row.BMax == nil || *row.BMax < m.fractionOfMachine(*c.BMaxMachineFrac)) {
+		return false
+	}
+	if c.PeakRatioGte != nil {
+		if row.BMax == nil || row.B == nil {
+			return false
+		}
+		// A near-zero mean makes the ratio meaningless the same way a
+		// near-zero baseline makes a percentage change meaningless: the
+		// numbers are real and they describe nothing. Require a
+		// non-trivial peak before trusting the ratio.
+		if *row.B <= 0 || *row.BMax < 1 {
+			return false
+		}
+		if *row.BMax / *row.B < *c.PeakRatioGte {
+			return false
+		}
+	}
 	if c.DeltaGte != nil && (row.DeltaPct == nil || *row.DeltaPct < *c.DeltaGte) {
 		return false
 	}
@@ -199,6 +260,13 @@ func evidenceLine(row pcp.DiffRow) string {
 	var parts []string
 	if row.B != nil {
 		parts = append(parts, fmt.Sprintf("B=%s", trimFloat(*row.B)))
+	}
+	// The peak is cited whenever it is materially above the mean, because
+	// there the mean alone actively misdescribes the window: "B=333" for a
+	// core pegged for 20 minutes reads as a third of a core of steady
+	// load, which is not what happened.
+	if row.BMax != nil && row.B != nil && *row.BMax > *row.B*1.5 {
+		parts = append(parts, fmt.Sprintf("peak=%s", trimFloat(*row.BMax)))
 	}
 	if row.DeltaPct != nil {
 		parts = append(parts, fmt.Sprintf("Δ%+.1f%%", *row.DeltaPct))
@@ -296,6 +364,27 @@ var States = []State{
 			{Metric: MetricBusiestCore, BGte: f(coreSaturatedMsPerSec)},
 			{Metric: MetricCoreImbalance, BGte: f(400)},
 		},
+	},
+	{
+		ID:     "state.cpu.core_peaked",
+		Domain: "cpu",
+		Description: "A core reached saturation at some point in the window even though the mean did not. This is " +
+			"the case an averaged comparison structurally cannot see: 20 saturated minutes out of 60 is 333 ms/s on " +
+			"the mean, under every threshold worth setting, while the machine was pegged for a third of the window.",
+		When: []Cond{{Metric: MetricBusiestCore, BMaxGte: f(coreSaturatedMsPerSec), MinSamples: 30}},
+	},
+	{
+		ID:     "state.cpu.bursty",
+		Domain: "cpu",
+		Description: "CPU demand is spiky rather than sustained: the peak is several times the mean. Worth separating " +
+			"from steady load because the remedies differ -- a burst wants queueing or rate limiting, sustained load " +
+			"wants more capacity.",
+		When: []Cond{{
+			Metric:          "kernel.all.cpu.user",
+			BMaxMachineFrac: f(0.60),
+			PeakRatioGte:    f(4),
+			MinSamples:      30,
+		}},
 	},
 	{
 		ID:     "state.cpu.all_cores_pegged",

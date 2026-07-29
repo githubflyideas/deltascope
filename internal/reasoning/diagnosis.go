@@ -159,6 +159,22 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.all_cores_pegged"},
 	},
 	{
+		ID:       "diagnosis.intermittent_cpu_saturation",
+		Severity: "warn",
+		Conclusion: "CPU saturation is intermittent: a core reached its limit during this window but the average " +
+			"hides it, so the machine looks healthy in every averaged view while anything arriving during the " +
+			"spikes was queueing behind a full core",
+		Next: []string{
+			"mpstat -P ALL 1 60",
+			"pidstat 1 60",
+			"re-run the comparison over a window of minutes around the spike",
+		},
+		RequiresAll: []string{"state.cpu.core_peaked"},
+		// If the MEAN is saturated too then this is not intermittent, and
+		// the sustained diagnoses describe it better.
+		RequiresNone: []string{"state.cpu.core_pegged", "state.cpu.all_cores_pegged"},
+	},
+	{
 		ID:       "diagnosis.cpu_capacity_exhausted",
 		Severity: "crit",
 		Conclusion: "Every core on this machine is individually saturated: there is no CPU headroom left anywhere, " +
@@ -228,9 +244,9 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.io.saturated"},
 	},
 	{
-		ID:       "diagnosis.write_pressure",
-		Severity: "warn",
-		Conclusion: "Sustained heavy writing is driving I/O stalls: the write path, not reads, is where the pressure is",
+		ID:          "diagnosis.write_pressure",
+		Severity:    "warn",
+		Conclusion:  "Sustained heavy writing is driving I/O stalls: the write path, not reads, is where the pressure is",
 		Next:        []string{"iotop -o -a", "iostat -x 1 5", "grep -E 'Dirty|Writeback' /proc/meminfo"},
 		RequiresAll: []string{"state.io.write_heavy", "state.io.pressure_high"},
 	},
@@ -249,7 +265,7 @@ var Diagnoses = []Diagnosis{
 		Severity: "warn",
 		Conclusion: "High connection churn combined with a large TIME-WAIT pool: the ephemeral port range is at risk " +
 			"of exhaustion, which surfaces as intermittent connection failures rather than as slowness",
-		Next: []string{"ss -s", "sysctl net.ipv4.ip_local_port_range", "sysctl net.ipv4.tcp_tw_reuse"},
+		Next:        []string{"ss -s", "sysctl net.ipv4.ip_local_port_range", "sysctl net.ipv4.tcp_tw_reuse"},
 		RequiresAll: []string{"state.net.conn_churn_high", "state.net.timewait_high"},
 	},
 }

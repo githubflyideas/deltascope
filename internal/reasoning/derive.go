@@ -80,6 +80,8 @@ const coreSaturatedMsPerSec = 850
 func Derive(rows []pcp.DiffRow) []pcp.DiffRow {
 	busyA, busyB := map[string]float64{}, map[string]float64{}
 	seenA, seenB := map[string]bool{}, map[string]bool{}
+	peakB := map[string]float64{}
+	countB := map[string]int{}
 
 	for _, r := range rows {
 		if r.Instance == "" || !isCoreBusyComponent(r.Metric) {
@@ -92,6 +94,22 @@ func Derive(rows []pcp.DiffRow) []pcp.DiffRow {
 		if r.B != nil {
 			busyB[r.Instance] += *r.B
 			seenB[r.Instance] = true
+		}
+		// Component peaks are combined with max(), not by summing. Summing
+		// would assume the components peaked in the same sample, which is
+		// not knowable from summary statistics and is often false -- a core
+		// alternating between user-heavy and kernel-heavy phases would be
+		// credited with a combined peak it never reached. max() is a true
+		// lower bound on the real combined peak, so a "peak >= threshold"
+		// condition can only under-report, never invent a spike.
+		if r.BMax != nil && *r.BMax > peakB[r.Instance] {
+			peakB[r.Instance] = *r.BMax
+		}
+		// The smallest contributing sample count is the honest one: a
+		// component that was barely sampled must not let a thin window
+		// pass a MinSamples guard.
+		if r.BCount > 0 && (countB[r.Instance] == 0 || r.BCount < countB[r.Instance]) {
+			countB[r.Instance] = r.BCount
 		}
 	}
 	if len(seenA) == 0 && len(seenB) == 0 {
@@ -111,8 +129,13 @@ func Derive(rows []pcp.DiffRow) []pcp.DiffRow {
 
 	out := make([]pcp.DiffRow, 0, len(instances)+3)
 	for _, inst := range instances {
-		out = append(out, derivedRow(MetricCoreBusy, inst, "per-core busy CPU", "CPU", "millisec / second",
-			valOrNil(busyA, seenA, inst), valOrNil(busyB, seenB, inst)))
+		r := derivedRow(MetricCoreBusy, inst, "per-core busy CPU", "CPU", "millisec / second",
+			valOrNil(busyA, seenA, inst), valOrNil(busyB, seenB, inst))
+		if p, ok := peakB[inst]; ok && p > 0 {
+			pp := p
+			r.BMax, r.BCount = &pp, countB[inst]
+		}
+		out = append(out, r)
 	}
 
 	// Aggregates are computed per side independently: window A and window
@@ -122,8 +145,12 @@ func Derive(rows []pcp.DiffRow) []pcp.DiffRow {
 	maxA, meanA, cntA, okA := summarize(busyA, seenA)
 	maxB, meanB, cntB, okB := summarize(busyB, seenB)
 
-	out = append(out, derivedRow(MetricBusiestCore, "", "busiest core", "CPU", "millisec / second",
-		ptrIf(maxA, okA), ptrIf(maxB, okB)))
+	busiest := derivedRow(MetricBusiestCore, "", "busiest core", "CPU", "millisec / second",
+		ptrIf(maxA, okA), ptrIf(maxB, okB))
+	if p, n, ok := peakAcross(peakB, countB, seenB); ok {
+		busiest.BMax, busiest.BCount = &p, n
+	}
+	out = append(out, busiest)
 	out = append(out, derivedRow(MetricCoreImbalance, "", "core imbalance", "CPU", "millisec / second",
 		ptrIf(maxA-meanA, okA), ptrIf(maxB-meanB, okB)))
 	out = append(out, derivedRow(MetricCoresBusy, "", "saturated cores", "CPU", "none",
@@ -202,4 +229,24 @@ func derivedMinAbs(metric string) float64 {
 		return 1 // whole cores; a fractional floor would be meaningless
 	}
 	return 50
+}
+
+// peakAcross reduces the per-core peaks to the single highest, carrying
+// the smallest sample count behind it for the same reason the per-core
+// counts are combined conservatively.
+func peakAcross(peaks map[string]float64, counts map[string]int, seen map[string]bool) (float64, int, bool) {
+	best, bestN, ok := 0.0, 0, false
+	for inst, present := range seen {
+		if !present {
+			continue
+		}
+		p, has := peaks[inst]
+		if !has || p <= 0 {
+			continue
+		}
+		if !ok || p > best {
+			best, bestN, ok = p, counts[inst], true
+		}
+	}
+	return best, bestN, ok
 }
