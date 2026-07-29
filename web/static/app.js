@@ -421,12 +421,28 @@ function renderTriage(triage, rows) {
     btn.addEventListener("click", () => {
       const res = btn.dataset.res;
       const cats = { cpu: ["CPU"], mem: ["Memory"], disk: ["Disk I/O", "Filesystem"], net: ["Network"] }[res];
-      const el = [...document.querySelectorAll(".cat-block summary.cat-head")]
-        .find((h) => cats.some((cat) => h.textContent.includes(cat)));
+      // Matched by the exact category the block was rendered with, not by
+      // scanning summary text: "聚焦模式" (only-exceeded) can filter an
+      // entire category down to zero rows, in which case its <details>
+      // block was never rendered at all. Scanning text silently did
+      // nothing in that case -- the button looked broken with no feedback.
+      const el = [...document.querySelectorAll(".cat-block[data-category]")]
+        .find((d) => cats.includes(d.dataset.category));
       if (el) {
-        const details = el.closest("details");
-        if (details) details.open = true;
+        el.open = true;
         el.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        // The category's rows all got filtered out by focus mode. Turn
+        // it off and retry once rather than leaving the click looking
+        // like a no-op.
+        const onlyExceeded = $("#onlyExceeded");
+        if (onlyExceeded && onlyExceeded.checked) {
+          onlyExceeded.checked = false;
+          renderReport(lastReport);
+          const retry = [...document.querySelectorAll(".cat-block[data-category]")]
+            .find((d) => cats.includes(d.dataset.category));
+          if (retry) { retry.open = true; retry.scrollIntoView({ behavior: "smooth", block: "start" }); }
+        }
       }
     }));
   board.querySelectorAll(".triage-jump[data-tab-jump]").forEach((btn) =>
@@ -582,7 +598,7 @@ function renderReport(rep) {
       trs.push(rowHTML(r, rowKind(r), "", ""));
       i++;
     }
-    blocks.push(`<details class="cat-block" open>
+    blocks.push(`<details class="cat-block" open data-category="${escapeHtml(cat)}">
       <summary class="cat-head"><span>${escapeHtml(cat)}</span><span>${rows.length} ${t("items_shown")}</span></summary>
       <table class="report">
         <thead><tr><th>${t("th_metric")}</th><th>${t("th_a_mean")}</th><th>${t("th_b_mean")}</th><th>${t("th_delta")}</th><th>${t("th_verdict")}</th><th>${t("th_unit")}</th></tr></thead>
@@ -1214,7 +1230,21 @@ function renderReasoning(d) {
   const diags = d.diagnoses || [];
 
   if (!diags.length) {
-    html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_no_diagnosis")}</div>`;
+    // "No diagnosis" and "no state is active" are different facts, and
+    // conflating them reads as a contradiction: a state row can show
+    // "1 active" directly under a message saying nothing matched. If
+    // something IS active, name it -- the state itself carries a real,
+    // human-readable signal even before the catalog has an opinion about
+    // what combination it means.
+    const activeStates = (d.states || []).filter((s) => s.active);
+    if (activeStates.length) {
+      html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_active_no_pattern", activeStates.length)}` +
+        `<div style="margin-top:8px">` +
+        activeStates.map((s) => `<code class="rsn-id">${escapeHtml(s.id)}</code>`).join(" ") +
+        `</div></div>`;
+    } else {
+      html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_no_diagnosis")}</div>`;
+    }
   } else {
     html += diags.map((r) => {
       const sv = SEV_STYLE[r.severity] || SEV_STYLE.info;

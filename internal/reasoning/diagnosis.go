@@ -153,7 +153,7 @@ var Diagnoses = []Diagnosis{
 			"thread or process is the bottleneck, so the machine looks idle in every whole-machine average " +
 			"even though something is running as fast as it possibly can and no faster",
 		Next:        []string{"top -H", "pidstat -t 1 5", "mpstat -P ALL 1 5", "perf top -p <pid>"},
-		RequiresAll: []string{"state.cpu.serialized"},
+		RequiresAll: []string{"state.cpu.core_pegged", "state.cpu.serialized"},
 		// If every core is pegged this is not a serialization problem, it
 		// is a capacity problem, and the diagnosis below is the right one.
 		RequiresNone: []string{"state.cpu.all_cores_pegged"},
@@ -237,6 +237,31 @@ var Diagnoses = []Diagnosis{
 		RequiresAny: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
 	},
 	{
+		ID:       "diagnosis.context_switch_overhead",
+		Severity: "warn",
+		Conclusion: "Context switching is far above what useful work requires, on its own -- the run queue is not " +
+			"backed up, so this is not (yet) costing throughput, but the CPU time spent switching between threads " +
+			"is real and worth finding the source of before it does",
+		Next:        []string{"pidstat -w 1 5", "perf sched latency", "cat /proc/interrupts"},
+		RequiresAll: []string{"state.cpu.context_switch_storm"},
+		// The more specific diagnosis above already covers the case where a
+		// queue is backed up too; this is deliberately the fallback for
+		// "context_switch_storm fired and nothing else did", which used to
+		// produce no diagnosis at all -- a state with no possible catch-all
+		// is a state that periodically reports "1/N active, no diagnosis"
+		// and looks broken even though it correctly detected something.
+		RequiresNone: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
+	},
+	{
+		ID:       "diagnosis.cpu_demand_bursty",
+		Severity: "warn",
+		Conclusion: "CPU demand is spiky rather than sustained: the peak is several times the mean, so an averaged " +
+			"view understates how close the machine came to saturation during the spikes -- queueing or rate " +
+			"limiting helps a burst in a way that adding steady-state capacity does not",
+		Next:        []string{"mpstat -P ALL 1 30", "pidstat 1 30", "sar -q -f /var/log/sa/saXX"},
+		RequiresAll: []string{"state.cpu.bursty"},
+	},
+	{
 		ID:       "diagnosis.process_churn",
 		Severity: "warn",
 		Conclusion: "Processes are being created at a rate that is itself the workload: the CPU cost appears as " +
@@ -264,6 +289,18 @@ var Diagnoses = []Diagnosis{
 		// Swapping has its own, more specific diagnosis above; suppress
 		// this one there so the report doesn't say the same thing twice.
 		RequiresNone: []string{"state.mem.swapping"},
+	},
+	{
+		ID:       "diagnosis.background_reclaim_active",
+		Severity: "warn",
+		Conclusion: "Background reclaim (kswapd) is running well ahead of allocations: memory pressure exists and " +
+			"is being absorbed for now, without direct-reclaim stalls or swapping yet -- worth watching before it " +
+			"escalates into either",
+		Next:        []string{"sar -B 1 5", "free -m", "grep -E 'pgscan_kswapd|pgsteal' /proc/vmstat"},
+		RequiresAll: []string{"state.mem.kswapd_active"},
+		// The stronger, more specific diagnoses below already cover the
+		// case where this has progressed past "being absorbed".
+		RequiresNone: []string{"state.mem.direct_reclaim", "state.mem.swapping", "state.mem.alloc_stalling"},
 	},
 	{
 		ID:       "diagnosis.thrashing",
@@ -385,6 +422,14 @@ var Diagnoses = []Diagnosis{
 	},
 
 	{
+		ID:       "diagnosis.io_total_stall",
+		Severity: "crit",
+		Conclusion: "PSI reports every runnable task stalled on I/O at once: this is not a slow disk in the " +
+			"background, it is the machine as a whole waiting on storage right now",
+		Next:        []string{"iostat -x 1 5", "iotop -o", "cat /proc/pressure/io"},
+		RequiresAll: []string{"state.io.pressure_full"},
+	},
+	{
 		ID:       "diagnosis.storage_degraded",
 		Severity: "crit",
 		Conclusion: "A device has requests queued deeply while not being busy enough to justify it: completions are " +
@@ -398,6 +443,15 @@ var Diagnoses = []Diagnosis{
 		},
 		RequiresAll:  []string{"state.io.queue_deep"},
 		RequiresNone: []string{"state.io.saturated"},
+	},
+	{
+		ID:       "diagnosis.read_heavy_stall",
+		Severity: "warn",
+		Conclusion: "Sustained read throughput is driving I/O stalls: the read path -- a cold cache, a large scan, " +
+			"or a backup/restore -- is where the pressure is, not writes",
+		Next:        []string{"iotop -o", "iostat -x 1 5", "pidstat -d 1 5"},
+		RequiresAll: []string{"state.io.read_heavy"},
+		RequiresAny: []string{"state.io.pressure_high", "state.io.saturated", "state.cpu.iowait_high"},
 	},
 	{
 		ID:       "diagnosis.random_io_bound",
@@ -531,6 +585,24 @@ var Diagnoses = []Diagnosis{
 			"ss -tm | head -20",
 		},
 		RequiresAll: []string{"state.net.receive_pruning"},
+	},
+	{
+		ID:       "diagnosis.connection_reset_storm",
+		Severity: "warn",
+		Conclusion: "This host is sending an unusually high rate of TCP resets: connections to closed ports, or an " +
+			"application closing sockets with data still queued -- either way, peers are seeing this machine reset " +
+			"connections rather than close them cleanly",
+		Next:        []string{"ss -s", "tcpdump -c 200 'tcp[tcpflags] & tcp-rst != 0'", "check for connections to unlisted ports"},
+		RequiresAll: []string{"state.net.reset_storm"},
+	},
+	{
+		ID:       "diagnosis.orphan_socket_buildup",
+		Severity: "warn",
+		Conclusion: "A large number of orphaned sockets are being drained: their owning processes are gone, and " +
+			"past the orphan limit the kernel resets them outright -- which peers experience as unexplained " +
+			"connection loss rather than a clean close",
+		Next:        []string{"ss -tan | grep -c ORPHAN", "sysctl net.ipv4.tcp_max_orphans", "ss -tanp | head -30"},
+		RequiresAll: []string{"state.net.orphan_high"},
 	},
 	{
 		ID:       "diagnosis.tcp_path_degraded",
