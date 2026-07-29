@@ -159,7 +159,7 @@ table.report { width: 100%; border-collapse: collapse; }
   padding: 7px 10px; border-bottom: 1px solid rgba(38, 51, 84, .5);
   font-family: var(--mono); font-size: 15px; text-align: right; white-space: nowrap;
 }
-.report td.metric-cell { text-align: left; font-family: var(--sans); }
+.report td.metric-cell { text-align: left; font-family: var(--sans); white-space: normal; overflow-wrap: break-word; }
 .metric-cell .m-label { display: block; }
 .metric-cell .m-name { display: block; font-family: var(--mono); font-size: 13px; color: var(--muted); }
 .report td.col-a { color: var(--a); }
@@ -202,6 +202,31 @@ table.report { width: 100%; border-collapse: collapse; }
   color: var(--muted); font-size: 14px; text-align: center; padding: 18px;
   font-family: var(--mono);
 }
+.foot-line { margin-bottom: 10px; }
+.foot-meta {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 12px; font-size: 12px;
+}
+.foot-meta .host-chip {
+  font-family: var(--mono); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 9px; font-size: 12px;
+}
+.foot-meta .ver-chip {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px;
+}
+.btn-export {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  font-family: var(--sans);
+}
+.btn-export:hover { color: var(--ink); border-color: var(--muted); }
+.gh-star {
+  display: inline-flex; align-items: center; gap: 5px; color: var(--muted);
+  text-decoration: none; border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; font-family: var(--sans);
+}
+.gh-star:hover { color: var(--ink); border-color: var(--muted); }
 
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .login-card {
@@ -454,7 +479,7 @@ body.theme-iris-light .report tr[data-bg] { mix-blend-mode: multiply; }
 .setup-lead { color: var(--muted); font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
 .field-hint { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
 
-.m-stats { color: var(--muted); opacity: .75; }
+.m-stats { color: var(--muted); opacity: .75; display: inline-block; line-height: 1.5; }
 
 .lang-select {
   background: var(--panel); border: 1px solid var(--line); color: var(--muted);

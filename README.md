@@ -30,7 +30,10 @@ directly, across three layers:
   (146 built-in metrics: CPU, memory, disk, filesystem, network), with a
   rule engine that turns raw deltas into plain-language conclusions
   ("swap is active and available memory is falling — memory pressure")
-  plus next steps to run.
+  plus next steps to run. A dual-significance floor (relative % *and* an
+  absolute minimum) keeps a quiet machine from lighting up over noise —
+  0.005 → 0.097 on an idle metric is "+1840%" by percentage alone but
+  isn't a regression, and doesn't get reported as one.
 - **Change accounting** (`statediff` / `verify`) — snapshot ~1700 facts
   about the machine (sysctl, packages, kernel modules, routes, listening
   ports, firewall, mounts, services, cron, config file fingerprints,
@@ -56,9 +59,7 @@ chmod +x deltascope
 sudo mv deltascope /usr/local/bin/
 ```
 
-ARM64 and CentOS/RHEL 6 builds are in [`dist/`](dist/). Verify with
-`sha256sum -c dist/SHA256SUMS`.
-Verify with the published `SHA256SUMS`.
+ARM64 is in [`dist/`](dist/) too. Verify with `sha256sum -c dist/SHA256SUMS`.
 
 The host needs PCP installed (`pcp` + `pcp-system-tools`). `deploy.sh`
 handles that plus a tiered sampling config, a systemd service, and a
@@ -67,12 +68,22 @@ locked-down user.
 ## Quick start
 
 ```bash
-sudo DSCOPE_PASSWORD='a-strong-password' deltascope user add admin -data /var/lib/deltascope
 deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope
 ```
 
-Open the address in a browser, sign in, pick two time windows, run a
-comparison.
+Open the address in a browser. There's no account yet, so the login page
+offers to create the admin account right there — no separate CLI step,
+no `-data` path to keep in sync between two commands. Sign in, pick two
+time windows, run a comparison. The server captures a state snapshot
+every 10 minutes on its own, so process and change accounting start
+accumulating history immediately, no cron job required.
+
+The web UI is available in English, 中文, Español, Français, Português,
+Deutsch, Русский, 日本語, 한국어, and Bahasa Indonesia, with six colour
+themes (three families, each in a dark and light variant). Any report you
+run can be exported as a single JSON file — useful for handing raw
+comparison data to a colleague, or to an AI, without re-deriving it from
+the UI.
 
 For change accounting without the web UI:
 
@@ -96,11 +107,16 @@ detected — useful for CI gating and cron alerting.
 
 - **Offline-first.** No telemetry, no external services. PCP archives
   live on the host; deltascope reads them locally.
-- **Single binary.** Static builds for amd64, arm64, and el6 (Go 1.23,
-  for CentOS 6's ancient kernel). No runtime dependencies.
+- **Single binary.** Static builds for amd64 and arm64. No runtime
+  dependencies.
 - **Conclusions over data.** A diagnosis rule engine and a triage
   dashboard sit on top of the raw metrics, because a wall of graphs
   isn't an answer.
+- **Own the display layer.** PCP reports whatever it's configured to
+  collect, loopback traffic and snap-package loop devices included —
+  deciding what's worth showing is deltascope's job, not PCP's. Known
+  structural noise (loopback interfaces, `/dev/loopN` filesystems) is
+  filtered before it reaches a report.
 - **Customizable, not hardcoded.** The metric catalog and diagnosis
   rules are both external JSON — `deltascope catalog export` /
   `deltascope rules export`, edit, reload with `-catalog` / `-rules`.
@@ -119,10 +135,11 @@ deltascope verify start -name deploy-42           # baseline, then deploy, then:
 deltascope verify report -name deploy-42 -format md
 deltascope catalog export > catalog.json          # tune metrics/floors, load with -catalog
 deltascope rules export   > rules.json            # tune diagnosis rules, load with -rules
+deltascope user add <name> -data ...              # create/reset an account from the CLI, if needed
 ```
 
 [`profiles/`](profiles/) ships full and slim catalog presets.
 
 ## License
 
-apache2.0
+Apache 2.0

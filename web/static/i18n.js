@@ -119,6 +119,10 @@ en: {
   no_anomalies: "no config/process anomalies seen",
   view_processes: "View processes \u2192",
   diagnosis_hits: (n) => `${n} diagnosis hit${n === 1 ? "" : "s"}`,
+  export_log: "Export diagnostic log",
+  star_github: "Star on GitHub",
+  export_empty: "Run a comparison, diagnosis, or accounting check first, then export.",
+  export_done: "Diagnostic log downloaded.",
 },
 
 zh: {
@@ -223,6 +227,10 @@ zh: {
   no_anomalies: "未见配置/进程异常",
   view_processes: "查看进程 \u2192",
   diagnosis_hits: (n) => `${n} 条诊断命中`,
+  export_log: "导出诊断日志",
+  star_github: "在 GitHub 上加星",
+  export_empty: "请先运行一次比对、诊断或对账,再导出。",
+  export_done: "诊断日志已下载。",
 },
 
 es: {
@@ -327,6 +335,10 @@ es: {
   no_anomalies: "sin anomalías de configuración/proceso",
   view_processes: "Ver procesos \u2192",
   diagnosis_hits: (n) => `${n} coincidencia(s) de diagnóstico`,
+  export_log: "Exportar registro de diagnóstico",
+  star_github: "Marcar con estrella en GitHub",
+  export_empty: "Ejecuta primero una comparación, diagnóstico o análisis, luego exporta.",
+  export_done: "Registro de diagnóstico descargado.",
 },
 
 fr: {
@@ -431,6 +443,10 @@ fr: {
   no_anomalies: "aucune anomalie de config/processus détectée",
   view_processes: "Voir les processus \u2192",
   diagnosis_hits: (n) => `${n} correspondance(s) de diagnostic`,
+  export_log: "Exporter le journal de diagnostic",
+  star_github: "Mettre une étoile sur GitHub",
+  export_empty: "Lancez d'abord une comparaison, un diagnostic ou une analyse, puis exportez.",
+  export_done: "Journal de diagnostic téléchargé.",
 },
 
 pt: {
@@ -535,6 +551,10 @@ pt: {
   no_anomalies: "nenhuma anomalia de config/processo detectada",
   view_processes: "Ver processos \u2192",
   diagnosis_hits: (n) => `${n} ocorrência(s) de diagnóstico`,
+  export_log: "Exportar log de diagnóstico",
+  star_github: "Dar estrela no GitHub",
+  export_empty: "Execute primeiro uma comparação, diagnóstico ou apuração, depois exporte.",
+  export_done: "Log de diagnóstico baixado.",
 },
 
 de: {
@@ -639,6 +659,10 @@ de: {
   no_anomalies: "keine Konfigurations-/Prozessanomalien festgestellt",
   view_processes: "Prozesse anzeigen \u2192",
   diagnosis_hits: (n) => `${n} Diagnosetreffer`,
+  export_log: "Diagnoseprotokoll exportieren",
+  star_github: "Auf GitHub favorisieren",
+  export_empty: "Führe zuerst einen Vergleich, eine Diagnose oder eine Abrechnung aus, dann exportiere.",
+  export_done: "Diagnoseprotokoll heruntergeladen.",
 },
 
 ru: {
@@ -743,6 +767,10 @@ ru: {
   no_anomalies: "аномалий конфигурации/процессов не обнаружено",
   view_processes: "Посмотреть процессы \u2192",
   diagnosis_hits: (n) => `${n} совпадение(й) диагностики`,
+  export_log: "Экспортировать журнал диагностики",
+  star_github: "Добавить звезду на GitHub",
+  export_empty: "Сначала запустите сравнение, диагностику или учёт, затем экспортируйте.",
+  export_done: "Журнал диагностики загружен.",
 },
 
 ja: {
@@ -847,6 +875,10 @@ ja: {
   no_anomalies: "構成・プロセスの異常なし",
   view_processes: "プロセスを見る \u2192",
   diagnosis_hits: (n) => `${n} 件の診断ヒット`,
+  export_log: "診断ログをエクスポート",
+  star_github: "GitHub でスターを付ける",
+  export_empty: "先に比較・診断・集計のいずれかを実行してからエクスポートしてください。",
+  export_done: "診断ログをダウンロードしました。",
 },
 
 ko: {
@@ -951,6 +983,10 @@ ko: {
   no_anomalies: "구성/프로세스 이상 없음",
   view_processes: "프로세스 보기 \u2192",
   diagnosis_hits: (n) => `${n}건의 진단 일치`,
+  export_log: "진단 로그 내보내기",
+  star_github: "GitHub에서 스타 누르기",
+  export_empty: "먼저 비교, 진단 또는 집계를 실행한 후 내보내세요.",
+  export_done: "진단 로그를 다운로드했습니다.",
 },
 
 id: {
@@ -1055,6 +1091,10 @@ id: {
   no_anomalies: "tidak ada anomali konfigurasi/proses",
   view_processes: "Lihat proses \u2192",
   diagnosis_hits: (n) => `${n} kecocokan diagnosis`,
+  export_log: "Ekspor log diagnostik",
+  star_github: "Beri bintang di GitHub",
+  export_empty: "Jalankan perbandingan, diagnosis, atau akuntansi dulu, baru ekspor.",
+  export_done: "Log diagnostik telah diunduh.",
 },
 };
 

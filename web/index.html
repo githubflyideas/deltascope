@@ -13,10 +13,8 @@
     <span class="brand-mark">Δ</span>
     <span class="brand-name">deltascope</span>
     <span class="brand-sub" data-i18n="brand_sub">Whole-machine change diff · Performance Co-Pilot</span>
-    <span class="ver-chip" id="verChip"></span>
   </div>
   <div class="topbar-right">
-    <span class="host-chip" id="hostChip" data-i18n-title="host_chip_title" title="PCP archive directory">—</span>
     <span class="user-chip" id="userChip">—</span>
     <button class="theme-toggle" id="themeToggle" data-i18n-title="theme_toggle_title" title="Switch theme">◑</button>
     <select class="lang-select" id="langSelect" data-i18n-title="lang_toggle_title" title="Switch language"></select>
@@ -170,7 +168,18 @@
 
 </main>
 
-<footer class="foot" data-i18n="footer_text">Offline comparison against local historical archives · default 7-day retention, configurable</footer>
+<footer class="foot">
+  <div class="foot-line" data-i18n="footer_text">Offline comparison against local historical archives · default 7-day retention, configurable</div>
+  <div class="foot-meta">
+    <span class="host-chip" id="hostChip" data-i18n-title="host_chip_title" title="PCP archive directory">—</span>
+    <span class="ver-chip" id="verChip"></span>
+    <button class="btn-export" id="exportLogBtn" data-i18n="export_log">Export diagnostic log</button>
+    <a class="gh-star" href="https://github.com/githubflyideas/deltascope" target="_blank" rel="noopener">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
+      <span data-i18n="star_github">Star on GitHub</span>
+    </a>
+  </div>
+</footer>
 
 <script src="/static/echarts.min.js"></script>
 <script src="/static/i18n.js"></script>

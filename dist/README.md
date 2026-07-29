@@ -1,8 +1,7 @@
 # deltascope prebuilt binaries
 
-**Binaries now ship as GitHub Release assets, not in this directory.**
-Download them from https://github.com/githubflyideas/deltascope/releases
-
+Committed directly in this directory -- download the file for your
+architecture and run it.
 
 All statically linked, no runtime dependencies (neither glibc nor musl
 needed) -- download and run. The host still needs PCP installed
@@ -12,7 +11,13 @@ needed) -- download and run. The host still needs PCP installed
 |---|---|---|---|
 | deltascope-linux-amd64 | x86_64 | 3.2 | Ubuntu 20.04/22.04/24.04 · Rocky 8/9/10 · RHEL/CentOS 7+ · Debian 10+ · Amazon Linux 2 / 2023 · SUSE SLES 12+ · openEuler / Anolis / Kylin, etc. |
 | deltascope-linux-arm64 | aarch64 | 4.x | AWS Graviton (AL2/AL2023/Ubuntu arm64) · Huawei Kunpeng · Phytium and other ARM servers |
-| deltascope-linux-amd64-el6 | x86_64 | 2.6.32 | CentOS 6.x / RHEL 6.x (built with Go 1.23) |
+
+CentOS/RHEL 6 (kernel 2.6.32) is no longer supported: PCP itself needs a
+kernel new enough to expose the counters deltascope depends on, and
+EL6's PCP package is too old to run pmrep or hand an archive directory
+to `-a` -- the binary would start but most of the product wouldn't work.
+If you're still on EL6, upgrade the host or point deltascope at a PCP
+archive collected elsewhere.
 
 ## Quick start
 

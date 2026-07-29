@@ -190,6 +190,7 @@ async function main() {
   if (me.version) $("#verChip").textContent = "v" + me.version;
   initTheme();
   initLang();
+  $("#exportLogBtn").addEventListener("click", exportDiagnosticLog);
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/logout", { method: "POST" });
     location.href = "/login";
@@ -250,6 +251,60 @@ function diffInit() {
 }
 
 let lastReport = null;
+let lastProcReport = null;
+let lastChangeReport = null;
+let lastDiagnosis = null;
+
+// exportDiagnosticLog bundles whatever the operator has already run in
+// this session -- regression diff, trends, process accounting, change
+// accounting, one-click diagnosis -- into a single JSON file. Intended
+// for handing raw comparison data to a colleague or an AI assistant for
+// analysis, so it's the underlying structured data, not a formatted
+// report: every number, verdict, and evidence string the UI itself
+// used to render, with nothing summarized away.
+function exportDiagnosticLog() {
+  const bundle = {
+    exported_at: new Date().toISOString(),
+    host: $("#hostChip") ? $("#hostChip").textContent : undefined,
+    version: $("#verChip") ? $("#verChip").textContent : undefined,
+  };
+  if (lastDiagnosis) bundle.diagnose = lastDiagnosis;
+  if (lastReport) bundle.regression_diff = lastReport;
+  if (lastProcReport) bundle.process_accounting = lastProcReport;
+  if (lastChangeReport) bundle.change_accounting = lastChangeReport;
+
+  const hasAny = lastDiagnosis || lastReport || lastProcReport || lastChangeReport;
+  if (!hasAny) {
+    alert(t("export_empty"));
+    return;
+  }
+
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  a.href = url;
+  a.download = `deltascope-diagnostic-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Tab switching only toggles visibility of already-rendered DOM; static
+// chrome (labels, buttons) picks up a language change immediately via
+// applyStaticI18n(), but a report rendered BEFORE the switch stays in
+// whatever language it was rendered in until something re-runs its
+// render function. Re-render every tab that has cached data, using the
+// cached response rather than a fresh API call, so switching language
+// does not also re-run the underlying PCP/snapshot query.
+document.addEventListener("dscope-lang-changed", () => {
+  if (lastReport) renderReport(lastReport);
+  if (lastProcReport) renderProcDiff(lastProcReport);
+  if (lastChangeReport) renderStateDiff(lastChangeReport);
+  if (lastDiagnosis) renderDiagnosis(lastDiagnosis);
+  if (typeof chart !== "undefined" && chart && typeof curPreset !== "undefined" && curPreset) loadTrend();
+});
 
 async function runDiff() {
   const btn = $("#runDiff");
@@ -780,6 +835,7 @@ async function runProcDiff() {
       b_start: $("#pcBStart").value, b_end: $("#pcBEnd").value,
     });
     const rep = await api("/api/procdiff?" + q.toString());
+    lastProcReport = rep;
     renderProcDiff(rep);
     $("#procHint").classList.add("hidden");
   } catch (e) {
@@ -877,6 +933,7 @@ async function runStateDiff() {
   try {
     const since = $("#changeSince").value;
     const rep = await api("/api/statediff?since=" + encodeURIComponent(since));
+    lastChangeReport = rep;
     renderStateDiff(rep);
   } catch (e) {
     err.textContent = e.message;
@@ -941,9 +998,10 @@ async function runDiagnose() {
   const btn = $("#diagRun");
   const err = $("#diagError");
   err.classList.add("hidden");
-  btn.disabled = true; btn.textContent = "Diagnosing\u2026";
+  btn.disabled = true; btn.textContent = t("diagnosing");
   try {
     const d = await api("/api/diagnose");
+    lastDiagnosis = d;
     renderDiagnosis(d);
     $("#diagEmpty").classList.add("hidden");
   } catch (e) {
