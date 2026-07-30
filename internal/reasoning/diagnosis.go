@@ -224,7 +224,7 @@ var Diagnoses = []Diagnosis{
 			"check RPS/RSS queue spreading and NIC IRQ affinity",
 		},
 		RequiresAll: []string{"state.cpu.softirq_high"},
-		RequiresAny: []string{"state.net.softnet_dropping", "state.net.softnet_squeezed", "state.net.nic_dropping_in"},
+		RequiresAny: []string{"state.net.softnet_dropping", "state.net.softnet_squeezed", "state.net.softnet_squeeze_spike", "state.net.nic_dropping_in"},
 	},
 	{
 		ID:       "diagnosis.scheduler_thrashing",
@@ -331,6 +331,17 @@ var Diagnoses = []Diagnosis{
 		Next:        []string{"free -m", "vmstat 1 5", "ps aux --sort=-rss | head -15"},
 		RequiresAll: []string{"state.mem.major_faults_high"},
 		RequiresAny: []string{"state.mem.pressure_high", "state.mem.swapping", "state.mem.available_low"},
+	},
+	{
+		ID:       "diagnosis.thrashing_spike",
+		Severity: "warn",
+		Conclusion: "Major page faults hit thrashing levels during part of this window, hidden by the hourly " +
+			"average: a burst where the working set briefly did not fit in RAM. Not yet sustained, but the source " +
+			"is worth finding before it is",
+		Next:        []string{"vmstat 1 30", "sar -B 1 30", "ps aux --sort=-rss | head -15"},
+		RequiresAll: []string{"state.mem.major_faults_spike"},
+		// The sustained thrashing diagnosis above is the stronger statement.
+		RequiresNone: []string{"state.mem.major_faults_high"},
 	},
 
 	{
@@ -481,8 +492,7 @@ var Diagnoses = []Diagnosis{
 			"budget long before its bandwidth -- throughput graphs will look unremarkable while the device is at its " +
 			"limit",
 		Next:        []string{"iostat -x 1 5", "biolatency", "pidstat -d 1 5"},
-		RequiresAll: []string{"state.io.iops_heavy"},
-		RequiresAny: []string{"state.io.saturated", "state.io.pressure_high", "state.io.queue_deep"},
+		RequiresAny: []string{"state.io.iops_heavy", "state.io.iops_spike"},
 	},
 	{
 		ID:       "diagnosis.filesystem_full",
@@ -518,7 +528,7 @@ var Diagnoses = []Diagnosis{
 		Conclusion: "TCP is retransmitting heavily, which means real packet loss between this host and its peers — " +
 			"link quality, an overloaded middlebox, or a congested path rather than anything on this machine",
 		Next:        []string{"ss -ti | grep -B1 retrans", "mtr -rw <peer>", "check NIC errors and drops"},
-		RequiresAll: []string{"state.net.retransmit_high"},
+		RequiresAny: []string{"state.net.retransmit_high", "state.net.retransmit_spike"},
 	},
 	{
 		ID:       "diagnosis.port_exhaustion_risk",
@@ -526,7 +536,8 @@ var Diagnoses = []Diagnosis{
 		Conclusion: "High connection churn combined with a large TIME-WAIT pool: the ephemeral port range is at risk " +
 			"of exhaustion, which surfaces as intermittent connection failures rather than as slowness",
 		Next:        []string{"ss -s", "sysctl net.ipv4.ip_local_port_range", "sysctl net.ipv4.tcp_tw_reuse"},
-		RequiresAll: []string{"state.net.conn_churn_high", "state.net.timewait_high"},
+		RequiresAll: []string{"state.net.timewait_high"},
+		RequiresAny: []string{"state.net.conn_churn_high", "state.net.conn_churn_spike"},
 	},
 	{
 		ID:       "diagnosis.accept_queue_overflow",
@@ -614,7 +625,7 @@ var Diagnoses = []Diagnosis{
 			"application closing sockets with data still queued -- either way, peers are seeing this machine reset " +
 			"connections rather than close them cleanly",
 		Next:        []string{"ss -s", "tcpdump -c 200 'tcp[tcpflags] & tcp-rst != 0'", "check for connections to unlisted ports"},
-		RequiresAll: []string{"state.net.reset_storm"},
+		RequiresAny: []string{"state.net.reset_storm", "state.net.reset_spike"},
 	},
 	{
 		ID:       "diagnosis.orphan_socket_buildup",

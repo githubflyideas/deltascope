@@ -583,8 +583,14 @@ var States = []State{
 	{
 		ID:          "state.mem.major_faults_high",
 		Domain:      "memory",
-		Description: "Major page faults are frequent: pages are being fetched from disk rather than found in memory.",
+		Description: "Major page faults are frequent: pages are being fetched from disk rather than found in memory. Mean-based.",
 		When:        []Cond{{Metric: "mem.vmstat.pgmajfault", BGte: f(50)}},
+	},
+	{
+		ID:          "state.mem.major_faults_spike",
+		Domain:      "memory",
+		Description: "Major faults hit fetch-from-disk levels during part of the window even if the mean did not -- a burst of thrashing an hour-long average hides. Peak twin of major_faults_high.",
+		When:        []Cond{{Metric: "mem.vmstat.pgmajfault", BMaxGte: f(50), MinSamples: 30}},
 	},
 
 	{
@@ -716,6 +722,12 @@ var States = []State{
 		When: []Cond{{Metric: "disk.all.total", BGte: f(5000)}},
 	},
 	{
+		ID:          "state.io.iops_spike",
+		Domain:      "io",
+		Description: "IOPS hit random-access-exhaustion levels during part of the window even if the mean did not. Peak twin of iops_heavy.",
+		When:        []Cond{{Metric: "disk.all.total", BMaxGte: f(5000), MinSamples: 30}},
+	},
+	{
 		ID:     "state.fs.nearly_full",
 		Domain: "filesystem",
 		Description: "A filesystem is nearly out of space. Absolute by nature and it does not need to have changed " +
@@ -743,14 +755,26 @@ var States = []State{
 	{
 		ID:          "state.net.retransmit_high",
 		Domain:      "network",
-		Description: "TCP is retransmitting at a rate that indicates real packet loss, not the occasional stray retransmit every link has.",
+		Description: "TCP is retransmitting at a rate that indicates real packet loss, not the occasional stray retransmit every link has. Mean-based: a sustained loss rate.",
 		When:        []Cond{{Metric: "network.tcp.retranssegs", BGte: f(10)}},
+	},
+	{
+		ID:          "state.net.retransmit_spike",
+		Domain:      "network",
+		Description: "Retransmits hit loss levels during part of the window even though the mean did not -- a burst of packet loss that an hour-long average dilutes below the threshold. Peak-based twin of retransmit_high, MinSamples-guarded.",
+		When:        []Cond{{Metric: "network.tcp.retranssegs", BMaxGte: f(10), MinSamples: 30}},
 	},
 	{
 		ID:          "state.net.conn_churn_high",
 		Domain:      "network",
-		Description: "Connections are being opened at a high rate, which stresses the socket table and ephemeral port range.",
+		Description: "Connections are being opened at a high rate, which stresses the socket table and ephemeral port range. Mean-based.",
 		When:        []Cond{{Metric: "network.tcp.activeopens", BGte: f(200)}},
+	},
+	{
+		ID:          "state.net.conn_churn_spike",
+		Domain:      "network",
+		Description: "Connection-open rate hit churn levels during part of the window even if the mean did not -- a connection storm an hour-long average smooths away. Peak twin of conn_churn_high.",
+		When:        []Cond{{Metric: "network.tcp.activeopens", BMaxGte: f(200), MinSamples: 30}},
 	},
 	{
 		ID:          "state.net.timewait_high",
@@ -788,6 +812,12 @@ var States = []State{
 			"application closing sockets with data still queued. Distinct from receiving resets, since this is " +
 			"behaviour originating here.",
 		When: []Cond{{Metric: "network.tcp.outrsts", BGte: f(50)}},
+	},
+	{
+		ID:          "state.net.reset_spike",
+		Domain:      "network",
+		Description: "Outgoing RSTs hit storm levels during part of the window even if the mean did not -- a burst of resets an hour-long average hides. Peak twin of reset_storm.",
+		When:        []Cond{{Metric: "network.tcp.outrsts", BMaxGte: f(50), MinSamples: 30}},
 	},
 	{
 		ID:     "state.net.connect_failing",
@@ -833,6 +863,12 @@ var States = []State{
 		Description: "Softirq processing is exhausting its per-invocation budget, the precursor to outright backlog " +
 			"drops. A leading indicator of the same problem softnet_dropping reports after the fact.",
 		When: []Cond{{Metric: "network.softnet.time_squeeze", BGte: f(100)}},
+	},
+	{
+		ID:          "state.net.softnet_squeeze_spike",
+		Domain:      "network",
+		Description: "Softirq budget exhaustion hit backlog-drop precursor levels during part of the window even if the mean did not. Peak twin of softnet_squeezed.",
+		When:        []Cond{{Metric: "network.softnet.time_squeeze", BMaxGte: f(100), MinSamples: 30}},
 	},
 	{
 		ID:     "state.net.close_wait_leak",
