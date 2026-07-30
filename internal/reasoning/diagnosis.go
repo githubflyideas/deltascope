@@ -14,6 +14,13 @@ import "sort"
 type Diagnosis struct {
 	ID       string `json:"id"`
 	Severity string `json:"severity"` // crit | warn | info
+	// Branch is the trunk of the diagnostic tree this diagnosis belongs to
+	// (see branch.go). A diagnosis may reference states from more than one
+	// branch -- network_receive_cpu_bound reads both softirq CPU and NIC
+	// drops -- but it has exactly one PRIMARY branch: the resource the
+	// conclusion is fundamentally about, and the triage block it should
+	// light. Enforced non-empty and valid by the catalog tests.
+	Branch Branch `json:"branch"`
 	// Conclusion is a plain-language sentence, in the same voice as the
 	// existing rule engine's conclusions.
 	Conclusion string `json:"conclusion"`
@@ -34,6 +41,7 @@ type Diagnosis struct {
 // metric → state → diagnosis, each step visible.
 type Result struct {
 	ID         string   `json:"id"`
+	Branch     Branch   `json:"branch"`
 	Severity   string   `json:"severity"`
 	Conclusion string   `json:"conclusion"`
 	Next       []string `json:"next,omitempty"`
@@ -56,7 +64,7 @@ func Diagnose(diagnoses []Diagnosis, active map[string]Active) []Result {
 			continue
 		}
 		out = append(out, Result{
-			ID: d.ID, Severity: d.Severity, Conclusion: d.Conclusion,
+			ID: d.ID, Branch: d.Branch, Severity: d.Severity, Conclusion: d.Conclusion,
 			Next: d.Next, States: states, Evidence: collectEvidence(states, active),
 		})
 	}
@@ -127,6 +135,7 @@ var Diagnoses = []Diagnosis{
 	// ---- CPU ----
 	{
 		ID:       "diagnosis.vm_cpu_contention",
+		Branch:   BranchCPU,
 		Severity: "crit",
 		Conclusion: "This VM is being starved of CPU by the hypervisor: steal time is high and tasks are queuing, " +
 			"but this guest's own userspace is not the thing consuming the CPU — the contention is outside this machine",
@@ -139,6 +148,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.cpu_saturated_own_workload",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "This machine's own workload is saturating the CPU: userspace is consuming most of the machine's " +
 			"capacity and tasks are queuing, with no meaningful steal time — the load originates here",
@@ -148,6 +158,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.single_core_saturated",
+		Branch:   BranchCPU,
 		Severity: "crit",
 		Conclusion: "One CPU core is saturated while the rest of the machine has capacity to spare: a single " +
 			"thread or process is the bottleneck, so the machine looks idle in every whole-machine average " +
@@ -160,6 +171,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.intermittent_cpu_saturation",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "CPU saturation is intermittent: a core reached its limit during this window but the average " +
 			"hides it, so the machine looks healthy in every averaged view while anything arriving during the " +
@@ -176,6 +188,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.cpu_capacity_exhausted",
+		Branch:   BranchCPU,
 		Severity: "crit",
 		Conclusion: "Every core on this machine is individually saturated: there is no CPU headroom left anywhere, " +
 			"so any additional work will queue rather than run",
@@ -185,6 +198,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.kernel_cpu_overhead",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "An unusual share of CPU is being spent in the kernel rather than in application code, which " +
 			"points at syscall volume, interrupt load, or contention inside the kernel rather than at the workload itself",
@@ -195,6 +209,7 @@ var Diagnoses = []Diagnosis{
 
 	{
 		ID:       "diagnosis.load_without_cpu_demand",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "The load average is high but the CPUs are not the constraint: the tasks counted in it are " +
 			"blocked in uninterruptible I/O, not queued for compute, so adding CPU would change nothing",
@@ -206,6 +221,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.interrupt_overhead",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "CPU is being consumed servicing interrupts rather than running work, which points at a device, " +
 			"a driver, or an interrupt affinity problem rather than at anything the workload is asking for",
@@ -215,6 +231,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.network_receive_cpu_bound",
+		Branch:   BranchCPU,
 		Severity: "crit",
 		Conclusion: "The receive path is CPU-bound: softirq processing cannot keep up with arriving packets and the " +
 			"kernel is discarding them, so this is packet loss caused by this machine rather than by the network",
@@ -228,6 +245,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.scheduler_thrashing",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "Context switching far exceeds what useful work requires while tasks queue for CPU: threads are " +
 			"spending their time being scheduled rather than running, typically lock contention or many more " +
@@ -238,6 +256,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.context_switch_overhead",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "Context switching is far above what useful work requires, on its own -- the run queue is not " +
 			"backed up, so this is not (yet) costing throughput, but the CPU time spent switching between threads " +
@@ -254,6 +273,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.context_switch_spike",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "Context switching hit storm levels during part of this window, hidden by the hourly average: " +
 			"a burst of scheduling activity came and went, and while the mean stays under the line the peak did " +
@@ -266,6 +286,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.fork_spike",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "The process-creation rate hit storm levels during part of this window, hidden by the hourly " +
 			"average: a brief fork burst that the mean does not show",
@@ -275,6 +296,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.cpu_demand_bursty",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "CPU demand is spiky rather than sustained: the peak is several times the mean, so an averaged " +
 			"view understates how close the machine came to saturation during the spikes -- queueing or rate " +
@@ -284,6 +306,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.process_churn",
+		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "Processes are being created at a rate that is itself the workload: the CPU cost appears as " +
 			"kernel time and is easily mistaken for generic overhead, but the cause is the fork rate",
@@ -294,6 +317,7 @@ var Diagnoses = []Diagnosis{
 	// ---- Memory ----
 	{
 		ID:       "diagnosis.memory_pressure_swapping",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "Memory pressure has triggered swapping: available memory is falling while pages are being " +
 			"written to swap, so tasks will stall on swap I/O",
@@ -302,6 +326,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.memory_reclaim_pressure",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "The kernel is reclaiming memory synchronously in the allocation path: allocations are " +
 			"stalling to free pages, which shows up as latency without necessarily showing up as swap",
@@ -313,6 +338,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.background_reclaim_active",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "Background reclaim (kswapd) is running well ahead of allocations: memory pressure exists and " +
 			"is being absorbed for now, without direct-reclaim stalls or swapping yet -- worth watching before it " +
@@ -325,6 +351,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.thrashing",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "The machine is thrashing: major page faults are frequent and memory is under pressure, so the " +
 			"working set no longer fits in RAM and pages are being fetched back from disk as fast as they are evicted",
@@ -334,6 +361,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.thrashing_spike",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "Major page faults hit thrashing levels during part of this window, hidden by the hourly " +
 			"average: a burst where the working set briefly did not fit in RAM. Not yet sustained, but the source " +
@@ -346,6 +374,7 @@ var Diagnoses = []Diagnosis{
 
 	{
 		ID:       "diagnosis.oom_killing",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "The kernel has killed at least one process to reclaim memory. This is not a warning about a " +
 			"future failure -- something has already been terminated, and whatever it was is now missing",
@@ -358,6 +387,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.memory_exhaustion_imminent",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "Available memory is critically low and swap has no room left: the escape valve is gone, so the " +
 			"next significant allocation goes to the OOM killer rather than to swap",
@@ -368,6 +398,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.standing_memory_risk",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "Available memory sits at a level where any new load will fail, with no regression to point at: " +
 			"this is a standing condition rather than a change, and a comparison against yesterday cannot see it " +
@@ -381,6 +412,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.swap_thrashing",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "Pages are being read back from swap, so tasks are waiting on disk for memory they already " +
 			"believed they had -- the latency cost of swap, as opposed to the housekeeping cost of merely writing " +
@@ -391,6 +423,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.allocation_stalling",
+		Branch:   BranchMemory,
 		Severity: "crit",
 		Conclusion: "Allocations are stalling in the kernel: memory pressure is no longer merely present, it is " +
 			"costing application latency directly on every allocation that has to wait",
@@ -399,6 +432,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.memory_fragmentation",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "Allocations are stalling in compaction rather than for lack of memory: contiguous pages have run " +
 			"short, which is fragmentation and behaves differently from exhaustion -- free memory can look adequate " +
@@ -413,6 +447,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.writeback_backpressure",
+		Branch:   BranchMemory,
 		Severity: "warn",
 		Conclusion: "Dirty pages are accumulating faster than storage can absorb them, so writers will be throttled " +
 			"when the dirty limit is reached -- a latency cliff rather than a gradual slowdown",
@@ -428,6 +463,7 @@ var Diagnoses = []Diagnosis{
 	// ---- I/O ----
 	{
 		ID:       "diagnosis.io_bound",
+		Branch:   BranchIO,
 		Severity: "crit",
 		Conclusion: "Storage is the bottleneck: a disk is busy nearly all the time with requests queued behind it, " +
 			"and tasks are stalling on I/O",
@@ -437,6 +473,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.io_slow_not_busy",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "Tasks are stalling on I/O even though no disk is saturated: the storage is responding slowly " +
 			"rather than being overloaded — typical of a degraded device, a throttled cloud volume, or a network filesystem",
@@ -447,6 +484,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:          "diagnosis.write_pressure",
+		Branch:      BranchIO,
 		Severity:    "warn",
 		Conclusion:  "Sustained heavy writing is driving I/O stalls: the write path, not reads, is where the pressure is",
 		Next:        []string{"iotop -o -a", "iostat -x 1 5", "grep -E 'Dirty|Writeback' /proc/meminfo"},
@@ -455,6 +493,7 @@ var Diagnoses = []Diagnosis{
 
 	{
 		ID:       "diagnosis.io_total_stall",
+		Branch:   BranchIO,
 		Severity: "crit",
 		Conclusion: "PSI reports every runnable task stalled on I/O at once: this is not a slow disk in the " +
 			"background, it is the machine as a whole waiting on storage right now",
@@ -463,6 +502,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.storage_degraded",
+		Branch:   BranchIO,
 		Severity: "crit",
 		Conclusion: "A device has requests queued deeply while not being busy enough to justify it: completions are " +
 			"slow rather than demand being high, which is a failing device, a throttled cloud volume, or a " +
@@ -478,6 +518,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.read_heavy_stall",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "Sustained read throughput is driving I/O stalls: the read path -- a cold cache, a large scan, " +
 			"or a backup/restore -- is where the pressure is, not writes",
@@ -487,6 +528,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.random_io_bound",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "The I/O pattern is small and random rather than sequential, which exhausts a device's IOPS " +
 			"budget long before its bandwidth -- throughput graphs will look unremarkable while the device is at its " +
@@ -496,6 +538,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.filesystem_full",
+		Branch:   BranchIO,
 		Severity: "crit",
 		Conclusion: "A filesystem is effectively out of space: writes are failing or about to. Nothing about this is " +
 			"a performance question, and no performance metric will report it",
@@ -504,6 +547,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.filesystem_filling",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "A filesystem is nearly full. This is a standing condition rather than a regression, so a window " +
 			"comparison reports it as flat right up until the moment writes start failing",
@@ -514,6 +558,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.fd_exhaustion_risk",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "Open file descriptors are accumulating machine-wide. The failure is abrupt when it comes -- " +
 			"accept() and open() begin failing while every performance metric still looks healthy",
@@ -524,6 +569,7 @@ var Diagnoses = []Diagnosis{
 	// ---- Network ----
 	{
 		ID:       "diagnosis.network_loss",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "TCP is retransmitting heavily, which means real packet loss between this host and its peers — " +
 			"link quality, an overloaded middlebox, or a congested path rather than anything on this machine",
@@ -532,6 +578,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.port_exhaustion_risk",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "High connection churn combined with a large TIME-WAIT pool: the ephemeral port range is at risk " +
 			"of exhaustion, which surfaces as intermittent connection failures rather than as slowness",
@@ -541,6 +588,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.accept_queue_overflow",
+		Branch:   BranchNetwork,
 		Severity: "crit",
 		Conclusion: "Incoming connections are being dropped at the listen queue: they reached this machine and were " +
 			"discarded because the application was not accepting fast enough. Clients experience a timeout, and no " +
@@ -554,6 +602,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.syn_backlog_saturated",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "SYN cookies are being emitted, so the SYN backlog filled: either a SYN flood or a legitimate " +
 			"connection surge the backlog is too small for. The two look identical here and are told apart by " +
@@ -567,6 +616,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.nic_link_problem",
+		Branch:   BranchNetwork,
 		Severity: "crit",
 		Conclusion: "The NIC is reporting frame errors, which is a physical-layer fault -- cable, transceiver, or " +
 			"switch port. No amount of kernel or application tuning addresses this",
@@ -575,6 +625,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.dependency_unreachable",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "Outbound connection attempts from this host are failing, so something it depends on is down, " +
 			"unreachable, or refusing connections. This machine can look entirely healthy while nothing it needs " +
@@ -588,6 +639,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.socket_descriptor_leak",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "Sockets are accumulating in CLOSE-WAIT: the peer closed and this side never called close(). " +
 			"That is an application bug rather than a network condition, and those descriptors are never reclaimed",
@@ -599,6 +651,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.udp_datagram_loss",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "UDP datagrams are being dropped for lack of receive buffer space. UDP does not retransmit, so " +
 			"these are gone for good -- for DNS or metrics traffic that means silent failures that will be " +
@@ -608,6 +661,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.socket_memory_pressure",
+		Branch:   BranchNetwork,
 		Severity: "crit",
 		Conclusion: "The kernel is pruning TCP receive queues, discarding data it had already acknowledged to the " +
 			"sender. Socket memory limits are being hit, and the peer has no way to know its data was dropped",
@@ -620,6 +674,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.connection_reset_storm",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "This host is sending an unusually high rate of TCP resets: connections to closed ports, or an " +
 			"application closing sockets with data still queued -- either way, peers are seeing this machine reset " +
@@ -629,6 +684,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.orphan_socket_buildup",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "A large number of orphaned sockets are being drained: their owning processes are gone, and " +
 			"past the orphan limit the kernel resets them outright -- which peers experience as unexplained " +
@@ -638,6 +694,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.tcp_path_degraded",
+		Branch:   BranchNetwork,
 		Severity: "crit",
 		Conclusion: "TCP retransmission timers are firing, not just fast retransmits: segments are going " +
 			"unacknowledged long enough to stall the connections carrying them. Each timeout costs at least a " +
@@ -648,6 +705,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.nic_link_fault_physical",
+		Branch:   BranchNetwork,
 		Severity: "crit",
 		Conclusion: "The NIC is reporting Ethernet collisions or transmit errors -- a physical-layer fault: a duplex " +
 			"mismatch, a bad cable, or a failing switch port. No amount of kernel or application tuning changes this; " +
@@ -657,6 +715,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.tx_queue_overrun",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "The host is dropping outbound packets at the NIC transmit queue: it is trying to send faster than " +
 			"the link or driver will accept. Throughput looks fine while individual sends are quietly lost",
@@ -665,6 +724,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.ip_layer_loss",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "The IP layer is discarding inbound packets or receiving corrupt headers -- loss above the NIC but " +
 			"below TCP, which points at buffer exhaustion, a missing route, or a corrupting link rather than at any " +
@@ -674,6 +734,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.fragmentation_loss",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "IP fragment reassembly is failing: fragmented datagrams are not being rebuilt, usually an MTU or " +
 			"path-MTU-discovery problem or a lossy path dropping fragments. Large UDP payloads and some tunnels are " +
@@ -683,6 +744,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.udp_send_buffer_full",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "UDP sends are being dropped for lack of send buffer space: the application is producing datagrams " +
 			"faster than the kernel can transmit them, and they are lost before ever reaching the wire",
@@ -691,6 +753,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.syn_flood_or_surge",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "Many half-open connections sit in SYN-RECV -- SYNs answered but never completed. Either a SYN " +
 			"flood, or a legitimate client surge behind a path that is dropping the final handshake ACK",
@@ -702,6 +765,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.path_unreachable_icmp",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "Inbound ICMP errors are arriving at a high rate -- unreachables, time-exceeded, redirects -- which " +
 			"means this host's outbound traffic is hitting routing or reachability trouble somewhere on the path, not " +
@@ -711,6 +775,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.socket_memory_collapse",
+		Branch:   BranchNetwork,
 		Severity: "warn",
 		Conclusion: "The kernel is collapsing TCP receive queues to reclaim socket memory -- a step short of pruning " +
 			"acknowledged data outright, but the same socket-buffer pressure and a leading indicator of loss",
@@ -721,6 +786,7 @@ var Diagnoses = []Diagnosis{
 	},
 	{
 		ID:       "diagnosis.disk_filling_fast",
+		Branch:   BranchIO,
 		Severity: "warn",
 		Conclusion: "Free space on a filesystem is falling sharply -- not full yet, but on a trajectory that will hit " +
 			"the wall. Catching the slope before the cliff is the whole point of watching it over two windows",
