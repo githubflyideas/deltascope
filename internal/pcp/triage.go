@@ -43,12 +43,12 @@ func resourceOf(category string) string {
 // so high-jitter counters like ICMP or page activations can't taint the block.
 var coreMetrics = map[string]bool{
 	// CPU: metrics that genuinely mean "compute is tight"
-	"kernel.all.cpu.user":       true,
-	"kernel.all.cpu.sys":        true,
-	"kernel.all.cpu.wait.total": true,
-	"kernel.all.cpu.steal":      true,
-	"kernel.all.load":           true,
-	"kernel.all.runnable":       true,
+	"kernel.all.cpu.user":              true,
+	"kernel.all.cpu.sys":               true,
+	"kernel.all.cpu.wait.total":        true,
+	"kernel.all.cpu.steal":             true,
+	"kernel.all.load":                  true,
+	"kernel.all.runnable":              true,
 	"kernel.all.pressure.cpu.some.avg": true,
 	// Memory: metrics that mean "memory is short"
 	"mem.util.available":                  true,
@@ -100,7 +100,7 @@ func Triage(rows []DiffRow) []TriageBlock {
 		switch r.Verdict {
 		case VWorse:
 			if core {
-				if a.worstBad == nil || absDeltaVal(r) > absDeltaVal(*a.worstBad) {
+				if a.worstBad == nil || moreSevere(r, *a.worstBad) {
 					rr := r
 					a.worstBad = &rr
 				}
@@ -162,7 +162,6 @@ func headline(r DiffRow) string {
 	return label + " " + sign + formatPct(*r.DeltaPct)
 }
 
-
 func formatPct(v float64) string {
 	if v > 999 || v < -999 {
 		return "spike"
@@ -170,9 +169,32 @@ func formatPct(v float64) string {
 	return strconv.Itoa(int(v)) + "%"
 }
 
+// moreSevere reports whether candidate should replace the current worst
+// row for a triage block.
+//
+// A row whose DeltaPct is nil -- an appeared/vanished metric, or a 0->
+// non-zero jump -- carries no measurable magnitude. The old code gave it a
+// magnitude of 1e18, so a boundary artifact (a per-core counter that merely
+// "appeared" at a window edge, a PMDA reload) always outranked a real,
+// quantified +300% regression and stole the block's headline, leaving an
+// empty-delta "anomaly" on screen. That contradicts the VWatch branch,
+// which already suppresses appeared-but-not-core artifacts.
+//
+// So a row with a real DeltaPct always outranks one without; only when both
+// are unquantified (or both quantified) does magnitude decide. This can
+// only ever prefer a measured regression over an unmeasured artifact, never
+// hide a real one.
+func moreSevere(candidate, current DiffRow) bool {
+	cq, curq := candidate.DeltaPct != nil, current.DeltaPct != nil
+	if cq != curq {
+		return cq // a quantified row beats an unquantified one
+	}
+	return absDeltaVal(candidate) > absDeltaVal(current)
+}
+
 func absDeltaVal(r DiffRow) float64 {
 	if r.DeltaPct == nil {
-		return 1e18
+		return 0
 	}
 	if *r.DeltaPct < 0 {
 		return -*r.DeltaPct
