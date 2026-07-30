@@ -816,3 +816,21 @@ func TestDiffRowStatsJSONFields(t *testing.T) {
 		}
 	}
 }
+
+// A near-idle error counter dropping to zero must not be flagged. UDP
+// noports idles at a fraction of a packet per second; 0.002/s -> 0/s is
+// "-100%" by ratio but means nothing, and without an absolute floor it
+// flagged the whole Network triage block on a live host (v3.2.7 report).
+func TestIdleErrorCounterNotFlagged(t *testing.T) {
+	for _, m := range []string{"network.udp.noports", "network.udp.inerrors", "network.tcp.inerrs"} {
+		floor := minAbsDefault[m]
+		if floor <= 0 {
+			t.Errorf("%s should carry an absolute floor", m)
+		}
+		a, b := 0.002, 0.0
+		_, exceeded, verdict := judge(&a, &b, Neutral, 15, floor)
+		if exceeded || verdict != VFlat {
+			t.Errorf("%s: 0.002/s -> 0/s must be flat, got exceeded=%v verdict=%v", m, exceeded, verdict)
+		}
+	}
+}

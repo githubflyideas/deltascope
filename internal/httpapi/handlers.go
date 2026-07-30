@@ -16,8 +16,8 @@ import (
 
 	"github.com/githubflyideas/deltascope/internal/auth"
 	"github.com/githubflyideas/deltascope/internal/diagnose"
-	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/pcp"
+	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
 )
@@ -377,13 +377,48 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), execTimeout)
 	defer cancel()
 
-	// Same window selection as the main Diagnose tab, so the two views are
-	// directly comparable.
-	w2 := diagnose.PickWindow(time.Now())
-	rep, err := pcp.Compare(ctx, s.Runner, s.Archive, pcp.Windows{
-		AStart: w2.AStart, AEnd: w2.AEnd, BStart: w2.BStart, BEnd: w2.BEnd,
-		ThresholdPct: threshold,
-	})
+	// The reasoning chain answers "what is wrong on this machine right
+	// now", so it defaults to a short recent window -- the last 30 minutes
+	// against the 30 minutes before that -- rather than the day-over-day
+	// window the Diagnose tab uses. A day-old baseline keeps a state active
+	// long after the process that caused it has exited, because yesterday
+	// at this time really was different; a "recent vs just-before" window
+	// tracks the machine as it is now and clears once the burst is over.
+	// Explicit a_start/a_end/b_start/b_end override the default so the UI's
+	// time picker can ask for any window.
+	q := r.URL.Query()
+	var win pcp.Windows
+	if q.Get("b_end") != "" {
+		aS, e1 := parseLocal(q.Get("a_start"))
+		aE, e2 := parseLocal(q.Get("a_end"))
+		bS, e3 := parseLocal(q.Get("b_start"))
+		bE, e4 := parseLocal(q.Get("b_end"))
+		if e1 != nil || e2 != nil || e3 != nil || e4 != nil {
+			writeErr(w, http.StatusBadRequest, "invalid time parameter, expected 2026-07-03T14:00")
+			return
+		}
+		if err := checkWindow(aS, aE); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := checkWindow(bS, bE); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		win = pcp.Windows{AStart: aS, AEnd: aE, BStart: bS, BEnd: bE, ThresholdPct: threshold}
+	} else {
+		now := time.Now()
+		win = pcp.Windows{
+			AStart: now.Add(-60 * time.Minute), AEnd: now.Add(-30 * time.Minute),
+			BStart: now.Add(-30 * time.Minute), BEnd: now,
+			ThresholdPct: threshold,
+		}
+	}
+	w2 := diagnose.Window{
+		AStart: win.AStart, AEnd: win.AEnd, BStart: win.BStart, BEnd: win.BEnd,
+		Label: "last 30 min vs the 30 min before",
+	}
+	rep, err := pcp.Compare(ctx, s.Runner, s.Archive, win)
 	if err != nil {
 		log.Printf("reasoning: %v", err)
 		writeErr(w, http.StatusBadGateway, err.Error())
@@ -453,9 +488,9 @@ func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {
 
 	diff := state.Compare(before, after)
 	writeJSON(w, map[string]any{
-		"a_time":  before.Taken,
-		"b_time":  after.Taken,
-		"total":   diff.Total,
+		"a_time":   before.Taken,
+		"b_time":   after.Taken,
+		"total":    diff.Total,
 		"sections": stateDiffJSON(diff),
 	})
 }
@@ -537,7 +572,6 @@ func (s *Server) procDiffFromSnapshots(aStart, aEnd, bStart, bEnd time.Time, thr
 	}
 	return d, ""
 }
-
 
 // parseLocal accepts a timestamp from the browser and returns an absolute
 // instant.

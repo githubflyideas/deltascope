@@ -186,19 +186,19 @@ var Catalog = []MetricInfo{
 }
 
 var TrendPresets = map[string]Preset{
-	"cpu":     {"CPU usage (ms/s)", []string{"kernel.all.cpu.user", "kernel.all.cpu.sys", "kernel.all.cpu.wait.total", "kernel.all.cpu.steal"}},
-	"percpu":  {"CPU per core [0-3]", []string{"kernel.percpu.cpu.user", "kernel.percpu.cpu.wait.total"}},
-	"load":    {"System load", []string{"kernel.all.load"}},
-	"ctx":     {"Context switches / interrupts", []string{"kernel.all.pswitch", "kernel.all.intr"}},
-	"mem":     {"Available memory", []string{"mem.util.available"}},
-	"memdet":  {"Memory detail", []string{"mem.util.cached", "mem.util.dirty", "mem.util.anonpages"}},
-	"swap":    {"Swap activity", []string{"swap.pagesin", "swap.pagesout"}},
-	"disk":    {"Disk throughput", []string{"disk.all.read_bytes", "disk.all.write_bytes"}},
-	"diskio":  {"Disk activity / queue", []string{"disk.all.avactive", "disk.all.aveq"}},
-	"net":     {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
-	"tcp":     {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
-	"sock":    {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
-	"psi":     {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
+	"cpu":    {"CPU usage (ms/s)", []string{"kernel.all.cpu.user", "kernel.all.cpu.sys", "kernel.all.cpu.wait.total", "kernel.all.cpu.steal"}},
+	"percpu": {"CPU per core [0-3]", []string{"kernel.percpu.cpu.user", "kernel.percpu.cpu.wait.total"}},
+	"load":   {"System load", []string{"kernel.all.load"}},
+	"ctx":    {"Context switches / interrupts", []string{"kernel.all.pswitch", "kernel.all.intr"}},
+	"mem":    {"Available memory", []string{"mem.util.available"}},
+	"memdet": {"Memory detail", []string{"mem.util.cached", "mem.util.dirty", "mem.util.anonpages"}},
+	"swap":   {"Swap activity", []string{"swap.pagesin", "swap.pagesout"}},
+	"disk":   {"Disk throughput", []string{"disk.all.read_bytes", "disk.all.write_bytes"}},
+	"diskio": {"Disk activity / queue", []string{"disk.all.avactive", "disk.all.aveq"}},
+	"net":    {"NIC traffic", []string{"network.interface.in.bytes", "network.interface.out.bytes"}},
+	"tcp":    {"TCP retransmits / connections", []string{"network.tcp.retranssegs", "network.tcp.currestab"}},
+	"sock":   {"TCP connection states", []string{"network.sockstat.tcp.alloc", "network.sockstat.tcp.tw", "network.sockstat.tcp.orphan"}},
+	"psi":    {"Pressure PSI (some)", []string{"kernel.all.pressure.cpu.some.avg", "kernel.all.pressure.memory.some.avg", "kernel.all.pressure.io.some.avg"}},
 }
 
 // minAbsDefault sets an absolute floor below which a change is not
@@ -213,26 +213,26 @@ var TrendPresets = map[string]Preset{
 var minAbsDefault = map[string]float64{
 	// CPU time is in ms/s: 1000 ms/s == one full core. Below 10 ms/s
 	// (1% of a core) nothing meaningful is happening.
-	"kernel.all.cpu.user":       10,
-	"kernel.all.cpu.sys":        10,
-	"kernel.all.cpu.nice":       10,
-	"kernel.all.cpu.wait.total": 10,
-	"kernel.all.cpu.irq.hard":   10,
-	"kernel.all.cpu.irq.soft":   10,
-	"kernel.all.cpu.steal":      10,
-	"kernel.all.cpu.guest":      10,
+	"kernel.all.cpu.user":          10,
+	"kernel.all.cpu.sys":           10,
+	"kernel.all.cpu.nice":          10,
+	"kernel.all.cpu.wait.total":    10,
+	"kernel.all.cpu.irq.hard":      10,
+	"kernel.all.cpu.irq.soft":      10,
+	"kernel.all.cpu.steal":         10,
+	"kernel.all.cpu.guest":         10,
 	"kernel.percpu.cpu.user":       10,
 	"kernel.percpu.cpu.sys":        10,
 	"kernel.percpu.cpu.wait.total": 10,
 	"kernel.percpu.cpu.irq.soft":   10,
 
 	// Load average: below 0.5 the machine is idle regardless of ratio.
-	"kernel.all.load":     0.5,
+	"kernel.all.load": 0.5,
 	// Scheduler and interrupt rates: an idle box already does hundreds to
 	// a few thousand per second, so a doubling there means nothing.
-	"kernel.all.pswitch": 10000,
-	"kernel.all.intr":    5000,
-	"kernel.all.sysfork": 10,
+	"kernel.all.pswitch":  10000,
+	"kernel.all.intr":     5000,
+	"kernel.all.sysfork":  10,
 	"kernel.all.runnable": 2,
 	"kernel.all.blocked":  1,
 
@@ -245,8 +245,8 @@ var minAbsDefault = map[string]float64{
 
 	// Memory in KB: a few hundred KB of dirty/writeback pages is nothing
 	// on a machine with gigabytes of RAM.
-	"mem.util.dirty":     51200,  // 50 MB
-	"mem.util.writeback": 51200,  // 50 MB
+	"mem.util.dirty":     51200, // 50 MB
+	"mem.util.writeback": 51200, // 50 MB
 	"mem.util.shmem":     51200,
 	"swap.pagesin":       1,
 	"swap.pagesout":      1,
@@ -257,10 +257,10 @@ var minAbsDefault = map[string]float64{
 	"mem.vmstat.pgactivate":    50,
 	// Kernel caches grow and shrink on their own; only order-of-magnitude
 	// movement is worth a look.
-	"vfs.dentry.count": 1000000,
-	"vfs.inodes.count": 1000000,
-	"vfs.files.count":  50000,
-	"mem.vmstat.pgdeactivate":  50,
+	"vfs.dentry.count":        1000000,
+	"vfs.inodes.count":        1000000,
+	"vfs.files.count":         50000,
+	"mem.vmstat.pgdeactivate": 50,
 
 	// Disk IOPS and throughput.
 	// Disk utilisation and queue depth: avactive is the fraction of time
@@ -312,16 +312,28 @@ var minAbsDefault = map[string]float64{
 	"network.tcp.currestab":         50,
 	"network.udp.indatagrams":       50,
 	"network.udp.outdatagrams":      50,
-	"network.sockstat.tcp.tw":       500,
-	"network.sockstat.tcp.orphan":   1,
-	"network.sockstat.tcp.inuse":    50,
-	"network.sockstat.tcp.alloc":    50,
-	"network.softnet.processed":     100,
-	"network.icmp.inmsgs":           20,
-	"network.icmp.outmsgs":          20,
-	"network.ip.inreceives":         100,
-	"network.ip.outrequests":        100,
-	"network.ip.forwdatagrams":      50,
+	// Rare error/no-port counters idle at a fraction of a packet per
+	// second (a stray unbound-port probe, one late datagram). Without a
+	// floor, 0.002/s -> 0/s reads as "-100%" and flags the whole Network
+	// block on nothing at all. These need a real sustained rate to matter.
+	"network.udp.noports":          5,
+	"network.udp.inerrors":         1,
+	"network.udp.recvbuferrors":    1,
+	"network.udp.sndbuferrors":     1,
+	"network.tcp.inerrs":           1,
+	"network.tcp.syncookiessent":   1,
+	"network.tcp.syncookiesfailed": 1,
+	"network.icmp.inerrors":        1,
+	"network.sockstat.tcp.tw":      500,
+	"network.sockstat.tcp.orphan":  1,
+	"network.sockstat.tcp.inuse":   50,
+	"network.sockstat.tcp.alloc":   50,
+	"network.softnet.processed":    100,
+	"network.icmp.inmsgs":          20,
+	"network.icmp.outmsgs":         20,
+	"network.ip.inreceives":        100,
+	"network.ip.outrequests":       100,
+	"network.ip.forwdatagrams":     50,
 }
 
 var thresholdDefault = map[string]float64{

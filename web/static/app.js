@@ -1239,9 +1239,23 @@ function applyTheme(name) {
 let reasoningReady = false;
 let lastReasoning = null;
 
+function reasoningPreset30() {
+  // Default and the "Last 30 min" button both land here: B is the last 30
+  // minutes, A the 30 minutes before it, so the chain compares the machine
+  // now against its own immediate past rather than against yesterday.
+  const now = new Date();
+  const half = 30 * 60e3;
+  $("#rsBEnd").value = toLocalInput(now);
+  $("#rsBStart").value = toLocalInput(new Date(now - half));
+  $("#rsAEnd").value = toLocalInput(new Date(now - half));
+  $("#rsAStart").value = toLocalInput(new Date(now - 2 * half));
+}
+
 function reasoningInit() {
   if (reasoningReady) return;
   reasoningReady = true;
+  reasoningPreset30();
+  $("#rsRecent").addEventListener("click", () => { reasoningPreset30(); runReasoning(); });
   $("#reasoningRun").addEventListener("click", runReasoning);
   runReasoning();
 }
@@ -1253,7 +1267,11 @@ async function runReasoning() {
   btn.disabled = true;
   btn.textContent = t("reasoning_running");
   try {
-    const d = await api("/api/reasoning");
+    const q = new URLSearchParams({
+      a_start: inputToISO($("#rsAStart").value), a_end: inputToISO($("#rsAEnd").value),
+      b_start: inputToISO($("#rsBStart").value), b_end: inputToISO($("#rsBEnd").value),
+    });
+    const d = await api("/api/reasoning?" + q.toString());
     lastReasoning = d;
     renderReasoning(d);
     $("#reasoningEmpty").classList.add("hidden");

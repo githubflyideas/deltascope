@@ -327,13 +327,14 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 			out.Culprit = culpritByRSS(pd.Rows)
 		}
 	}
-	if out.Culprit == "" && out.Severity != "ok" {
-		if c := culpritByCPU(pd.Rows); c != "" {
-			out.Culprit = c
-		} else if c := culpritByRSS(pd.Rows); c != "" {
-			out.Culprit = c
-		}
-	}
+	// Deliberately NO generic fallback culprit. Naming a CPU or memory
+	// process when the degraded resource is network or disk is a
+	// non-sequitur: "Network needs watching -- responsible: node at 13% of
+	// a core" pairs an unrelated process with the finding and reads as if
+	// the tool is guessing, because it is. Disk and network have no
+	// per-process attribution here, so when they are the sick resource the
+	// honest answer is to name no culprit at all. A CPU/memory finding
+	// already got its culprit in the switch above.
 
 	// Related change: only surface a change that plausibly relates to the
 	// sick resource. When a specific resource is degraded, an unrelated

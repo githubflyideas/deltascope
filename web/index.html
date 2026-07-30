@@ -168,10 +168,23 @@
   </section>
 
   <section class="view hidden" id="view-reasoning">
-    <div class="diag-hero">
-      <button class="btn btn-primary btn-diag" id="reasoningRun" data-i18n="reasoning_run">Run reasoning chain</button>
-      <span class="diag-window" id="reasoningWindow"></span>
+    <div class="proc-controls">
+      <div class="pc-windows">
+        <label><span data-i18n="baseline_a">Baseline A</span> <input type="datetime-local" id="rsAStart" step="60"></label>
+        <span>~</span>
+        <input type="datetime-local" id="rsAEnd" step="60">
+      </div>
+      <div class="pc-windows">
+        <label><span data-i18n="compare_b">Compare B</span> <input type="datetime-local" id="rsBStart" step="60"></label>
+        <span>~</span>
+        <input type="datetime-local" id="rsBEnd" step="60">
+      </div>
+      <div class="pc-presets">
+        <button class="btn btn-small" id="rsRecent" data-i18n="preset_recent30">Last 30 min</button>
+        <button class="btn btn-primary btn-small" id="reasoningRun" data-i18n="reasoning_run">Run reasoning chain</button>
+      </div>
     </div>
+    <div class="diag-window" id="reasoningWindow"></div>
     <div class="notice hidden" id="reasoningError"></div>
     <div id="reasoningResult"></div>
     <div class="empty-hint" id="reasoningEmpty" data-i18n="reasoning_empty">An experimental second diagnosis engine, running alongside the original one. Raw metrics are first reduced to named states, then diagnoses are matched against combinations of those states — including what is deliberately absent. Both engines see the same data, so you can compare them.</div>
