@@ -377,6 +377,21 @@ tr[hidden] { display: none; }
 .dv-next code { background: var(--bg); padding: 3px 9px; border-radius: 5px; font-size: 13.5px; color: var(--ink); }
 .diag-notes { color: var(--muted); font-size: 14px; line-height: 1.8; border: 1px dashed var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; }
 
+/* Reasoning diagnoses inline on the one-click page. One card per fired
+   diagnosis, colour-keyed to severity like the top verdict, so the page
+   reads as a single coherent answer instead of sending the reader to a
+   separate tab to cross-check. */
+.rc-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+.rc-item { border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px; padding: 10px 14px; }
+.rc-item.d-crit { border-left-color: var(--bad); }
+.rc-item.d-warn { border-left-color: var(--warn); }
+.rc-item.d-info { border-left-color: var(--b); }
+.rc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rc-badge { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--muted); white-space: nowrap; }
+.rc-concl { font-size: 14.5px; line-height: 1.5; }
+.rc-states, .rc-ev, .rc-next { color: var(--muted); font-size: 12.5px; margin-top: 6px; line-height: 1.6; }
+.rc-states code, .rc-ev code, .rc-next code { font-size: 12px; }
+
 /* ---- Theme system ----
    Three colour families, each with a dark and light variant sharing the
    same hue relationships -- not a brightness-inverted duplicate, an

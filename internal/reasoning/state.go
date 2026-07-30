@@ -375,7 +375,9 @@ var States = []State{
 		Domain: "cpu",
 		Description: "At least one individual core is saturated. Deliberately NOT scale-relative: one pegged core " +
 			"is 1000 ms/s on every machine, and expressing it as a fraction of total capacity is exactly what makes " +
-			"it invisible on anything bigger than 2 cores. This is the state that catches a single runaway process.",
+			"it invisible on anything bigger than 2 cores. This is the state that catches a single runaway process. " +
+			"The condition is on the window MEAN: a core saturated for most of the window. A core that hit its limit " +
+			"only briefly is state.cpu.core_peaked instead.",
 		When: []Cond{{Metric: MetricBusiestCore, BGte: f(coreSaturatedMsPerSec)}},
 	},
 	{

@@ -47,12 +47,19 @@ systemctl enable --now pmlogger_check.timer 2>/dev/null || true
 
 # Sampling groups mirror deltascope's built-in catalog (internal/pcp/catalog.go):
 # hot = metrics with meaningful second-to-second movement; warm = per-device/
-# per-NIC/per-core detail; cold = things that only change slowly. If you add
+# per-NIC detail; cold = things that only change slowly. If you add
 # metrics via `deltascope catalog export`, extend this config to match --
 # a metric pmlogger never records can't appear in any report.
+#
+# kernel.percpu.cpu is in the hot tier, not warm: the reasoning chain's
+# per-core saturation and peak states need enough per-core samples in a
+# short window to clear their MinSamples guard. At 60s a 30-minute window
+# holds only ~30 samples, right at the guard's edge, so a brief per-core
+# spike could be missed; at 10s it holds ~180 and is caught reliably.
 cat > /etc/pcp/pmlogger/deltascope.config <<'PMCFG'
 log mandatory on every 10 seconds {
     kernel.all
+    kernel.percpu.cpu
     mem.util
     mem.vmstat
     swap
@@ -68,7 +75,6 @@ log mandatory on every 60 seconds {
     network.interface
     network.tcpconn
     network.udp
-    kernel.percpu.cpu
 }
 log mandatory on every 5 minutes {
     filesys

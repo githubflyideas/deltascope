@@ -1127,6 +1127,28 @@ function renderDiagnosis(d) {
     }).join("") + `</div>`;
   }
 
+  // Reasoning diagnoses, computed over the SAME window as everything above,
+  // so the one-click page is a single coherent verdict rather than
+  // something the user has to cross-check against a separate tab. The
+  // reasoning tab still exists for picking an arbitrary window by hand.
+  if (d.reasoning && d.reasoning.length) {
+    const items = d.reasoning.map((r) => {
+      const sev = SEV_STYLE[r.severity] || SEV_STYLE.info;
+      const states = (r.states || []).map((x) => `<code>${escapeHtml(x)}</code>`).join(" ");
+      const ev = (r.evidence && r.evidence.length)
+        ? `<div class="rc-ev">${t("evidence_label")} ${r.evidence.map(escapeHtml).join(" \u00b7 ")}</div>` : "";
+      const next = (r.next && r.next.length)
+        ? `<div class="rc-next">${t("next_label")} ${r.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : "";
+      return `<div class="rc-item ${sev.cls}">
+        <div class="rc-head"><span class="rc-badge">${sev.icon} ${t(sev.key)}</span>
+          <span class="rc-concl">${escapeHtml(r.conclusion || "")}</span></div>
+        <div class="rc-states">${t("reasoning_triggered_by")} ${states}</div>${ev}${next}</div>`;
+    }).join("");
+    html += `<details class="cat-block" open><summary class="cat-head">
+      <span>${t("reasoning_diagnoses")}</span><span>${d.reasoning.length} ${t("shown")}</span></summary>
+      <div class="rc-list">${items}</div></details>`;
+  }
+
   if (d.processes && d.processes.length) {
     const trs = d.processes.map((r) => {
       const v = PV[r.verdict] || PV.flat;
