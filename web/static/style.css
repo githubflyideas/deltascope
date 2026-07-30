@@ -392,6 +392,13 @@ tr[hidden] { display: none; }
 .rc-states, .rc-ev, .rc-next { color: var(--muted); font-size: 12.5px; margin-top: 6px; line-height: 1.6; }
 .rc-states code, .rc-ev code, .rc-next code { font-size: 12px; }
 
+/* Root-cause convergence: a consequence is indented under its root and its
+   causal link is labelled, never hidden -- the engine's confidence is a
+   heuristic, so it demotes rather than removes (approach B). */
+.rc-item.rc-child { margin-left: 22px; border-left-style: dashed; opacity: .92; }
+.diag-verdict.dv-child { margin-left: 22px; border-left-style: dashed; }
+.rc-consequence { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+
 /* ---- Theme system ----
    Three colour families, each with a dark and light variant sharing the
    same hue relationships -- not a brightness-inverted duplicate, an

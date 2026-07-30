@@ -1132,21 +1132,38 @@ function renderDiagnosis(d) {
   // something the user has to cross-check against a separate tab. The
   // reasoning tab still exists for picking an arbitrary window by hand.
   if (d.reasoning && d.reasoning.length) {
-    const items = d.reasoning.map((r) => {
+    // Group consequences under their root cause. The engine has already
+    // ordered results root-first and tagged each with root_id / is_root /
+    // downstream_of; here we just render a consequence indented beneath its
+    // root, labelled as a knock-on effect. Nothing is hidden -- a heuristic
+    // causal link is shown as a demotion, not a disappearance (approach B).
+    const byRoot = new Map();
+    d.reasoning.forEach((r) => {
+      const k = r.root_id || r.id;
+      if (!byRoot.has(k)) byRoot.set(k, []);
+      byRoot.get(k).push(r);
+    });
+    const rcItem = (r, isConsequence) => {
       const sev = SEV_STYLE[r.severity] || SEV_STYLE.info;
       const states = (r.states || []).map((x) => `<code>${escapeHtml(x)}</code>`).join(" ");
       const ev = (r.evidence && r.evidence.length)
         ? `<div class="rc-ev">${t("evidence_label")} ${r.evidence.map(escapeHtml).join(" \u00b7 ")}</div>` : "";
       const next = (r.next && r.next.length)
         ? `<div class="rc-next">${t("next_label")} ${r.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : "";
-      return `<div class="rc-item ${sev.cls}">
+      const tag = isConsequence
+        ? `<span class="rc-consequence">\u21B3 ${t("consequence_of")}</span> ` : "";
+      return `<div class="rc-item ${sev.cls}${isConsequence ? " rc-child" : ""}">
         <div class="rc-head"><span class="rc-badge">${sev.icon} ${t(sev.key)}</span>
-          <span class="rc-concl">${escapeHtml(r.conclusion || "")}</span></div>
+          <span class="rc-concl">${tag}${escapeHtml(r.conclusion || "")}</span></div>
         <div class="rc-states">${t("reasoning_triggered_by")} ${states}</div>${ev}${next}</div>`;
-    }).join("");
+    };
+    const items = [];
+    byRoot.forEach((group) => {
+      group.forEach((r) => items.push(rcItem(r, !r.is_root)));
+    });
     html += `<details class="cat-block" open><summary class="cat-head">
       <span>${t("reasoning_diagnoses")}</span><span>${d.reasoning.length} ${t("shown")}</span></summary>
-      <div class="rc-list">${items}</div></details>`;
+      <div class="rc-list">${items.join("")}</div></details>`;
   }
 
   if (d.processes && d.processes.length) {
@@ -1339,10 +1356,15 @@ function renderReasoning(d) {
   } else {
     html += diags.map((r) => {
       const sv = SEV_STYLE[r.severity] || SEV_STYLE.info;
-      return `<div class="diag-verdict ${sv.cls}">
+      // A consequence is indented and labelled as a knock-on of its root;
+      // a root cause leads. The engine ordered them root-first already.
+      const isConsequence = r.is_root === false;
+      const tag = isConsequence
+        ? `<span class="rc-consequence">\u21B3 ${t("consequence_of")}</span> ` : "";
+      return `<div class="diag-verdict ${sv.cls}${isConsequence ? " dv-child" : ""}">
         <div class="dv-top"><span class="dv-badge">${sv.icon} ${t(sv.key)}</span>
           <code class="rsn-id">${escapeHtml(r.id)}</code></div>
-        <div class="dv-headline">${escapeHtml(r.conclusion)}</div>
+        <div class="dv-headline">${tag}${escapeHtml(r.conclusion)}</div>
         <div class="dv-chain">
           <div class="dv-link"><span class="dv-label">${t("reasoning_triggered_by")}</span>
             <span>${(r.states || []).map((x) => `<code>${escapeHtml(x)}</code>`).join(" ")}</span></div>

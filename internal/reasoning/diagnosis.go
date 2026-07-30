@@ -34,6 +34,26 @@ type Diagnosis struct {
 	RequiresAny []string `json:"requires_any,omitempty"`
 	// RequiresNone: none of the listed states may be active.
 	RequiresNone []string `json:"requires_none,omitempty"`
+
+	// DownstreamOf names diagnoses that, when they ALSO fire in the same
+	// run, causally explain this one: this diagnosis is then a consequence
+	// of theirs, not an independent problem. Memory pressure drives
+	// swapping drives disk saturation drives CPU iowait -- four crit/warn
+	// diagnoses light at once, but only the first is the root; the rest are
+	// its downstream symptoms.
+	//
+	// This does NOT change whether a diagnosis fires -- every diagnosis is
+	// evaluated and reported exactly as before. It only re-orders and
+	// annotates: a downstream diagnosis is marked as a consequence of its
+	// active upstream and sorted beneath it, so the one-line answer lands on
+	// the root cause instead of a symptom. Causality is a heuristic, so
+	// nothing is hidden -- the consequence stays fully visible, just
+	// labelled and demoted (approach B). If no listed upstream is active,
+	// the diagnosis stands on its own exactly as it does today.
+	//
+	// The edges must form a DAG (enforced by test); a cycle would make
+	// "which is the root" undefined.
+	DownstreamOf []string `json:"downstream_of,omitempty"`
 }
 
 // Result is a diagnosis that fired, carrying the states that triggered it
@@ -49,6 +69,19 @@ type Result struct {
 	States []string `json:"states"`
 	// Evidence is the deduplicated metric-level evidence from those states.
 	Evidence []string `json:"evidence"`
+
+	// DownstreamOf, when non-empty, names the active upstream diagnoses that
+	// causally explain this one in THIS run. It is the subset of the
+	// diagnosis's declared DownstreamOf that actually fired. When empty,
+	// this result is a root cause (or has no declared upstream).
+	DownstreamOf []string `json:"downstream_of,omitempty"`
+	// RootID is the ultimate root this result rolls up to, walking the
+	// upstream chain to its top. For a root cause it is the result's own ID.
+	// The UI groups consequences under their root by this.
+	RootID string `json:"root_id"`
+	// IsRoot is true when no declared upstream was active -- this is a root
+	// cause, and the one-line answer should prefer it over its consequences.
+	IsRoot bool `json:"is_root"`
 }
 
 // Diagnose evaluates every diagnosis against the active state set.
@@ -66,17 +99,115 @@ func Diagnose(diagnoses []Diagnosis, active map[string]Active) []Result {
 		out = append(out, Result{
 			ID: d.ID, Branch: d.Branch, Severity: d.Severity, Conclusion: d.Conclusion,
 			Next: d.Next, States: states, Evidence: collectEvidence(states, active),
+			DownstreamOf: d.DownstreamOf, // declared edges; pruned to active below
 		})
 	}
+	converge(out)
+	sortResults(out)
+	return out
+}
+
+// converge turns the flat set of fired diagnoses into a root-and-consequence
+// structure. It does NOT drop anything (approach B): every diagnosis that
+// fired is still present. It only annotates -- pruning each result's
+// DownstreamOf to the upstreams that actually fired this run, resolving the
+// ultimate root of each chain, and marking roots.
+//
+// Causality is a heuristic, so it is applied conservatively: an edge counts
+// only when both endpoints fired, and the edge set is a DAG (test-enforced),
+// so walking to the root always terminates.
+func converge(out []Result) {
+	fired := make(map[string]*Result, len(out))
+	for i := range out {
+		fired[out[i].ID] = &out[i]
+	}
+	for i := range out {
+		r := &out[i]
+		// Keep only upstreams that actually fired this run.
+		var activeUp []string
+		for _, up := range r.DownstreamOf {
+			if _, ok := fired[up]; ok {
+				activeUp = append(activeUp, up)
+			}
+		}
+		r.DownstreamOf = activeUp
+		r.IsRoot = len(activeUp) == 0
+	}
+	// Resolve each result's ultimate root by walking upstream. A visited set
+	// guards against a malformed cycle slipping past the DAG test in prod --
+	// on a cycle we stop and treat the current node as root rather than loop.
+	for i := range out {
+		r := &out[i]
+		cur := r
+		seen := map[string]bool{}
+		for !cur.IsRoot && len(cur.DownstreamOf) > 0 {
+			if seen[cur.ID] {
+				break
+			}
+			seen[cur.ID] = true
+			// Follow the highest-severity active upstream as the primary
+			// causal parent (a symptom driven by several causes rolls up to
+			// the most severe one).
+			next := fired[primaryUpstream(cur.DownstreamOf, fired)]
+			if next == nil {
+				break
+			}
+			cur = next
+		}
+		r.RootID = cur.ID
+	}
+}
+
+// primaryUpstream picks the most severe active upstream (crit before warn
+// before info), ties broken by ID for stability.
+func primaryUpstream(ups []string, fired map[string]*Result) string {
 	sevRank := map[string]int{"crit": 0, "warn": 1, "info": 2}
+	best := ""
+	for _, up := range ups {
+		if best == "" {
+			best = up
+			continue
+		}
+		bi, ui := sevRank[fired[best].Severity], sevRank[fired[up].Severity]
+		if ui < bi || (ui == bi && up < best) {
+			best = up
+		}
+	}
+	return best
+}
+
+// sortResults orders results so roots lead and consequences follow their
+// root. Within a root's group, order by severity then ID; roots themselves
+// by severity then ID. This is the "root first, symptoms beneath" ordering
+// approach B calls for -- everything visible, re-ranked, not hidden.
+func sortResults(out []Result) {
+	sevRank := map[string]int{"crit": 0, "warn": 1, "info": 2}
+	// Rank each root by its own severity so the worst root leads.
+	rootSev := map[string]int{}
+	for i := range out {
+		if out[i].IsRoot {
+			rootSev[out[i].ID] = sevRank[out[i].Severity]
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool {
-		ri, rj := sevRank[out[i].Severity], sevRank[out[j].Severity]
+		ri, rj := out[i].RootID, out[j].RootID
 		if ri != rj {
+			// order groups by their root's severity, then root ID
+			si, sj := rootSev[ri], rootSev[rj]
+			if si != sj {
+				return si < sj
+			}
 			return ri < rj
+		}
+		// within a group: the root itself first, then by severity, then ID
+		if out[i].IsRoot != out[j].IsRoot {
+			return out[i].IsRoot
+		}
+		if s1, s2 := sevRank[out[i].Severity], sevRank[out[j].Severity]; s1 != s2 {
+			return s1 < s2
 		}
 		return out[i].ID < out[j].ID
 	})
-	return out
 }
 
 // match reports whether a diagnosis holds, and which states satisfied it.
@@ -208,9 +339,10 @@ var Diagnoses = []Diagnosis{
 	},
 
 	{
-		ID:       "diagnosis.load_without_cpu_demand",
-		Branch:   BranchCPU,
-		Severity: "warn",
+		ID:           "diagnosis.load_without_cpu_demand",
+		Branch:       BranchCPU,
+		DownstreamOf: []string{"diagnosis.io_bound", "diagnosis.io_total_stall", "diagnosis.storage_degraded", "diagnosis.swap_thrashing"},
+		Severity:     "warn",
 		Conclusion: "The load average is high but the CPUs are not the constraint: the tasks counted in it are " +
 			"blocked in uninterruptible I/O, not queued for compute, so adding CPU would change nothing",
 		Next:        []string{"vmstat 1 5", "iostat -x 1 5", "ps -eo state,pid,comm | awk '$1 ~ /D/'"},
@@ -220,9 +352,10 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.runqueue_high"},
 	},
 	{
-		ID:       "diagnosis.interrupt_overhead",
-		Branch:   BranchCPU,
-		Severity: "warn",
+		ID:           "diagnosis.interrupt_overhead",
+		Branch:       BranchCPU,
+		DownstreamOf: []string{"diagnosis.network_receive_cpu_bound"},
+		Severity:     "warn",
 		Conclusion: "CPU is being consumed servicing interrupts rather than running work, which points at a device, " +
 			"a driver, or an interrupt affinity problem rather than at anything the workload is asking for",
 		Next:         []string{"cat /proc/interrupts", "mpstat -I SUM -P ALL 1 5", "ethtool -S <nic> | grep -i irq"},
@@ -411,9 +544,10 @@ var Diagnoses = []Diagnosis{
 		},
 	},
 	{
-		ID:       "diagnosis.swap_thrashing",
-		Branch:   BranchMemory,
-		Severity: "crit",
+		ID:           "diagnosis.swap_thrashing",
+		Branch:       BranchMemory,
+		DownstreamOf: []string{"diagnosis.memory_pressure_swapping"},
+		Severity:     "crit",
 		Conclusion: "Pages are being read back from swap, so tasks are waiting on disk for memory they already " +
 			"believed they had -- the latency cost of swap, as opposed to the housekeeping cost of merely writing " +
 			"pages out",
@@ -422,9 +556,10 @@ var Diagnoses = []Diagnosis{
 		RequiresAny: []string{"state.mem.pressure_high", "state.mem.available_low", "state.mem.major_faults_high"},
 	},
 	{
-		ID:       "diagnosis.allocation_stalling",
-		Branch:   BranchMemory,
-		Severity: "crit",
+		ID:           "diagnosis.allocation_stalling",
+		Branch:       BranchMemory,
+		DownstreamOf: []string{"diagnosis.memory_pressure_swapping", "diagnosis.memory_exhaustion_imminent"},
+		Severity:     "crit",
 		Conclusion: "Allocations are stalling in the kernel: memory pressure is no longer merely present, it is " +
 			"costing application latency directly on every allocation that has to wait",
 		Next:        []string{"grep -E 'allocstall|pgscan' /proc/vmstat", "sar -B 1 5", "free -m"},
@@ -462,9 +597,10 @@ var Diagnoses = []Diagnosis{
 
 	// ---- I/O ----
 	{
-		ID:       "diagnosis.io_bound",
-		Branch:   BranchIO,
-		Severity: "crit",
+		ID:           "diagnosis.io_bound",
+		Branch:       BranchIO,
+		DownstreamOf: []string{"diagnosis.memory_pressure_swapping", "diagnosis.swap_thrashing"},
+		Severity:     "crit",
 		Conclusion: "Storage is the bottleneck: a disk is busy nearly all the time with requests queued behind it, " +
 			"and tasks are stalling on I/O",
 		Next:        []string{"iostat -x 1 5", "pidstat -d 1 5", "iotop -o"},
