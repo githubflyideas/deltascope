@@ -316,6 +316,10 @@ var minAbsDefault = map[string]float64{
 	// second (a stray unbound-port probe, one late datagram). Without a
 	// floor, 0.002/s -> 0/s reads as "-100%" and flags the whole Network
 	// block on nothing at all. These need a real sustained rate to matter.
+	// Every WorseUp count/sec metric MUST appear here or in the
+	// first-non-zero group below -- rebuildIndex asserts it (see
+	// requireFloor), because a rate counter with no floor is a false
+	// positive waiting for an idle machine.
 	"network.udp.noports":          5,
 	"network.udp.inerrors":         1,
 	"network.udp.recvbuferrors":    1,
@@ -324,16 +328,50 @@ var minAbsDefault = map[string]float64{
 	"network.tcp.syncookiessent":   1,
 	"network.tcp.syncookiesfailed": 1,
 	"network.icmp.inerrors":        1,
-	"network.sockstat.tcp.tw":      500,
-	"network.sockstat.tcp.orphan":  1,
-	"network.sockstat.tcp.inuse":   50,
-	"network.sockstat.tcp.alloc":   50,
-	"network.softnet.processed":    100,
-	"network.icmp.inmsgs":          20,
-	"network.icmp.outmsgs":         20,
-	"network.ip.inreceives":        100,
-	"network.ip.outrequests":       100,
-	"network.ip.forwdatagrams":     50,
+	// Per-NIC error/drop/collision counters: same trap as udp.noports, and
+	// several are triage core metrics, so a fractional idle rate dropping to
+	// zero was enough to flag the whole Network block red.
+	"network.interface.in.errors":  1,
+	"network.interface.out.errors": 1,
+	"network.interface.in.drops":   1,
+	"network.interface.out.drops":  1,
+	"network.interface.collisions": 1,
+	// TCP/IP error and retransmit-adjacent rates. (outrsts, attemptfails,
+	// estabresets already have floors above.)
+	"network.tcp.timeouts":     1,
+	"network.tcp.prunecalled":  1,
+	"network.tcp.rcvcollapsed": 1,
+	"network.ip.inhdrerrors":   1,
+	"network.ip.indiscards":    1,
+	"network.ip.outdiscards":   1,
+	"network.ip.fragfails":     1,
+	"network.ip.reasmfails":    1,
+	// softnet backlog pressure: both are per-second counts an idle NIC ticks
+	// at near zero. dropped is a triage core metric, so a floor is
+	// mandatory or one stray drop reddens the whole Network block.
+	"network.softnet.time_squeeze": 5,
+	"network.softnet.dropped":      1,
+	// Connection-state gauges (counts, not rates): a handful of sockets in
+	// these states is normal, only a real pool matters.
+	"network.tcpconn.close_wait": 50,
+	"network.tcpconn.syn_recv":   20,
+	// Reclaim/stall rates on the memory side, same reasoning.
+	"mem.vmstat.pgscan_kswapd": 100,
+	"mem.vmstat.allocstall":    1,
+	"mem.vmstat.compact_stall": 1,
+	// Inode usage is a large count; only a real move matters, not a handful
+	// of temp files.
+	"filesys.usedfiles":           1000,
+	"network.sockstat.tcp.tw":     500,
+	"network.sockstat.tcp.orphan": 1,
+	"network.sockstat.tcp.inuse":  50,
+	"network.sockstat.tcp.alloc":  50,
+	"network.softnet.processed":   100,
+	"network.icmp.inmsgs":         20,
+	"network.icmp.outmsgs":        20,
+	"network.ip.inreceives":       100,
+	"network.ip.outrequests":      100,
+	"network.ip.forwdatagrams":    50,
 }
 
 var thresholdDefault = map[string]float64{

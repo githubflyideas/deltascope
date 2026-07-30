@@ -121,6 +121,13 @@ type State struct {
 	Domain string `json:"domain,omitempty"`
 	// All conditions must hold for the state to be active (AND).
 	When []Cond `json:"when"`
+	// SameInstance requires every condition to be satisfied by the SAME
+	// per-instance row (the same disk, the same NIC), not just by some row
+	// each. Without it, "a disk is >70% busy AND has a queue >=2" could be
+	// satisfied by two different disks -- sda busy, sdb queued -- and report
+	// a saturated device that does not exist. Set it on any state whose
+	// conditions describe one physical thing.
+	SameInstance bool `json:"same_instance,omitempty"`
 }
 
 // Active is a state that evaluated true, with the rows that made it true.
@@ -157,18 +164,8 @@ func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active
 		if len(st.When) == 0 {
 			continue // a state with no conditions would always be true
 		}
-		evidence := make([]string, 0, len(st.When))
-		matched := true
-		for _, c := range st.When {
-			row, ok := firstMatch(c, byMetric[c.Metric], m)
-			if !ok {
-				matched = false
-				break
-			}
-			evidence = append(evidence, evidenceLine(row))
-		}
-		if matched {
-			out[st.ID] = Active{ID: st.ID, Domain: st.Domain, Evidence: evidence}
+		if ev, ok := matchState(st, byMetric, m); ok {
+			out[st.ID] = Active{ID: st.ID, Domain: st.Domain, Evidence: ev}
 		}
 	}
 	return out
@@ -178,6 +175,79 @@ func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active
 // condition. Instance-level metrics (per-disk, per-NIC) can have many
 // rows; one instance meeting the condition makes the state true, since
 // "some disk is saturated" is the useful reading, not "every disk is".
+// matchState evaluates one state's conditions against the indexed rows,
+// honouring SameInstance. It returns the evidence rows on success.
+func matchState(st State, byMetric map[string][]pcp.DiffRow, m Machine) ([]string, bool) {
+	if !st.SameInstance {
+		// Independent match: each condition may be satisfied by any row.
+		evidence := make([]string, 0, len(st.When))
+		for _, c := range st.When {
+			row, ok := firstMatch(c, byMetric[c.Metric], m)
+			if !ok {
+				return nil, false
+			}
+			evidence = append(evidence, evidenceLine(row))
+		}
+		return evidence, true
+	}
+
+	// Same-instance match: there must be one instance value for which every
+	// condition holds. Collect the candidate instances from the first
+	// condition's rows, then require all conditions to hold on that same
+	// instance. Only per-instance rows participate; an instance-less row
+	// (Instance == "") satisfies a condition for every candidate, so a
+	// whole-machine condition can still be ANDed with a per-disk one.
+	instances := map[string]bool{}
+	hasInstanceless := false
+	for _, c := range st.When {
+		for _, row := range byMetric[c.Metric] {
+			if row.Instance != "" {
+				instances[row.Instance] = true
+			} else {
+				hasInstanceless = true
+			}
+		}
+	}
+	// When the rows carry no instance at all (some archives report
+	// disk.dev.* unindexed, and tests do), "" is the sole candidate and
+	// same-instance degenerates to a plain match -- correct, since there is
+	// only one thing to be consistent about.
+	if hasInstanceless {
+		instances[""] = true
+	}
+	for inst := range instances {
+		evidence := make([]string, 0, len(st.When))
+		ok := true
+		for _, c := range st.When {
+			row, found := matchOnInstance(c, byMetric[c.Metric], m, inst)
+			if !found {
+				ok = false
+				break
+			}
+			evidence = append(evidence, evidenceLine(row))
+		}
+		if ok {
+			return evidence, true
+		}
+	}
+	return nil, false
+}
+
+// matchOnInstance finds a row satisfying c that is either on the named
+// instance or instance-less (a whole-machine metric ANDed into a
+// per-instance state).
+func matchOnInstance(c Cond, rows []pcp.DiffRow, m Machine, inst string) (pcp.DiffRow, bool) {
+	for _, row := range rows {
+		if row.Instance != "" && row.Instance != inst {
+			continue
+		}
+		if condMatch(c, row, m) {
+			return row, true
+		}
+	}
+	return pcp.DiffRow{}, false
+}
+
 func firstMatch(c Cond, rows []pcp.DiffRow, m Machine) (pcp.DiffRow, bool) {
 	for _, row := range rows {
 		if condMatch(c, row, m) {
@@ -594,9 +664,10 @@ var States = []State{
 
 	// ---- I/O ----
 	{
-		ID:          "state.io.saturated",
-		Domain:      "io",
-		Description: "A disk is busy nearly all the time with requests actually queued behind it. Both conditions matter: high utilisation with an empty queue is a disk doing its job.",
+		ID:           "state.io.saturated",
+		Domain:       "io",
+		Description:  "A disk is busy nearly all the time with requests actually queued behind it. Both conditions matter: high utilisation with an empty queue is a disk doing its job. SameInstance: both must hold for the SAME disk, or 'sda busy' plus 'sdb queued' would fake a saturated device that does not exist.",
+		SameInstance: true,
 		When: []Cond{
 			{Metric: "disk.dev.avactive", BGte: f(0.7)},
 			{Metric: "disk.dev.aveq", BGte: f(2)},
