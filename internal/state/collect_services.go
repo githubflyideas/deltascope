@@ -11,33 +11,54 @@ func (services) Name() string { return "services" }
 func (services) Collect(ctx context.Context) Section {
 	sec := Section{Name: "services", Title: "Service Status"}
 
-	// On-demand and oneshot units come and go by design -- fwupd exits when
-	// idle, fprintd is D-Bus-activated, NetworkManager-dispatcher is a
-	// oneshot that runs and exits. Their active<->inactive flapping is the
-	// normal lifecycle of the unit, not a change to the machine, and
-	// reporting it buries the enable/disable changes that actually matter
-	// (the same reason loopback traffic is filtered from the NIC report).
-	// So the RUNNING STATE is recorded only for long-running units; the
-	// ENABLED STATE below is recorded for every unit, because that is the
-	// real configuration -- whether a service is set to start at all.
-	volatile := volatileServices(ctx)
-
-	if out, ok := runCmd(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"); ok {
-		for _, l := range lines(out) {
-			f := fields(l)
-			if len(f) >= 4 && strings.HasSuffix(f[0], ".service") {
-				if volatile[f[0]] {
-					continue // lifecycle noise, not a configuration change
-				}
-				sec.Items = append(sec.Items, Item{Key: f[0], Value: f[2] + "/" + f[3]})
-			}
-		}
-	}
+	// The ENABLED state (enabled/disabled/masked) is the real configuration
+	// -- whether a service is set to start -- and is recorded for every
+	// unit. Collected first because it also decides which units' RUNNING
+	// state is worth recording.
+	enabled := map[string]bool{}
 	if out, ok := runCmd(ctx, "systemctl", "list-unit-files", "--type=service", "--no-legend", "--plain"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
 			if len(f) >= 2 && strings.HasSuffix(f[0], ".service") {
 				sec.Items = append(sec.Items, Item{Key: "enabled:" + f[0], Value: f[1]})
+				if f[1] == "enabled" || f[1] == "enabled-runtime" {
+					enabled[f[0]] = true
+				}
+			}
+		}
+	}
+
+	// The RUNNING state is recorded ONLY for units enabled at boot, and the
+	// reason is stability of the fingerprint's key set.
+	//
+	// `list-units --all` reports a churning population: a desktop carries a
+	// hundred static oneshots sitting inactive/dead, systemd unloads idle
+	// units from the list entirely, and on-demand daemons (ModemManager,
+	// fwupd) start and exit on their own. Recording any of those means a
+	// unit present in snapshot A is simply gone from B -- a phantom
+	// "removed" -- with no change to the machine behind it. That is what
+	// produced 100+ bogus rows in the field.
+	//
+	// The set of ENABLED units, by contrast, is stable: it only changes
+	// when someone runs enable/disable. Recording running state over that
+	// set means the value can change (enabled daemon active -> inactive =
+	// "the service you provisioned is down", a real and useful finding)
+	// but the KEY set does not churn, so nothing flaps in or out on its
+	// own. A manually-started, never-enabled daemon is deliberately out of
+	// scope here: its enable state is still tracked above, and its resource
+	// use still shows in process accounting.
+	// One more guard on top of "enabled only": an enabled unit that is
+	// itself on-demand (a timer-triggered oneshot, a D-Bus-activated
+	// daemon) still flaps in VALUE even though its key is stable -- it is
+	// enabled AND runs briefly then exits. Those are dropped too, so what
+	// remains is enabled, long-running daemons, whose running value only
+	// changes when the daemon actually goes up or down.
+	volatile := volatileServices(ctx)
+	if out, ok := runCmd(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"); ok {
+		for _, l := range lines(out) {
+			f := fields(l)
+			if len(f) >= 4 && strings.HasSuffix(f[0], ".service") && enabled[f[0]] && !volatile[f[0]] {
+				sec.Items = append(sec.Items, Item{Key: "running:" + f[0], Value: f[2] + "/" + f[3]})
 			}
 		}
 	}
