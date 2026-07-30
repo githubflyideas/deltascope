@@ -1,8 +1,8 @@
 package pcp
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -387,10 +387,10 @@ func TestTriageIgnoresNonCoreAppeared(t *testing.T) {
 // percentages and light the whole report red.
 func TestJudgeAbsoluteFloor(t *testing.T) {
 	cases := []struct {
-		name           string
-		a, b           float64
-		minAbs         float64
-		wantV          Verdict
+		name   string
+		a, b   float64
+		minAbs float64
+		wantV  Verdict
 	}{
 		// Reported from a live host: CPU PSI 0.005 -> 0.097 rendered as
 		// "+1840%" and turned the CPU triage card red on an idle box.
@@ -482,24 +482,24 @@ func TestParseTrendCSVReportsUnreadableTimestamps(t *testing.T) {
 // denominator was near zero.
 func TestIdleDiskNotSaturated(t *testing.T) {
 	a := map[string]Value{
-		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.001},
-		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.003},
-		"disk.all.avactive\x00":    {Metric: "disk.all.avactive", Val: 0.001},
-		"disk.all.aveq\x00":        {Metric: "disk.all.aveq", Val: 0.003},
-		"kernel.all.pswitch\x00":   {Metric: "kernel.all.pswitch", Val: 870.9},
+		"disk.dev.avactive\x00sda":    {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.001},
+		"disk.dev.aveq\x00sda":        {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.003},
+		"disk.all.avactive\x00":       {Metric: "disk.all.avactive", Val: 0.001},
+		"disk.all.aveq\x00":           {Metric: "disk.all.aveq", Val: 0.003},
+		"kernel.all.pswitch\x00":      {Metric: "kernel.all.pswitch", Val: 870.9},
 		"network.sockstat.tcp.tw\x00": {Metric: "network.sockstat.tcp.tw", Val: 42.69},
-		"vfs.dentry.count\x00":     {Metric: "vfs.dentry.count", Val: 203200},
-		"network.tcp.outrsts\x00":  {Metric: "network.tcp.outrsts", Val: 0.572},
+		"vfs.dentry.count\x00":        {Metric: "vfs.dentry.count", Val: 203200},
+		"network.tcp.outrsts\x00":     {Metric: "network.tcp.outrsts", Val: 0.572},
 	}
 	b := map[string]Value{
-		"disk.dev.avactive\x00sda": {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.002},
-		"disk.dev.aveq\x00sda":     {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.005},
-		"disk.all.avactive\x00":    {Metric: "disk.all.avactive", Val: 0.002},
-		"disk.all.aveq\x00":        {Metric: "disk.all.aveq", Val: 0.005},
-		"kernel.all.pswitch\x00":   {Metric: "kernel.all.pswitch", Val: 1706.3},
+		"disk.dev.avactive\x00sda":    {Metric: "disk.dev.avactive", Instance: "sda", Val: 0.002},
+		"disk.dev.aveq\x00sda":        {Metric: "disk.dev.aveq", Instance: "sda", Val: 0.005},
+		"disk.all.avactive\x00":       {Metric: "disk.all.avactive", Val: 0.002},
+		"disk.all.aveq\x00":           {Metric: "disk.all.aveq", Val: 0.005},
+		"kernel.all.pswitch\x00":      {Metric: "kernel.all.pswitch", Val: 1706.3},
 		"network.sockstat.tcp.tw\x00": {Metric: "network.sockstat.tcp.tw", Val: 140.6},
-		"vfs.dentry.count\x00":     {Metric: "vfs.dentry.count", Val: 246624},
-		"network.tcp.outrsts\x00":  {Metric: "network.tcp.outrsts", Val: 1.654},
+		"vfs.dentry.count\x00":        {Metric: "vfs.dentry.count", Val: 246624},
+		"network.tcp.outrsts\x00":     {Metric: "network.tcp.outrsts", Val: 1.654},
 	}
 
 	rows := buildRows(a, b, 15)
@@ -677,23 +677,23 @@ network.tcp.retranssegs  0.0330 0.00000 12.36700 766 count / sec
 // same metric the same way the regression-diff table does.
 func TestInferUnitAgreesWithRealObservations(t *testing.T) {
 	cases := map[string]string{
-		"kernel.all.cpu.user":         "millisec / second",
-		"kernel.all.load":             "none",
-		"kernel.all.pswitch":          "count / sec",
-		"kernel.all.uptime":           "sec",
-		"mem.util.available":          "Kbyte",
-		"mem.util.dirty":              "Kbyte",
-		"swap.free":                   "byte",
-		"swap.pagesout":               "count / sec",
-		"disk.all.avactive":           "none",
-		"disk.all.write_bytes":        "Kbyte / sec",
-		"disk.all.write":              "count / sec",
-		"filesys.full":                "none",
-		"vfs.dentry.count":            "none",
-		"network.interface.in.bytes":  "byte / sec",
-		"network.tcp.currestab":       "none",
-		"network.tcp.retranssegs":     "count / sec",
-		"network.sockstat.tcp.inuse":  "count",
+		"kernel.all.cpu.user":              "millisec / second",
+		"kernel.all.load":                  "none",
+		"kernel.all.pswitch":               "count / sec",
+		"kernel.all.uptime":                "sec",
+		"mem.util.available":               "Kbyte",
+		"mem.util.dirty":                   "Kbyte",
+		"swap.free":                        "byte",
+		"swap.pagesout":                    "count / sec",
+		"disk.all.avactive":                "none",
+		"disk.all.write_bytes":             "Kbyte / sec",
+		"disk.all.write":                   "count / sec",
+		"filesys.full":                     "none",
+		"vfs.dentry.count":                 "none",
+		"network.interface.in.bytes":       "byte / sec",
+		"network.tcp.currestab":            "none",
+		"network.tcp.retranssegs":          "count / sec",
+		"network.sockstat.tcp.inuse":       "count",
 		"kernel.all.pressure.cpu.some.avg": "none",
 	}
 	for metric, want := range cases {

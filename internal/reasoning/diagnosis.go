@@ -269,7 +269,7 @@ var Diagnoses = []Diagnosis{
 		Severity: "warn",
 		Conclusion: "The process-creation rate hit storm levels during part of this window, hidden by the hourly " +
 			"average: a brief fork burst that the mean does not show",
-		Next:        []string{"execsnoop", "pidstat 1 30", "narrow the window to the minutes around the spike"},
+		Next:         []string{"execsnoop", "pidstat 1 30", "narrow the window to the minutes around the spike"},
 		RequiresAll:  []string{"state.cpu.fork_spike"},
 		RequiresNone: []string{"state.cpu.fork_storm"},
 	},
