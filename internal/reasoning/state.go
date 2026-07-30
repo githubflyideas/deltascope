@@ -901,4 +901,84 @@ var States = []State{
 			"already acknowledged to the sender. Rare, and always a sign that socket memory limits are being hit.",
 		When: []Cond{{Metric: "network.tcp.prunecalled", BGte: f(1)}},
 	},
+	{
+		ID:     "state.net.receive_collapse",
+		Domain: "network",
+		Description: "The kernel is collapsing TCP receive queues to reclaim socket memory -- a step short of pruning, " +
+			"but the same root cause (socket buffers under pressure) and a leading indicator of it.",
+		When: []Cond{{Metric: "network.tcp.rcvcollapsed", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.collisions_high",
+		Domain: "network",
+		Description: "The NIC is reporting Ethernet collisions. On a modern full-duplex link this should be zero; a " +
+			"non-zero rate points at a duplex mismatch or a failing switch port, a physical-layer fault tuning cannot fix.",
+		When: []Cond{{Metric: "network.interface.collisions", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.nic_dropping_out",
+		Domain: "network",
+		Description: "The NIC is dropping outbound packets, typically a full transmit queue -- the host is trying to " +
+			"send faster than the link or the driver can accept. Distinct from inbound drops, which are a receive-side " +
+			"CPU problem.",
+		When: []Cond{{Metric: "network.interface.out.drops", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.nic_errors_out",
+		Domain: "network",
+		Description: "The NIC is reporting transmit errors -- carrier loss, aborted transmits -- which is a physical " +
+			"or driver fault on the send path.",
+		When: []Cond{{Metric: "network.interface.out.errors", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.ip_discards_in",
+		Domain: "network",
+		Description: "The IP layer is discarding inbound packets for reasons other than a header error -- usually no " +
+			"buffer space or no route. A protocol-level counterpart to a NIC drop, one layer up.",
+		When: []Cond{{Metric: "network.ip.indiscards", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.ip_header_errors",
+		Domain: "network",
+		Description: "The IP layer is receiving packets with bad headers -- checksum failures, truncation, bad version. " +
+			"A sustained rate points at a corrupting link or a misbehaving sender, not at this host.",
+		When: []Cond{{Metric: "network.ip.inhdrerrors", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.ip_reassembly_failing",
+		Domain: "network",
+		Description: "IP fragment reassembly is failing -- fragments arriving out of order, too slowly, or lost, so " +
+			"the datagram is never rebuilt. Often an MTU/PMTU problem or a lossy path.",
+		When: []Cond{{Metric: "network.ip.reasmfails", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.udp_send_errors",
+		Domain: "network",
+		Description: "UDP sends are failing for lack of send buffer space -- the application is producing datagrams " +
+			"faster than the kernel can put them on the wire, and they are dropped before transmission.",
+		When: []Cond{{Metric: "network.udp.sndbuferrors", BGte: f(1)}},
+	},
+	{
+		ID:     "state.net.syn_recv_high",
+		Domain: "network",
+		Description: "An unusual number of half-open connections sit in SYN-RECV: SYNs arrived and were answered but " +
+			"never completed the handshake. A SYN flood, or a client population behind a broken path.",
+		When: []Cond{{Metric: "network.tcpconn.syn_recv", BGte: f(50)}},
+	},
+	{
+		ID:     "state.net.icmp_errors_in",
+		Domain: "network",
+		Description: "Inbound ICMP error messages are arriving at a high rate -- destination-unreachable, " +
+			"time-exceeded, redirects -- which usually means this host's outbound traffic is hitting routing or " +
+			"reachability trouble somewhere on the path.",
+		When: []Cond{{Metric: "network.icmp.inerrors", BGte: f(5)}},
+	},
+	{
+		ID:     "state.disk.filling_fast",
+		Domain: "filesystem",
+		Description: "Free space on a filesystem is falling sharply between the two windows -- not yet full, but on a " +
+			"trajectory that will be. This is the change-relative early warning that complements the absolute " +
+			"nearly_full / critically_full states.",
+		When: []Cond{{Metric: "filesys.free", Verdict: "worse", DeltaLte: f(-25)}},
+	},
 }

@@ -646,4 +646,87 @@ var Diagnoses = []Diagnosis{
 		RequiresAll: []string{"state.net.tcp_timeouts_high"},
 		RequiresAny: []string{"state.net.retransmit_high", "state.net.nic_dropping_in"},
 	},
+	{
+		ID:       "diagnosis.nic_link_fault_physical",
+		Severity: "crit",
+		Conclusion: "The NIC is reporting Ethernet collisions or transmit errors -- a physical-layer fault: a duplex " +
+			"mismatch, a bad cable, or a failing switch port. No amount of kernel or application tuning changes this; " +
+			"the link itself needs attention",
+		Next:        []string{"ethtool <iface>", "ethtool -S <iface> | grep -iE 'err|collision|carrier'", "check the switch port and cabling"},
+		RequiresAny: []string{"state.net.collisions_high", "state.net.nic_errors_out"},
+	},
+	{
+		ID:       "diagnosis.tx_queue_overrun",
+		Severity: "warn",
+		Conclusion: "The host is dropping outbound packets at the NIC transmit queue: it is trying to send faster than " +
+			"the link or driver will accept. Throughput looks fine while individual sends are quietly lost",
+		Next:        []string{"ip -s link show <iface>", "tc -s qdisc show dev <iface>", "check the link speed and txqueuelen"},
+		RequiresAll: []string{"state.net.nic_dropping_out"},
+	},
+	{
+		ID:       "diagnosis.ip_layer_loss",
+		Severity: "warn",
+		Conclusion: "The IP layer is discarding inbound packets or receiving corrupt headers -- loss above the NIC but " +
+			"below TCP, which points at buffer exhaustion, a missing route, or a corrupting link rather than at any " +
+			"application",
+		Next:        []string{"netstat -s | grep -iE 'discard|header'", "ip -s link", "check upstream link quality"},
+		RequiresAny: []string{"state.net.ip_discards_in", "state.net.ip_header_errors"},
+	},
+	{
+		ID:       "diagnosis.fragmentation_loss",
+		Severity: "warn",
+		Conclusion: "IP fragment reassembly is failing: fragmented datagrams are not being rebuilt, usually an MTU or " +
+			"path-MTU-discovery problem or a lossy path dropping fragments. Large UDP payloads and some tunnels are " +
+			"hit hardest",
+		Next:        []string{"netstat -s | grep -i reasm", "ping -M do -s 1472 <peer>", "check MTU end to end and PMTUD"},
+		RequiresAll: []string{"state.net.ip_reassembly_failing"},
+	},
+	{
+		ID:       "diagnosis.udp_send_buffer_full",
+		Severity: "warn",
+		Conclusion: "UDP sends are being dropped for lack of send buffer space: the application is producing datagrams " +
+			"faster than the kernel can transmit them, and they are lost before ever reaching the wire",
+		Next:        []string{"netstat -su | grep -i 'send buffer'", "sysctl net.core.wmem_max net.core.wmem_default", "check the sending application's rate"},
+		RequiresAll: []string{"state.net.udp_send_errors"},
+	},
+	{
+		ID:       "diagnosis.syn_flood_or_surge",
+		Severity: "warn",
+		Conclusion: "Many half-open connections sit in SYN-RECV -- SYNs answered but never completed. Either a SYN " +
+			"flood, or a legitimate client surge behind a path that is dropping the final handshake ACK",
+		Next:        []string{"ss -tan state syn-recv | wc -l", "ss -tan state syn-recv | awk '{print $4}' | sort | uniq -c | sort -rn | head", "sysctl net.ipv4.tcp_syncookies"},
+		RequiresAll: []string{"state.net.syn_recv_high"},
+		// syn_flood_defense (cookies emitted) is the stronger, more specific
+		// statement; suppress this when it fires.
+		RequiresNone: []string{"state.net.syn_flood_defense"},
+	},
+	{
+		ID:       "diagnosis.path_unreachable_icmp",
+		Severity: "warn",
+		Conclusion: "Inbound ICMP errors are arriving at a high rate -- unreachables, time-exceeded, redirects -- which " +
+			"means this host's outbound traffic is hitting routing or reachability trouble somewhere on the path, not " +
+			"a fault on this machine",
+		Next:        []string{"tcpdump -ni any icmp", "mtr -rw <peer>", "check routes and upstream reachability"},
+		RequiresAll: []string{"state.net.icmp_errors_in"},
+	},
+	{
+		ID:       "diagnosis.socket_memory_collapse",
+		Severity: "warn",
+		Conclusion: "The kernel is collapsing TCP receive queues to reclaim socket memory -- a step short of pruning " +
+			"acknowledged data outright, but the same socket-buffer pressure and a leading indicator of loss",
+		Next:        []string{"sysctl net.ipv4.tcp_mem net.core.rmem_max", "ss -tm | head -20", "netstat -s | grep -i collapse"},
+		RequiresAll: []string{"state.net.receive_collapse"},
+		// receive_pruning (data actually discarded) is the stronger form.
+		RequiresNone: []string{"state.net.receive_pruning"},
+	},
+	{
+		ID:       "diagnosis.disk_filling_fast",
+		Severity: "warn",
+		Conclusion: "Free space on a filesystem is falling sharply -- not full yet, but on a trajectory that will hit " +
+			"the wall. Catching the slope before the cliff is the whole point of watching it over two windows",
+		Next:        []string{"df -h", "du -xh --max-depth=2 / | sort -rh | head -20", "check log rotation and growing datasets"},
+		RequiresAll: []string{"state.disk.filling_fast"},
+		// If it is already nearly/critically full, those diagnoses say it better.
+		RequiresNone: []string{"state.fs.nearly_full", "state.fs.critically_full"},
+	},
 }
