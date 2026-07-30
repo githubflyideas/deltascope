@@ -28,7 +28,7 @@ each engine folds out underneath.
   fingerprints) and diffs two points in time. `verify` is a release gate.
 - **Process accounting** — per-process CPU/memory with restart detection,
   read straight from `/proc`.
-- **Reasoning chain** — 61 named states, then 48 diagnoses over combinations
+- **Reasoning chain** — 78 named states, then 58 diagnoses over combinations
   of them *including negation*: what is deliberately absent separates
   hypervisor contention from an ordinary busy guest. Thresholds scale with
   the machine, and peaks are read alongside means.
