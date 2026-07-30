@@ -504,7 +504,10 @@ function rowHTML(r, kind, extraCls, hiddenAttr) {
   else if (kind === "gone") deltaTxt = "\u2296";
   else if (r.delta_pct === null) deltaTxt = "\u221E";
   else {
-    deltaTxt = (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
+    // Direction arrow alongside sign+colour, matching the process tables:
+    // colour alone excludes colour-blind readers.
+    const arrow = r.delta_pct > 0 ? "\u2191" : (r.delta_pct < 0 ? "\u2193" : "");
+    deltaTxt = arrow + (r.delta_pct > 0 ? "+" : "") + r.delta_pct.toFixed(1) + "%";
     const pct = Math.min(50, absD(r) / renderScale * 50);
     barHtml = `<span class="delta-bar-wrap"><span class="delta-bar ${r.delta_pct >= 0 ? "up" : "down"}" data-w="${pct.toFixed(2)}"></span></span>`;
   }
@@ -607,6 +610,7 @@ function renderReport(rep) {
         <thead><tr><th>${t("th_metric")}</th><th>${t("th_a_mean")}</th><th>${t("th_b_mean")}</th><th>${t("th_delta")}</th><th>${t("th_verdict")}</th><th>${t("th_unit")}</th></tr></thead>
         <tbody>${trs.join("")}</tbody>
       </table>
+      <div class="table-legend">${t("legend_ab")}</div>
     </details>`);
   }
   $("#reportTables").innerHTML = blocks.length

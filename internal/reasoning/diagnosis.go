@@ -253,6 +253,27 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
 	},
 	{
+		ID:       "diagnosis.context_switch_spike",
+		Severity: "warn",
+		Conclusion: "Context switching hit storm levels during part of this window, hidden by the hourly average: " +
+			"a burst of scheduling activity came and went, and while the mean stays under the line the peak did " +
+			"not -- worth finding the source before it becomes sustained",
+		Next:        []string{"pidstat -w 1 30", "perf sched latency", "narrow the window to the minutes around the spike"},
+		RequiresAll: []string{"state.cpu.context_switch_spike"},
+		// The sustained storm states are the stronger statement; when the
+		// mean itself is over the line this burst diagnosis is redundant.
+		RequiresNone: []string{"state.cpu.context_switch_storm"},
+	},
+	{
+		ID:       "diagnosis.fork_spike",
+		Severity: "warn",
+		Conclusion: "The process-creation rate hit storm levels during part of this window, hidden by the hourly " +
+			"average: a brief fork burst that the mean does not show",
+		Next:        []string{"execsnoop", "pidstat 1 30", "narrow the window to the minutes around the spike"},
+		RequiresAll:  []string{"state.cpu.fork_spike"},
+		RequiresNone: []string{"state.cpu.fork_storm"},
+	},
+	{
 		ID:       "diagnosis.cpu_demand_bursty",
 		Severity: "warn",
 		Conclusion: "CPU demand is spiky rather than sustained: the peak is several times the mean, so an averaged " +

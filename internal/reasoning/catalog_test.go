@@ -99,7 +99,7 @@ func TestEveryConditionConstrainsSomething(t *testing.T) {
 		for i, c := range st.When {
 			constrained := c.BGte != nil || c.BLte != nil || c.BGteCores != nil ||
 				c.BGteMachineFrac != nil || c.BGtePerCPU != nil ||
-				c.BMaxGte != nil || c.BMaxGteCores != nil || c.BMaxMachineFrac != nil ||
+				c.BMaxGte != nil || c.BMaxGteCores != nil || c.BMaxMachineFrac != nil || c.BMaxGtePerCPU != nil ||
 				c.PeakRatioGte != nil || c.DeltaGte != nil || c.DeltaLte != nil ||
 				c.Verdict != "" || c.Appeared
 			if !constrained {
@@ -116,7 +116,7 @@ func TestPeakConditionsCarryASampleGuard(t *testing.T) {
 	for _, st := range States {
 		for _, c := range st.When {
 			usesPeak := c.BMaxGte != nil || c.BMaxGteCores != nil ||
-				c.BMaxMachineFrac != nil || c.PeakRatioGte != nil
+				c.BMaxMachineFrac != nil || c.BMaxGtePerCPU != nil || c.PeakRatioGte != nil
 			if usesPeak && c.MinSamples <= 0 {
 				t.Errorf("%s uses a peak condition on %q with no MinSamples guard, so one outlier "+
 					"sample would satisfy it", st.ID, c.Metric)

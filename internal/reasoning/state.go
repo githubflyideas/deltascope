@@ -82,6 +82,7 @@ type Cond struct {
 	BMaxGte         *float64 `json:"b_max_gte,omitempty"`
 	BMaxGteCores    *float64 `json:"b_max_gte_cores,omitempty"`
 	BMaxMachineFrac *float64 `json:"b_max_gte_machine_frac,omitempty"`
+	BMaxGtePerCPU   *float64 `json:"b_max_gte_per_cpu,omitempty"`
 
 	// MinSamples requires at least this many samples behind the window's
 	// statistics. A peak condition on a 3-sample window describes an
@@ -222,6 +223,9 @@ func condMatch(c Cond, row pcp.DiffRow, m Machine) bool {
 		return false
 	}
 	if c.BMaxMachineFrac != nil && (row.BMax == nil || *row.BMax < m.fractionOfMachine(*c.BMaxMachineFrac)) {
+		return false
+	}
+	if c.BMaxGtePerCPU != nil && (row.BMax == nil || *row.BMax < m.perCPU(*c.BMaxGtePerCPU)) {
 		return false
 	}
 	if c.PeakRatioGte != nil {
@@ -453,12 +457,30 @@ var States = []State{
 		When: []Cond{{Metric: "kernel.all.pswitch", BGtePerCPU: f(50000)}},
 	},
 	{
+		ID:     "state.cpu.context_switch_spike",
+		Domain: "cpu",
+		Description: "Context switching hit storm levels at some point in the window even though the mean did not. " +
+			"The counterpart to context_switch_storm for a burst that started partway through the hour: averaging " +
+			"an hour-long window dilutes a ten-minute storm below the per-core threshold, and a mean sitting right " +
+			"on the line makes the storm state flap in and out between runs. The peak fires the moment the storm " +
+			"appears and does not flap. MinSamples guards against one outlier sample reading as a storm.",
+		When: []Cond{{Metric: "kernel.all.pswitch", BMaxGtePerCPU: f(50000), MinSamples: 30}},
+	},
+	{
 		ID:     "state.cpu.fork_storm",
 		Domain: "cpu",
 		Description: "Processes are being created at a high sustained rate -- a fork bomb, a runaway supervisor, or a " +
 			"shell loop spawning a command per iteration. Worth naming separately because the CPU cost shows up as " +
 			"system time and looks like generic kernel overhead.",
 		When: []Cond{{Metric: "kernel.all.sysfork", BGtePerCPU: f(100)}},
+	},
+	{
+		ID:     "state.cpu.fork_spike",
+		Domain: "cpu",
+		Description: "The fork rate hit storm levels at some point in the window even if the mean did not -- the " +
+			"burst equivalent of fork_storm, for a fork bomb or a runaway supervisor that fired briefly. Same peak " +
+			"reasoning as context_switch_spike.",
+		When: []Cond{{Metric: "kernel.all.sysfork", BMaxGtePerCPU: f(100), MinSamples: 30}},
 	},
 
 	// ---- Memory ----
