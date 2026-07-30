@@ -8,6 +8,37 @@ import (
 
 type network struct{}
 
+// ephemeralIfaceRe matches interfaces that a container/VM runtime creates
+// and destroys as workloads come and go: the veth half-pairs and bridges of
+// Docker/Podman/Kubernetes, CNI plugin interfaces, and libvirt/VM taps.
+// Their addresses and routes appear and vanish with every container start,
+// which is workload churn, not a change an operator made to the host -- the
+// same reasoning that filters loopback traffic from the NIC report. A
+// genuine, operator-managed interface (eth0, ens3, a bond, a real bridge
+// like br0) never matches, so a real address change is still caught.
+var ephemeralIfaceRe = regexp.MustCompile(
+	`^(veth[0-9a-f]|docker[0-9]|br-[0-9a-f]{12}|cni[0-9]|flannel|cali[0-9a-f]|cilium|kube|tap[0-9]|tun[0-9]|vnet[0-9]|virbr[0-9]+-nic|macvtap)`)
+
+// ifaceName pulls the interface out of an `ip` token that may carry an @peer
+// suffix (veth pairs print as "vethXXXX@if7").
+func ifaceName(tok string) string {
+	if i := strings.IndexByte(tok, '@'); i >= 0 {
+		return tok[:i]
+	}
+	return tok
+}
+
+// routeDev extracts the device from an `ip route` line: the token after
+// "dev". Returns "" if absent (some routes have none).
+func routeDev(f []string) string {
+	for i := 0; i < len(f)-1; i++ {
+		if f[i] == "dev" {
+			return f[i+1]
+		}
+	}
+	return ""
+}
+
 func (network) Name() string { return "network" }
 func (network) Collect(ctx context.Context) Section {
 	sec := Section{Name: "network", Title: "Network Configuration"}
@@ -15,9 +46,15 @@ func (network) Collect(ctx context.Context) Section {
 	if out, ok := runCmd(ctx, "ip", "route", "show"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
-			if len(f) > 0 {
-				sec.Items = append(sec.Items, Item{Key: "route:" + f[0], Value: l})
+			if len(f) == 0 {
+				continue
 			}
+			// Drop routes whose device is an ephemeral interface -- a
+			// container's default route churns on every restart.
+			if dev := routeDev(f); dev != "" && ephemeralIfaceRe.MatchString(dev) {
+				continue
+			}
+			sec.Items = append(sec.Items, Item{Key: "route:" + f[0], Value: l})
 		}
 	} else if v, ok := readFile("/proc/net/route"); ok {
 		for i, l := range lines(v) {
@@ -26,6 +63,9 @@ func (network) Collect(ctx context.Context) Section {
 			}
 			f := fields(l)
 			if len(f) >= 2 {
+				if ephemeralIfaceRe.MatchString(f[0]) {
+					continue
+				}
 				sec.Items = append(sec.Items, Item{Key: "route:" + f[0] + ":" + f[1], Value: l})
 			}
 		}
@@ -35,6 +75,9 @@ func (network) Collect(ctx context.Context) Section {
 		for _, l := range lines(out) {
 			f := fields(l)
 			if len(f) >= 4 && (f[2] == "inet" || f[2] == "inet6") {
+				if ephemeralIfaceRe.MatchString(ifaceName(f[1])) {
+					continue // container/VM interface address, not host config
+				}
 				sec.Items = append(sec.Items, Item{Key: "addr:" + f[1] + ":" + f[3], Value: f[2] + " " + f[3]})
 			}
 		}

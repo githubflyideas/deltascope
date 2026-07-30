@@ -172,6 +172,23 @@ func (packages) Collect(ctx context.Context) Section {
 type modules struct{}
 
 func (modules) Name() string { return "modules" }
+
+// autoloadedDiagModules are kernel modules that diagnostic tooling loads on
+// demand and the kernel later drops when idle -- so they appear and vanish
+// between snapshots as a side effect of observation, not of anyone changing
+// the machine. inet_diag/tcp_diag/udp_diag are loaded by `ss` itself, which
+// deltascope's own listening-ports collector runs on every snapshot, so
+// without this the tool induces the very "module loaded" change it then
+// reports. nf_conntrack and friends autoload on the first matching packet.
+// A module an operator actually insmod'd (a driver, a filesystem, anything
+// not on this short list) is still reported -- this suppresses only the
+// known self-inflicted and on-demand churn, never a real load.
+var autoloadedDiagModules = map[string]bool{
+	"inet_diag": true, "tcp_diag": true, "udp_diag": true, "unix_diag": true,
+	"netlink_diag": true, "packet_diag": true, "af_packet_diag": true,
+	"raw_diag": true, "nfnetlink": true,
+}
+
 func (modules) Collect(ctx context.Context) Section {
 	sec := Section{Name: "modules", Title: "Kernel Modules"}
 	v, ok := readFile("/proc/modules")
@@ -181,9 +198,13 @@ func (modules) Collect(ctx context.Context) Section {
 	}
 	for _, l := range lines(v) {
 		f := fields(l)
-		if len(f) >= 1 {
-			sec.Items = append(sec.Items, Item{Key: f[0], Value: "loaded"})
+		if len(f) < 1 {
+			continue
 		}
+		if autoloadedDiagModules[f[0]] {
+			continue // observation-induced / on-demand, not a machine change
+		}
+		sec.Items = append(sec.Items, Item{Key: f[0], Value: "loaded"})
 	}
 	return sec
 }
