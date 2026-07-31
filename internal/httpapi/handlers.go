@@ -498,10 +498,11 @@ func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {
 
 	diff := state.Compare(before, after)
 	writeJSON(w, map[string]any{
-		"a_time":   before.Taken,
-		"b_time":   after.Taken,
-		"total":    diff.Total,
-		"sections": stateDiffJSON(diff),
+		"a_time":          before.Taken,
+		"b_time":          after.Taken,
+		"total":           diff.Total,
+		"sections":        stateDiffJSON(diff),
+		"schema_boundary": diff.SchemaBoundary,
 	})
 }
 

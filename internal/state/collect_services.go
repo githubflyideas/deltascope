@@ -58,7 +58,13 @@ func (services) Collect(ctx context.Context) Section {
 		for _, l := range lines(out) {
 			f := fields(l)
 			if len(f) >= 4 && strings.HasSuffix(f[0], ".service") && enabled[f[0]] && !volatile[f[0]] {
-				sec.Items = append(sec.Items, Item{Key: "running:" + f[0], Value: f[2] + "/" + f[3]})
+				// ModifyOnly: systemd unloads idle units from list-units, so
+				// a running: key blinks in and out on its own. That churn is
+				// not an event; a daemon we provisioned flipping
+				// active/running -> failed is, and that is a value change,
+				// still reported. This is what stops setvtrgb-class
+				// "appeared/removed" noise regardless of unit classification.
+				sec.Items = append(sec.Items, Item{Key: "running:" + f[0], Value: f[2] + "/" + f[3], ModifyOnly: true})
 			}
 		}
 	}

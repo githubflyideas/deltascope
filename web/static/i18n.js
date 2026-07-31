@@ -113,6 +113,7 @@ en: {
   higher_worse: "higher = worse",
   was_label: "was",
   no_change_hint: "\u2705 State is identical between the two points in time — no configuration or environment changes detected.",
+  schema_boundary_note: "The baseline snapshot predates a deltascope update; until a fresh baseline builds up, only value changes are shown (additions and removals are format migration, not machine changes).",
   changes_count: "change(s)",
 
   unit_size: "size", unit_rate: "rate", unit_cores: "cores",
@@ -238,6 +239,7 @@ zh: {
   higher_worse: "数值越高越差",
   was_label: "原值",
   no_change_hint: "\u2705 两个时间点之间状态一致 —— 未检测到配置或环境变更。",
+  schema_boundary_note: "基线快照早于一次 deltascope 更新；在新基线积累前只显示值变化（新增和移除属于格式迁移，不是机器变更）。",
   changes_count: "处变更",
 
   unit_size: "大小", unit_rate: "速率", unit_cores: "核",
@@ -363,6 +365,7 @@ es: {
   higher_worse: "más alto = peor",
   was_label: "era",
   no_change_hint: "\u2705 El estado es idéntico entre ambos momentos — no se detectaron cambios de configuración o entorno.",
+  schema_boundary_note: "La instantánea base es anterior a una actualización de deltascope; hasta que se acumule una nueva base, solo se muestran cambios de valor.",
   changes_count: "cambio(s)",
 
   unit_size: "tamaño", unit_rate: "tasa", unit_cores: "núcleos",
@@ -488,6 +491,7 @@ fr: {
   higher_worse: "plus élevé = pire",
   was_label: "était",
   no_change_hint: "\u2705 L'état est identique entre les deux instants — aucun changement de configuration ou d'environnement détecté.",
+  schema_boundary_note: "L'instantané de référence précède une mise à jour de deltascope ; en attendant une nouvelle référence, seuls les changements de valeur sont affichés.",
   changes_count: "changement(s)",
 
   unit_size: "taille", unit_rate: "débit", unit_cores: "cœurs",
@@ -613,6 +617,7 @@ pt: {
   higher_worse: "maior = pior",
   was_label: "era",
   no_change_hint: "\u2705 O estado é idêntico entre os dois momentos — nenhuma mudança de configuração ou ambiente detectada.",
+  schema_boundary_note: "O instantâneo base é anterior a uma atualização do deltascope; até uma nova base acumular, apenas mudanças de valor são mostradas.",
   changes_count: "mudança(s)",
 
   unit_size: "tamanho", unit_rate: "taxa", unit_cores: "núcleos",
@@ -738,6 +743,7 @@ de: {
   higher_worse: "höher = schlechter",
   was_label: "war",
   no_change_hint: "\u2705 Der Zustand ist zu beiden Zeitpunkten identisch — keine Konfigurations- oder Umgebungsänderungen erkannt.",
+  schema_boundary_note: "Der Basis-Snapshot ist älter als ein deltascope-Update; bis eine neue Basis vorliegt, werden nur Wertänderungen angezeigt.",
   changes_count: "Änderung(en)",
 
   unit_size: "Größe", unit_rate: "Rate", unit_cores: "Kerne",
@@ -863,6 +869,7 @@ ru: {
   higher_worse: "выше = хуже",
   was_label: "было",
   no_change_hint: "\u2705 Состояние идентично в оба момента времени — изменений конфигурации или окружения не обнаружено.",
+  schema_boundary_note: "Базовый снимок сделан до обновления deltascope; пока не накопится новая база, показываются только изменения значений.",
   changes_count: "изменение(й)",
 
   unit_size: "размер", unit_rate: "скорость", unit_cores: "ядра",
@@ -988,6 +995,7 @@ ja: {
   higher_worse: "値が大きいほど悪化",
   was_label: "旧値",
   no_change_hint: "\u2705 2つの時点で状態は同一です — 構成や環境の変更は検出されませんでした。",
+  schema_boundary_note: "ベースラインのスナップショットは deltascope 更新より前のものです。新しいベースラインが蓄積するまで値の変化のみ表示します。",
   changes_count: "件の変更",
 
   unit_size: "サイズ", unit_rate: "レート", unit_cores: "コア",
@@ -1113,6 +1121,7 @@ ko: {
   higher_worse: "높을수록 나쁨",
   was_label: "이전값",
   no_change_hint: "\u2705 두 시점 간 상태가 동일합니다 — 구성 또는 환경 변경이 감지되지 않았습니다.",
+  schema_boundary_note: "기준 스냅샷이 deltascope 업데이트보다 이전입니다. 새 기준이 쌓일 때까지 값 변경만 표시됩니다.",
   changes_count: "건의 변경",
 
   unit_size: "크기", unit_rate: "속도", unit_cores: "코어",
@@ -1238,6 +1247,7 @@ id: {
   higher_worse: "lebih tinggi = lebih buruk",
   was_label: "sebelumnya",
   no_change_hint: "\u2705 Status identik di kedua waktu — tidak ada perubahan konfigurasi atau lingkungan yang terdeteksi.",
+  schema_boundary_note: "Snapshot dasar dibuat sebelum pembaruan deltascope; hingga dasar baru terkumpul, hanya perubahan nilai yang ditampilkan.",
   changes_count: "perubahan",
 
   unit_size: "ukuran", unit_rate: "laju", unit_cores: "core",

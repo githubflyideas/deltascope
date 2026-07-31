@@ -1060,7 +1060,8 @@ const CHANGE_KIND = {
 function renderStateDiff(rep) {
   const box = $("#changeResult");
   const fmtT = (s) => new Date(s).toLocaleString();
-  const header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`;
+  const header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`
+    + (rep.schema_boundary ? `<div class="schema-note">${t("schema_boundary_note")}</div>` : "");
 
   if (!rep.total) {
     box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">${t("no_change_hint")}</div>`;

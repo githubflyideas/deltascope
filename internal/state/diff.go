@@ -41,6 +41,12 @@ type Diff struct {
 	// are excluded from the diff because the change is in our access, not
 	// in the machine.
 	Unreadable []string `json:"unreadable,omitempty"`
+	// SchemaBoundary is true when the two snapshots came from different
+	// collector versions (deltascope was upgraded between them). Additions
+	// and removals were suppressed as format migration; only value changes
+	// are shown. The UI notes this so a sparse result is not mistaken for a
+	// quiet machine.
+	SchemaBoundary bool `json:"schema_boundary,omitempty"`
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -48,6 +54,16 @@ func itoa(n int) string { return strconv.Itoa(n) }
 // Compare diffs snapshot a against b, keeping only items that changed.
 func Compare(a, b Snapshot) Diff {
 	d := Diff{A: a, B: b}
+	// A schema mismatch means the two snapshots were captured by binaries
+	// that key their items differently -- deltascope was upgraded between
+	// them. Across that boundary, a key present on only one side is a format
+	// migration, not a machine change, so add/remove is suppressed
+	// everywhere and only value changes on keys common to both are reported.
+	// Same-schema (the steady state) is unaffected.
+	crossVersion := a.Schema != b.Schema
+	if crossVersion {
+		d.SchemaBoundary = true
+	}
 	amap := indexSections(a)
 	bmap := indexSections(b)
 
@@ -84,11 +100,23 @@ func Compare(a, b Snapshot) Diff {
 					Old: av.Value, New: bv.Value, Note: bv.Note,
 				})
 			case !aok && bok:
+				// A modify-only item appearing is list churn (a transient
+				// entity entered the listing on its own), not a change to
+				// the machine -- suppress it. Its value changing, when it is
+				// present on both sides, is still reported above. Across a
+				// schema boundary, suppress ALL appearances: a key that only
+				// the newer binary emits is a format migration, not an event.
+				if bv.ModifyOnly || crossVersion {
+					continue
+				}
 				sd.Changes = append(sd.Changes, Change{
 					Section: name, Title: title, Key: k, Kind: Added,
 					New: bv.Value, Note: bv.Note,
 				})
 			case aok && !bok:
+				if av.ModifyOnly || crossVersion {
+					continue
+				}
 				sd.Changes = append(sd.Changes, Change{
 					Section: name, Title: title, Key: k, Kind: Removed,
 					Old: av.Value, Note: av.Note,

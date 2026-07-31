@@ -220,9 +220,24 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 
 		switch {
 		case !inA && inB:
-			row.Verdict = PVAppeared
+			// A process appearing is only a finding if it is substantial --
+			// a database that was not here yesterday, or a process now
+			// consuming real CPU/RSS. A desktop's churn of short-lived,
+			// D-Bus-activated helpers (goa-identity, gsd-*, transient
+			// Socket Process) enters and leaves on its own and is not an
+			// event. noteworthy() gates that; trivial appearances fall
+			// through to flat and are filtered from the report.
+			if noteworthyPresence(cpuB, rssB) {
+				row.Verdict = PVAppeared
+			} else {
+				row.Verdict = PVFlat
+			}
 		case inA && !inB:
-			row.Verdict = PVGone
+			if noteworthyPresence(cpuA, rssA) {
+				row.Verdict = PVGone
+			} else {
+				row.Verdict = PVFlat
+			}
 		default:
 			row.CPUDelta = pctChange(cpuA, cpuB, minCPUPct)
 			row.RSSDelta = pctChange(rssA, rssB, minRSSKB)
@@ -241,6 +256,29 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 	sort.Slice(d.Restarts, func(i, j int) bool { return d.Restarts[i].Name < d.Restarts[j].Name })
 	return d
 }
+
+// noteworthyPresence reports whether a process's mere appearance or
+// disappearance is worth showing. The bar is deliberately well above the
+// significance floors: a process only "appearing" carries one fact (it
+// exists now), so it has to be substantial -- a quarter-core of CPU or a
+// quarter-gig of RSS -- to outweigh the desktop's constant churn of tiny
+// transient helpers. Long-running services people care about (a database
+// that vanished) clear this easily; a 9 MB identity broker that lives for
+// thirty seconds does not.
+func noteworthyPresence(cpu, rss *float64) bool {
+	if cpu != nil && *cpu >= presenceCPUPct {
+		return true
+	}
+	if rss != nil && *rss >= presenceRSSKB {
+		return true
+	}
+	return false
+}
+
+const (
+	presenceCPUPct = 25     // percent of one core
+	presenceRSSKB  = 262144 // 256 MB
+)
 
 // pctChange applies the same two-bar rule as the metric engine: a change
 // must be both relatively large and absolutely meaningful. Below the

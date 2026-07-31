@@ -399,6 +399,12 @@ tr[hidden] { display: none; }
 .diag-verdict.dv-child { margin-left: 22px; border-left-style: dashed; }
 .rc-consequence { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
 
+/* Note shown when the two snapshots straddle a deltascope upgrade: adds and
+   removes were format migration and were suppressed, only value changes
+   remain. Distinguishes a sparse result from a genuinely quiet machine. */
+.schema-note { color: var(--muted); font-size: 13px; line-height: 1.6; border: 1px dashed var(--line);
+  border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+
 /* ---- Theme system ----
    Three colour families, each with a dark and light variant sharing the
    same hue relationships -- not a brightness-inverted duplicate, an
