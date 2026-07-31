@@ -535,6 +535,29 @@ function rowHTML(r, kind, extraCls, hiddenAttr) {
 
 let renderScale = 100;
 
+// renderCompareReasoning shows the shared reasoning verdicts on the
+// perf-compare tab, root-cause first with consequences indented, matching
+// the one-click page's treatment. Injected into #reasoningInline, a block
+// that sits between the verdict strip and the metric tables.
+function renderCompareReasoning(results) {
+  const box = $("#reasoningInline");
+  if (!box) return;
+  if (!results || !results.length) { box.innerHTML = ""; return; }
+  const items = results.map((r) => {
+    const sev = SEV_STYLE[r.severity] || SEV_STYLE.info;
+    const isConsequence = r.is_root === false;
+    const tag = isConsequence
+      ? `<span class="rc-consequence">\u21B3 ${t("consequence_of")}</span> ` : "";
+    const next = (r.next && r.next.length)
+      ? `<div class="rc-next">${t("next_label")} ${r.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>` : "";
+    return `<div class="rc-item ${sev.cls}${isConsequence ? " rc-child" : ""}">
+      <div class="rc-head"><span class="rc-badge">${sev.icon} ${t(sev.key)}</span>
+        <span class="rc-concl">${tag}${escapeHtml(r.conclusion || "")}</span></div>${next}</div>`;
+  }).join("");
+  box.innerHTML = `<div class="cat-head" style="margin-top:6px"><span>${t("reasoning_diagnoses")}</span>` +
+    `<span>${results.length} ${t("shown")}</span></div><div class="rc-list">${items}</div>`;
+}
+
 function renderReport(rep) {
   $("#diffEmpty").classList.add("hidden");
   $("#diffResult").classList.remove("hidden");
@@ -543,6 +566,11 @@ function renderReport(rep) {
   window._lastFindings = rep.findings || [];
   renderTriage(rep.triage, rep.rows);
   renderFindings(rep.findings);
+  // The perf-compare view shares the reasoning engine now, so a custom
+  // window gets the same root-cause verdicts the one-click page does --
+  // including sub-window spikes a mean-only diff would miss. Rendered above
+  // the per-metric detail: conclusion first, evidence below.
+  renderCompareReasoning(rep.reasoning);
 
   const counts = { worse: 0, better: 0, watch: 0, flat: 0, new: 0, gone: 0 };
   rep.rows.forEach((r) => counts[rowKind(r)]++);

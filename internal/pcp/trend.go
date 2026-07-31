@@ -2,11 +2,11 @@ package pcp
 
 import (
 	"bytes"
-	"math"
 	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"

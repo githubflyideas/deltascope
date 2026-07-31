@@ -307,7 +307,17 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "archive query failed, check server logs or confirm the selected window has data")
 		return
 	}
-	writeJSON(w, rep)
+	// Run the reasoning chain over the very same rows the diff produced, so
+	// the custom-window comparison inherits peak awareness and root-cause
+	// convergence for free instead of maintaining a second, mean-only
+	// verdict path. This is why the perf-compare view no longer misses a
+	// sub-window spike that every other view catches: it now shares the
+	// engine rather than reimplementing a weaker one.
+	reasoningResults := reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, rep.Rows))
+	writeJSON(w, struct {
+		*pcp.DiffReport
+		Reasoning []reasoning.Result `json:"reasoning,omitempty"`
+	}{rep, reasoningResults})
 }
 
 func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {

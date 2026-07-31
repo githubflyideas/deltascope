@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/githubflyideas/deltascope/internal/pcp"
 )
 
 // ProcVerdict is the conclusion for one process row.
@@ -260,21 +262,21 @@ func pctChange(a, b *float64, minAbs float64) *float64 {
 	if a == nil || b == nil {
 		return nil
 	}
-	if math.Abs(*a) < minAbs && math.Abs(*b) < minAbs {
+	// Shared core: both-idle noise and the zero denominator.
+	delta, noise := pcp.RelChange(*a, *b, minAbs)
+	if noise {
+		return nil // idle: not a signal for the process ranker
+	}
+	// Process-path extra policy (stricter than the metric path on purpose):
+	// a baseline below the floor is not a usable denominator either, because
+	// a process going 0.0005 -> 1.7 % of a core is a division by noise that
+	// would otherwise dominate the culprit ranking. The metric path keeps
+	// small-baseline ratios (a legitimate 10 -> 25 counter); the process
+	// path does not. worstOf handles the from-idle rise on absolute evidence.
+	if minAbs > 0 && math.Abs(*a) < minAbs {
 		return nil
 	}
-	if math.Abs(*a) < minAbs {
-		return nil
-	}
-	if *a == 0 {
-		if *b == 0 {
-			z := 0.0
-			return &z
-		}
-		return nil // 0 -> nonzero: infinite, caller treats nil as no ratio
-	}
-	d := (*b - *a) / math.Abs(*a) * 100
-	return &d
+	return delta
 }
 
 // Burst floors are the absolute levels at which a rise from an idle

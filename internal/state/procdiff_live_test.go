@@ -1,8 +1,8 @@
 package state
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )

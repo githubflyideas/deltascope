@@ -42,7 +42,7 @@ type DiffRow struct {
 type DiffReport struct {
 	Window   Windows   `json:"window"`
 	Rows     []DiffRow `json:"rows"`
-	Findings []Finding     `json:"findings"`
+	Findings []Finding `json:"findings"`
 	// Absent lists metrics this archive never recorded. They are excluded
 	// from subsequent queries so the same warning does not repeat forever.
 	Absent   []string      `json:"absent,omitempty"`
@@ -171,30 +171,27 @@ func judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64,
 		return nil, true, VWatch
 	}
 	av, bv := *a, *b
-	if minAbs > 0 && math.Abs(av) < minAbs && math.Abs(bv) < minAbs {
-		if av == bv {
-			z := 0.0
-			return &z, false, VFlat
-		}
-		if av == 0 {
-			return nil, false, VFlat
-		}
-		d := (bv - av) / math.Abs(av) * 100
-		return &d, false, VFlat
+
+	// The dual-significance floor and the denominator rule both live in
+	// RelChange now, shared with the process-diff path. delta==nil means no
+	// honest ratio (0->nonzero, or a baseline below the floor with b above
+	// it); noise means both sides are idle and the change is not a signal.
+	delta, noise := RelChange(av, bv, minAbs)
+
+	if noise {
+		// Both sides idle: flat regardless of ratio. Keep the ratio for
+		// display when one exists (0->0 gives 0), drop it otherwise.
+		return delta, false, VFlat
 	}
-	if av == 0 {
-		if bv == 0 {
-			z := 0.0
-			return &z, false, VFlat
-		}
+	if delta == nil {
+		// 0 -> nonzero: real movement, no finite ratio to report.
 		return nil, true, verdictFor(bv > 0, pol)
 	}
-	d := (bv - av) / math.Abs(av) * 100
-	exceeded := math.Abs(d) >= thresholdPct
+	exceeded := math.Abs(*delta) >= thresholdPct
 	if !exceeded {
-		return &d, false, VFlat
+		return delta, false, VFlat
 	}
-	return &d, true, verdictFor(d > 0, pol)
+	return delta, true, verdictFor(*delta > 0, pol)
 }
 
 func verdictFor(up bool, pol Polarity) Verdict {
