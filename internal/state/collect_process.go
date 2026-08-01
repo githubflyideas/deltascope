@@ -44,6 +44,12 @@ type agg struct {
 	rssKB   uint64
 	startAt uint64 // earliest start among instances of this name
 	count   int
+	// pid is the representative PID: the instance that has consumed the
+	// most CPU so far. For a name that aggregates many pids (a worker
+	// pool), this points at the one worth attaching a command to; for a
+	// single runaway it is simply its pid. topPidTicks tracks the max seen.
+	pid        int
+	topPidTick uint64
 }
 
 type processes struct{}
@@ -107,6 +113,11 @@ func (processes) Collect(ctx context.Context) Section {
 		if start < a.startAt || a.startAt == 0 {
 			a.startAt = start
 		}
+		if pidTicks := utime + stime; a.pid == 0 || pidTicks > a.topPidTick {
+			if n, err := strconv.Atoi(pid); err == nil {
+				a.pid, a.topPidTick = n, pidTicks
+			}
+		}
 	}
 
 	// Whitelisted names always in; beyond those, keep the heaviest few so
@@ -118,7 +129,7 @@ func (processes) Collect(ctx context.Context) Section {
 	var extra []cand
 	for name, a := range acc {
 		if procWhitelist[name] {
-			sec.Items = append(sec.Items, procItem(name, a.ticks, a.rssKB, a.startAt, a.count))
+			sec.Items = append(sec.Items, procItem(name, a.ticks, a.rssKB, a.startAt, a.count, a.pid))
 			continue
 		}
 		extra = append(extra, cand{name, a})
@@ -130,7 +141,7 @@ func (processes) Collect(ctx context.Context) Section {
 		extra = extra[:procTopN]
 	}
 	for _, c := range extra {
-		sec.Items = append(sec.Items, procItem(c.name, c.a.ticks, c.a.rssKB, c.a.startAt, c.a.count))
+		sec.Items = append(sec.Items, procItem(c.name, c.a.ticks, c.a.rssKB, c.a.startAt, c.a.count, c.a.pid))
 	}
 
 	// The host's uptime at capture time is what lets a later comparison turn
@@ -174,14 +185,17 @@ func readUptimeSeconds() (float64, bool) {
 func procWeight(a *agg) uint64 { return a.rssKB/1024 + a.ticks/clockTicksPerSec }
 
 // procItem encodes a process's counters into one Item value.
-// Layout: "<cpu_ticks> <rss_kb> <start_ticks> <instances>"
-func procItem(name string, ticks, rssKB, start uint64, count int) Item {
+// Layout: "<cpu_ticks> <rss_kb> <start_ticks> <instances> <pid>"
+// The pid trailer was added in schema 3; DecodeProcItem tolerates its
+// absence so a schema-2 snapshot still decodes (pid 0 = unknown).
+func procItem(name string, ticks, rssKB, start uint64, count, pid int) Item {
 	return Item{
 		Key: name,
 		Value: strconv.FormatUint(ticks, 10) + " " +
 			strconv.FormatUint(rssKB, 10) + " " +
 			strconv.FormatUint(start, 10) + " " +
-			strconv.Itoa(count),
+			strconv.Itoa(count) + " " +
+			strconv.Itoa(pid),
 	}
 }
 
@@ -212,17 +226,21 @@ func parseU(fields []string, i int) uint64 {
 	return v
 }
 
-// DecodeProcItem reads back what procItem encoded.
-func DecodeProcItem(v string) (ticks, rssKB, start uint64, count int, ok bool) {
+// DecodeProcItem reads back what procItem encoded. The pid field (schema 3)
+// is optional: a 4-field schema-2 value decodes with pid 0.
+func DecodeProcItem(v string) (ticks, rssKB, start uint64, count, pid int, ok bool) {
 	f := strings.Fields(v)
-	if len(f) != 4 {
-		return 0, 0, 0, 0, false
+	if len(f) != 4 && len(f) != 5 {
+		return 0, 0, 0, 0, 0, false
 	}
 	ticks, _ = strconv.ParseUint(f[0], 10, 64)
 	rssKB, _ = strconv.ParseUint(f[1], 10, 64)
 	start, _ = strconv.ParseUint(f[2], 10, 64)
 	c, _ := strconv.Atoi(f[3])
-	return ticks, rssKB, start, c, true
+	if len(f) == 5 {
+		pid, _ = strconv.Atoi(f[4])
+	}
+	return ticks, rssKB, start, c, pid, true
 }
 
 func init() { register(processes{}) }

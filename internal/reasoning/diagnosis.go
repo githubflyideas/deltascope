@@ -377,8 +377,13 @@ var Diagnoses = []Diagnosis{
 		RequiresAny: []string{"state.net.softnet_dropping", "state.net.softnet_squeezed", "state.net.softnet_squeeze_spike", "state.net.nic_dropping_in"},
 	},
 	{
-		ID:       "diagnosis.scheduler_thrashing",
-		Branch:   BranchCPU,
+		ID:     "diagnosis.scheduler_thrashing",
+		Branch: BranchCPU,
+		DownstreamOf: []string{
+			"diagnosis.single_core_saturated",
+			"diagnosis.cpu_capacity_exhausted",
+			"diagnosis.cpu_saturated_own_workload",
+		},
 		Severity: "warn",
 		Conclusion: "Context switching far exceeds what useful work requires while tasks queue for CPU: threads are " +
 			"spending their time being scheduled rather than running, typically lock contention or many more " +
@@ -388,8 +393,13 @@ var Diagnoses = []Diagnosis{
 		RequiresAny: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
 	},
 	{
-		ID:       "diagnosis.context_switch_overhead",
-		Branch:   BranchCPU,
+		ID:     "diagnosis.context_switch_overhead",
+		Branch: BranchCPU,
+		DownstreamOf: []string{
+			"diagnosis.single_core_saturated",
+			"diagnosis.cpu_capacity_exhausted",
+			"diagnosis.cpu_saturated_own_workload",
+		},
 		Severity: "warn",
 		Conclusion: "Context switching is far above what useful work requires, on its own -- the run queue is not " +
 			"backed up, so this is not (yet) costing throughput, but the CPU time spent switching between threads " +
@@ -405,7 +415,12 @@ var Diagnoses = []Diagnosis{
 		RequiresNone: []string{"state.cpu.runqueue_high", "state.cpu.pressure_high"},
 	},
 	{
-		ID:       "diagnosis.context_switch_spike",
+		ID: "diagnosis.context_switch_spike",
+		DownstreamOf: []string{
+			"diagnosis.single_core_saturated",
+			"diagnosis.cpu_capacity_exhausted",
+			"diagnosis.cpu_saturated_own_workload",
+		},
 		Branch:   BranchCPU,
 		Severity: "warn",
 		Conclusion: "Context switching hit storm levels during part of this window, hidden by the hourly average: " +

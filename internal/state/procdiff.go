@@ -23,6 +23,12 @@ const (
 // ProcRow is one process's change between two snapshots.
 type ProcRow struct {
 	Name string `json:"name"`
+	// PID is the representative process id for this command name -- the
+	// instance that consumed the most CPU. It lets the one-click answer
+	// point its next-step command at the actual process (top -H -p PID)
+	// rather than a generic command the reader must then re-target. 0 when
+	// unknown (an older snapshot without pids, or a gone process).
+	PID int `json:"pid,omitempty"`
 	// CPUPctA/B are percent of one core, derived from the cumulative tick
 	// delta across the interval between the two snapshots.
 	CPUPctA   *float64    `json:"cpu_pct_a"`
@@ -157,25 +163,25 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 	// be named as the culprit no matter how much CPU it burned. A runaway
 	// process is *more* likely to be newly started, not less.
 	rate := func(first, second map[string]Item, name string, elapsed time.Duration,
-		uptime float64, hasUptime bool) (cpu, rss *float64, start uint64, inst int, approx, present bool) {
+		uptime float64, hasUptime bool) (cpu, rss *float64, start uint64, inst, pid int, approx, present bool) {
 		i2, ok2 := second[name]
 		if !ok2 {
-			return nil, nil, 0, 0, false, false
+			return nil, nil, 0, 0, 0, false, false
 		}
-		t2, r2, s2, c2, ok := DecodeProcItem(i2.Value)
+		t2, r2, s2, c2, p2, ok := DecodeProcItem(i2.Value)
 		if !ok {
-			return nil, nil, 0, 0, false, false
+			return nil, nil, 0, 0, 0, false, false
 		}
 		rssv := float64(r2)
 		rss = &rssv
-		start, inst, present = s2, c2, true
+		start, inst, pid, present = s2, c2, p2, true
 
 		if first != nil {
 			if i1, ok1 := first[name]; ok1 {
-				if t1, _, s1, _, ok := DecodeProcItem(i1.Value); ok && s1 == s2 && t2 >= t1 {
+				if t1, _, s1, _, _, ok := DecodeProcItem(i1.Value); ok && s1 == s2 && t2 >= t1 {
 					// same process lifetime and monotonic ticks: a valid rate
 					c := cpuPercent(t2-t1, elapsed)
-					return &c, rss, start, inst, false, present
+					return &c, rss, start, inst, pid, false, present
 				}
 			}
 		}
@@ -187,10 +193,10 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 		if hasUptime && s2 > 0 {
 			if age := startedAgo(s2, uptime); age > 0 && age <= elapsed {
 				c := cpuPercent(t2, age)
-				return &c, rss, start, inst, true, present
+				return &c, rss, start, inst, pid, true, present
 			}
 		}
-		return nil, rss, start, inst, false, present
+		return nil, rss, start, inst, pid, false, present
 	}
 
 	names := map[string]bool{}
@@ -202,11 +208,12 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 	}
 
 	for name := range names {
-		cpuA, rssA, startA, _, _, inA := rate(pa1, pa2, name, elapsedA, upA, hasUpA)
-		cpuB, rssB, startB, instB, approxB, inB := rate(pb1, pb2, name, elapsedB, upB, hasUpB)
+		cpuA, rssA, startA, _, _, _, inA := rate(pa1, pa2, name, elapsedA, upA, hasUpA)
+		cpuB, rssB, startB, instB, pidB, approxB, inB := rate(pb1, pb2, name, elapsedB, upB, hasUpB)
 
 		row := ProcRow{
 			Name:       name,
+			PID:        pidB,
 			CPUPctA:    cpuA,
 			CPUPctB:    cpuB,
 			RSSKBA:     rssA,

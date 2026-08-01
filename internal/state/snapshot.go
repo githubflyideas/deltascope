@@ -61,7 +61,7 @@ type Section struct {
 // upgraded between these two snapshots": across a version boundary a key
 // that exists on only one side is a format migration, not an event, and is
 // suppressed. Bump this on any keying change.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type Snapshot struct {
 	Host     string    `json:"host"`

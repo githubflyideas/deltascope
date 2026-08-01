@@ -33,12 +33,12 @@ func TestLiveProcCollection(t *testing.T) {
 		if i >= 5 {
 			break
 		}
-		ticks, rss, start, count, ok := DecodeProcItem(it.Value)
+		ticks, rss, start, count, pid, ok := DecodeProcItem(it.Value)
 		if !ok {
 			t.Errorf("undecodable value for %s: %q", it.Key, it.Value)
 			continue
 		}
-		t.Logf("  %-18s ticks=%-8d rss=%-9dKB start=%-10d inst=%d", it.Key, ticks, rss, start, count)
+		t.Logf("  %-18s ticks=%-8d rss=%-9dKB start=%-10d inst=%d pid=%d", it.Key, ticks, rss, start, count, pid)
 		if rss == 0 && ticks == 0 {
 			t.Errorf("%s has both zero rss and zero ticks -- parser likely misaligned", it.Key)
 		}

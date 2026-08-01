@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -319,12 +320,13 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	// Culprit: attribute the sick resource to a process where we can.
 	// Only CPU and memory have per-process attribution -- claiming a
 	// culprit for disk or network would be a guess, so we stay silent.
+	var culpritRow *state.ProcRow
 	if worstBlock != nil && worstBlock.Status != pcp.TriageOK {
 		switch worstBlock.Key {
 		case "cpu":
-			out.Culprit = culpritByCPU(pd.Rows)
+			out.Culprit, culpritRow = culpritByCPU(pd.Rows)
 		case "mem":
-			out.Culprit = culpritByRSS(pd.Rows)
+			out.Culprit, culpritRow = culpritByRSS(pd.Rows)
 		}
 	}
 	// Deliberately NO generic fallback culprit. Naming a CPU or memory
@@ -335,6 +337,16 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	// per-process attribution here, so when they are the sick resource the
 	// honest answer is to name no culprit at all. A CPU/memory finding
 	// already got its culprit in the switch above.
+
+	// Point the next-step commands at the culprit process instead of at the
+	// generic diagnosis commands. This is the pidstat-mismatch fix: when the
+	// answer says "sh at 99% of a core", the very next line should be a
+	// command that inspects sh, not the diagnosis's generic "pidstat -w"
+	// (which chases context switches -- a different process entirely). A
+	// command aimed at a concrete PID beats one the reader has to re-target.
+	if culpritRow != nil && culpritRow.PID > 0 && worstBlock != nil {
+		out.Next = culpritCommands(worstBlock.Key, culpritRow.PID, out.Next)
+	}
 
 	// Related change: only surface a change that plausibly relates to the
 	// sick resource. When a specific resource is degraded, an unrelated
@@ -399,7 +411,42 @@ func culpritCPUScore(r state.ProcRow) float64 {
 	return score
 }
 
-func culpritByCPU(rows []state.ProcRow) string {
+// culpritCommands builds next-step commands aimed at the culprit PID, so
+// the suggested command inspects the process the answer just named rather
+// than a generic one. The diagnosis's own commands are appended after, as
+// broader context, so nothing is lost.
+func culpritCommands(resource string, pid int, generic []string) []string {
+	p := strconv.Itoa(pid)
+	var targeted []string
+	switch resource {
+	case "cpu":
+		targeted = []string{"top -H -p " + p, "pidstat -u -p " + p + " 1 5", "cat /proc/" + p + "/status"}
+	case "mem":
+		targeted = []string{"pidstat -r -p " + p + " 1 5", "cat /proc/" + p + "/smaps_rollup", "ps -o pid,rss,vsz,comm -p " + p}
+	default:
+		return generic
+	}
+	// De-duplicate: drop any generic command already covered by a targeted
+	// one, keep the rest as follow-up context.
+	seen := map[string]bool{}
+	for _, c := range targeted {
+		seen[c] = true
+	}
+	out := append([]string{}, targeted...)
+	for _, g := range generic {
+		if !seen[g] {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// culpritByCPUName / culpritByRSSName return just the description, for
+// callers (and tests) that do not need the row.
+func culpritByCPUName(rows []state.ProcRow) string { s, _ := culpritByCPU(rows); return s }
+func culpritByRSSName(rows []state.ProcRow) string { s, _ := culpritByRSS(rows); return s }
+
+func culpritByCPU(rows []state.ProcRow) (string, *state.ProcRow) {
 	best, bestVal := "", 0.0
 	for _, r := range rows {
 		if r.CPUPctB == nil || *r.CPUPctB < 5 {
@@ -410,9 +457,10 @@ func culpritByCPU(rows []state.ProcRow) string {
 		}
 	}
 	if best == "" {
-		return ""
+		return "", nil
 	}
-	for _, r := range rows {
+	for i := range rows {
+		r := rows[i]
 		if r.Name == best {
 			pct := fmt.Sprintf("%.0f%%", *r.CPUPctB)
 			if r.CPUApproxB {
@@ -430,10 +478,10 @@ func culpritByCPU(rows []state.ProcRow) string {
 			if r.Restarted {
 				s += ", restarted in this window"
 			}
-			return s
+			return s, &rows[i]
 		}
 	}
-	return best
+	return best, nil
 }
 
 // culpritByRSS ranks by growth rather than by size, because for memory the
@@ -445,7 +493,7 @@ func culpritByCPU(rows []state.ProcRow) string {
 // 40% to 4 GB outranks one that grew 400% to 40 MB. Ranking on the percentage
 // alone had the same unit-blindness as the CPU path: it made a rounding error
 // on a small process look more important than gigabytes.
-func culpritByRSS(rows []state.ProcRow) string {
+func culpritByRSS(rows []state.ProcRow) (string, *state.ProcRow) {
 	best, bestVal := "", 0.0
 	for _, r := range rows {
 		if r.RSSKBB == nil {
@@ -470,9 +518,10 @@ func culpritByRSS(rows []state.ProcRow) string {
 		}
 	}
 	if best == "" {
-		return ""
+		return "", nil
 	}
-	for _, r := range rows {
+	for i := range rows {
+		r := rows[i]
 		if r.Name == best {
 			var s string
 			if r.RSSDelta != nil {
@@ -483,10 +532,10 @@ func culpritByRSS(rows []state.ProcRow) string {
 			if r.Restarted {
 				s += ", restarted in this window"
 			}
-			return s
+			return s, &rows[i]
 		}
 	}
-	return best
+	return best, nil
 }
 
 // changeRelevance maps a resource block to the state keys worth blaming.
