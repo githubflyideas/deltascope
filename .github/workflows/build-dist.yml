@@ -1,0 +1,67 @@
+name: build-dist
+
+# Rebuilds the release binaries in dist/ on a remote runner and commits them
+# back, so the checked-in binaries always match the source at that commit.
+# Reproduces the exact toolchain the existing binaries were built with:
+# CGO_ENABLED=0 (pure-Go modernc sqlite path), Go 1.23.4, linux amd64+arm64.
+#
+# Manual trigger: Actions -> build-dist -> Run workflow. Pass the version
+# string (e.g. v3.7.3) so the binary reports it via `deltascope version`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "version string to embed (blank = git describe)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.4"
+
+      - name: Resolve version
+        id: ver
+        run: |
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then V="$(git describe --tags --always)"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "building version $V"
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eux
+          GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${VERSION}" -o dist/deltascope-linux-amd64 .
+          GOARCH=arm64 go build -trimpath -ldflags "-X main.version=${VERSION}" -o dist/deltascope-linux-arm64 .
+
+      - name: Regenerate checksums
+        working-directory: dist
+        run: sha256sum deltascope-linux-amd64 deltascope-linux-arm64 > SHA256SUMS
+
+      - name: Commit if changed
+        run: |
+          set -eux
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- dist/; then
+            echo "dist/ unchanged, nothing to commit"
+            exit 0
+          fi
+          git add dist/deltascope-linux-amd64 dist/deltascope-linux-arm64 dist/SHA256SUMS
+          git commit -m "ci: rebuild dist binaries for ${{ steps.ver.outputs.version }}"
+          git push origin HEAD:${{ github.ref_name }}
