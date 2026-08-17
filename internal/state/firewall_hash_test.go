@@ -1,6 +1,9 @@
 package state
 
-import "testing"
+import (
+	"sort"
+	"testing"
+)
 
 // TestIptablesHashIgnoresTrafficCounters replays the exact symptom
 // reported live: the hash changing on every check even though nobody
@@ -68,19 +71,60 @@ func TestIptablesHashIgnoresTrafficCounters(t *testing.T) {
 
 func TestNftCountersStripped(t *testing.T) {
 	before := `table inet filter {
-	chain input {
-		counter packets 1000 bytes 50000 accept
-	}
-}`
+		chain input {
+			counter packets 1000 bytes 50000 accept
+		}
+	}`
 	after := `table inet filter {
-	chain input {
-		counter packets 9999999 bytes 888888888 accept
-	}
-}`
+		chain input {
+			counter packets 9999999 bytes 888888888 accept
+		}
+	}`
 	h1 := hashBytes([]byte(stripNftCounters(before)))
 	h2 := hashBytes([]byte(stripNftCounters(after)))
 	if h1 != h2 {
 		t.Errorf("nft hash should be stable when only counters moved: %s vs %s", h1, h2)
+	}
+}
+
+func TestIptablesHashOrderingInsensitive(t *testing.T) {
+	// iptables-save outputs rules in the order they appear in kernel memory,
+	// which can vary between boots or when rules are added/deleted and
+	// replaced. The hash should be stable for the same ruleset regardless of
+	// order: two snapshots with identical rules in different order must hash
+	// identically.
+	first := []string{
+		"*filter",
+		":INPUT ACCEPT [100:5000]",
+		":FORWARD ACCEPT [0:0]",
+		":OUTPUT ACCEPT [50:3000]",
+		"-A INPUT -i lo -j ACCEPT",
+		"-A INPUT -p tcp --dport 22 -j ACCEPT",
+		"-A INPUT -p tcp --dport 80 -j ACCEPT",
+		"COMMIT",
+	}
+	// same rules in different order
+	second := []string{
+		"*filter",
+		":INPUT ACCEPT [200:6000]",
+		":FORWARD ACCEPT [0:0]",
+		":OUTPUT ACCEPT [60:3500]",
+		"-A INPUT -p tcp --dport 80 -j ACCEPT",
+		"-A INPUT -i lo -j ACCEPT",
+		"-A INPUT -p tcp --dport 22 -j ACCEPT",
+		"COMMIT",
+	}
+
+	normalized1 := stripIptablesCounters(first)
+	sort.Strings(normalized1)
+	h1 := hashBytes([]byte(joinLines(normalized1)))
+
+	normalized2 := stripIptablesCounters(second)
+	sort.Strings(normalized2)
+	h2 := hashBytes([]byte(joinLines(normalized2)))
+
+	if h1 != h2 {
+		t.Errorf("hash should be stable for same ruleset in different order: %s vs %s", h1, h2)
 	}
 }
 

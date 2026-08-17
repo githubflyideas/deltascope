@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -162,6 +163,7 @@ func (firewall) Collect(ctx context.Context) Section {
 			kept = append(kept, l)
 		}
 		normalized := stripIptablesCounters(kept)
+		sort.Strings(normalized)
 		sec.Items = append(sec.Items, Item{Key: "iptables.rules.hash", Value: hashBytes([]byte(strings.Join(normalized, "\n")))})
 		// A hash tells you something changed but not where. Rule counts per
 		// table/chain narrow it down to the chain without storing the rules
