@@ -39,10 +39,19 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "building version $V"
 
+      # The checked-in go.sum only covered the cgo (mattn) path; the default
+      # CGO_ENABLED=0 build pulls in modernc.org/sqlite and its dependency
+      # tree, whose checksums were never committed. Populate them so a clean
+      # checkout builds by its documented default path. The corrected go.sum
+      # is committed back below.
+      - name: Sync go.sum
+        run: go mod download
+
       - name: Build binaries
         env:
           CGO_ENABLED: "0"
           GOOS: linux
+          GOFLAGS: "-mod=mod"
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -eux
@@ -58,10 +67,10 @@ jobs:
           set -eux
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- dist/; then
-            echo "dist/ unchanged, nothing to commit"
+          if git diff --quiet -- dist/ go.sum; then
+            echo "dist/ and go.sum unchanged, nothing to commit"
             exit 0
           fi
-          git add dist/deltascope-linux-amd64 dist/deltascope-linux-arm64 dist/SHA256SUMS
+          git add go.sum dist/deltascope-linux-amd64 dist/deltascope-linux-arm64 dist/SHA256SUMS
           git commit -m "ci: rebuild dist binaries for ${{ steps.ver.outputs.version }}"
           git push origin HEAD:${{ github.ref_name }}
