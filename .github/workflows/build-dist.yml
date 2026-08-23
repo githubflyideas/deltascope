@@ -36,6 +36,11 @@ jobs:
         run: |
           V="${{ github.event.inputs.version }}"
           if [ -z "$V" ]; then V="$(git describe --tags --always)"; fi
+          # main.version is embedded WITHOUT a leading "v"; the UI and startup
+          # log prepend the "v" themselves (verChip shows "v"+version, log
+          # prints "v%s"). Passing "v3.7.3" here produced "vv3.7.3", so strip a
+          # leading v to match the shipped convention (bare "3.7.2" style).
+          V="${V#v}"
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "building version $V"
 
@@ -55,8 +60,12 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -eux
-          GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${VERSION}" -o dist/deltascope-linux-amd64 .
-          GOARCH=arm64 go build -trimpath -ldflags "-X main.version=${VERSION}" -o dist/deltascope-linux-arm64 .
+          # Match the exact ldflags the shipped binaries were built with
+          # (from their buildinfo): -s -w to strip, -X to stamp the bare
+          # version. No -trimpath -- the originals did not use it.
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/deltascope-linux-amd64 .
+          GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/deltascope-linux-arm64 .
 
       - name: Regenerate checksums
         working-directory: dist
