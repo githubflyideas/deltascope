@@ -1,6 +1,6 @@
 # deltascope
 
-**Whole-machine change & performance diff for Linux, built on PCP.**
+**Whole-machine change & performance diff for Linux.**
 
 A single static Go binary. Point it at two moments in time and it tells you
 what's different — not a wall of dashboards, a diagnosis.
@@ -36,9 +36,23 @@ each engine folds out underneath.
 A triage dashboard organizes it as CPU / memory / disk / network, plus a
 fifth "software gremlin" block for process and config changes.
 
-## Install PCP
+## PCP is optional
 
-deltascope reads PCP archives, so the host needs PCP logging.
+Two of the four engines read PCP archives; the other two read `/proc` and
+config files directly and need nothing installed. Without PCP, deltascope
+starts anyway, says so in the log, and the web UI dims the tabs it cannot
+serve instead of handing you a broken chart.
+
+| Engine | Needs PCP |
+| --- | --- |
+| Change accounting | no |
+| Process accounting | no |
+| Regression diff · Trends · Reasoning chain | yes |
+| Diagnose | runs either way, with two legs instead of three |
+
+So on a plain Ubuntu box with no pmlogger you still get drift detection and
+per-process accounting on the first run. Install PCP when you want metric
+comparison as well:
 
 ```bash
 # Debian / Ubuntu
@@ -53,8 +67,9 @@ sudo pacman -S pcp
 sudo systemctl enable --now pmcd pmlogger   # all distros
 ```
 
-`deploy.sh` does this plus a tuned sampling config, a systemd service, and
-a locked-down user — recommended for a real deployment.
+Detection happens once at startup, so restart deltascope afterwards.
+`deploy.sh` does all of this plus a tuned sampling config, a systemd
+service, and a locked-down user — recommended for a real deployment.
 
 ## Install deltascope
 

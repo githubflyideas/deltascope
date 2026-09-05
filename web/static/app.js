@@ -211,26 +211,106 @@ async function main() {
 
   document.querySelectorAll(".tab").forEach((t) =>
     t.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === t));
-      $("#view-diag").classList.toggle("hidden", t.dataset.tab !== "diag");
-      $("#view-diff").classList.toggle("hidden", t.dataset.tab !== "diff");
-      $("#view-trend").classList.toggle("hidden", t.dataset.tab !== "trend");
-      $("#view-proc").classList.toggle("hidden", t.dataset.tab !== "proc");
-      $("#view-change").classList.toggle("hidden", t.dataset.tab !== "change");
-      $("#view-reasoning").classList.toggle("hidden", t.dataset.tab !== "reasoning");
-      if (t.dataset.tab === "trend") trendInit();
-      if (t.dataset.tab === "proc") procInit();
-      if (t.dataset.tab === "change") changeInit();
-      if (t.dataset.tab === "diag") diagInit();
-      if (t.dataset.tab === "reasoning") reasoningInit();
+      if (t.classList.contains("is-disabled")) return;
+      activateTab(t);
     })
   );
 
-  diffInit();   // prepare the regression tab's window pickers
-  trendInit();  // Performance Metrics (trends) is the default tab: draw it on load
+  const landed = applyCapabilities(me.capabilities);
+  // The banner and the disabled-tab tooltips are written imperatively rather
+  // than through data-i18n, so they need an explicit re-render when the
+  // language changes.
+  document.addEventListener("dscope-lang-changed", renderCapText);
+
+  diffInit(); // window pickers only, no request -- safe with or without PCP
+  // Draw whichever tab we actually landed on. Trends stays the default on a
+  // host with PCP; without it the landing tab is one that has data, so the
+  // old unconditional trendInit() here would have fired a request that can
+  // only come back 503.
+  activateTab(landed);
   // Diagnose is no longer the landing tab, so it is not run on load -- its
   // tab handler calls diagInit() the first time it is opened. Running it
   // eagerly here would fire an /api/diagnose the user never asked for.
+}
+
+// TAB_NEEDS maps each tab to the capability its data source requires, or
+// null for tabs that work regardless. Diagnose is deliberately null: it runs
+// three legs concurrently and each degrades on its own, so it stays useful
+// with the metric leg missing.
+const TAB_NEEDS = {
+  diag: null,
+  diff: "metrics",
+  trend: "metrics",
+  proc: "change",
+  change: "change",
+  reasoning: "metrics",
+};
+
+// LANDING_ORDER is the preference for which tab to open on load, first
+// available wins. Trends stays first so a normal PCP host is unchanged;
+// change accounting comes next because it is the engine that needs nothing
+// but /proc, so it always has something to show.
+const LANDING_ORDER = ["trend", "change", "diag", "diff", "proc", "reasoning"];
+
+let CAPS = { metrics: true, change: true, reason: "" };
+
+function activateTab(el) {
+  if (!el) return;
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === el));
+  const tab = el.dataset.tab;
+  ["diag", "diff", "trend", "proc", "change", "reasoning"].forEach((v) =>
+    $("#view-" + v).classList.toggle("hidden", tab !== v)
+  );
+  if (tab === "trend") trendInit();
+  if (tab === "proc") procInit();
+  if (tab === "change") changeInit();
+  if (tab === "diag") diagInit();
+  if (tab === "reasoning") reasoningInit();
+}
+
+// applyCapabilities dims the tabs whose data source this host does not have
+// and returns the tab to open on load. Without it, a first-time user on a
+// machine with no PCP lands on an empty chart and a gateway error, which
+// reads as "this tool is broken" rather than "this tool needs pmlogger".
+function applyCapabilities(caps) {
+  CAPS = Object.assign({ metrics: true, change: true, reason: "" }, caps || {});
+
+  document.querySelectorAll(".tab").forEach((el) => {
+    const need = TAB_NEEDS[el.dataset.tab];
+    el.classList.toggle("is-disabled", !(!need || CAPS[need]));
+  });
+  renderCapText();
+
+  const first = LANDING_ORDER.map((name) =>
+    document.querySelector('.tab[data-tab="' + name + '"]')
+  ).find((el) => el && !el.classList.contains("is-disabled"));
+  return first || document.querySelector(".tab");
+}
+
+// renderCapText writes every capability-derived string. Kept separate from
+// applyCapabilities because applyStaticI18n() only re-translates elements
+// carrying a data-i18n attribute -- these strings are set imperatively, so
+// switching language has to call this again or the banner would stay frozen
+// in the language it was first rendered in.
+function renderCapText() {
+  document.querySelectorAll(".tab").forEach((el) => {
+    if (!el.classList.contains("is-disabled")) return;
+    el.title = TAB_NEEDS[el.dataset.tab] === "metrics"
+      ? t("cap_tab_needs_pcp")
+      : t("cap_tab_needs_store");
+  });
+
+  const box = $("#capNotice");
+  if (CAPS.metrics) {
+    box.classList.add("hidden");
+    return;
+  }
+  box.innerHTML = t("cap_metrics_off_html", escapeHtml(CAPS.reason || ""));
+  box.classList.remove("hidden");
+  // The footer chip normally names the archive directory being compared.
+  // With no archive to read, that path is not being touched at all, so
+  // pointing at it would be a lie dressed up as a status line.
+  $("#hostChip").textContent = t("cap_no_archive");
 }
 
 

@@ -165,14 +165,15 @@ func cmdServe(args []string) {
 		log.Printf("loaded custom rules %s (%d rules)", *rulesPath, len(pcp.Rules))
 	}
 
-	if _, err := os.Stat(*archive); err != nil {
-		log.Printf("warning: archive directory %s is not accessible (%v), check that pmlogger is running", *archive, err)
-	}
-	if _, err := exec.LookPath("pmlogsummary"); err != nil {
-		log.Printf("warning: pmlogsummary not found, install the pcp package")
-	}
-	if _, err := exec.LookPath("pmrep"); err != nil {
-		log.Printf("warning: pmrep not found, install the pcp-system-tools package")
+	// PCP is the data source for the regression diff, the trend charts and
+	// the reasoning chain, and nothing else. Detect it once here so the UI
+	// can gray those three out instead of letting a first-time user click
+	// into a broken chart -- change accounting and process accounting read
+	// /proc directly and work regardless.
+	metricsOK, metricsWhy := httpapi.DetectPCP(*archive)
+	if !metricsOK {
+		log.Printf("warning: %s", metricsWhy)
+		log.Printf("change accounting and process accounting do not need PCP and stay available")
 	}
 
 	resolvedData := resolveDataDir(*dataDir)
@@ -197,6 +198,11 @@ func cmdServe(args []string) {
 		Version:    version,
 		WebFS:      webFS,
 		SecureCk:   *tlsCert != "",
+		Caps: httpapi.Capabilities{
+			Metrics: metricsOK,
+			Change:  stateStore != nil,
+			Reason:  metricsWhy,
+		},
 	}
 
 	if stateStore != nil {
@@ -212,11 +218,17 @@ func cmdServe(args []string) {
 		Handler:           srv.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+	// Naming the archive path on a host that has no PCP only misleads; say
+	// which engines are live instead.
+	source := "archive " + *archive
+	if !metricsOK {
+		source = "no PCP: change accounting only"
+	}
 	if *tlsCert != "" {
-		log.Printf("v%s listening HTTPS on %s, archive %s", version, *listen, *archive)
+		log.Printf("v%s listening HTTPS on %s, %s", version, *listen, source)
 		log.Fatal(h.ListenAndServeTLS(*tlsCert, *tlsKey))
 	}
-	log.Printf("v%s listening HTTP on %s, archive %s", version, *listen, *archive)
+	log.Printf("v%s listening HTTP on %s, %s", version, *listen, source)
 	log.Fatal(h.ListenAndServe())
 }
 

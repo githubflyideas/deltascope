@@ -73,6 +73,22 @@ code { font-family: var(--mono); color: var(--a); font-size: .92em; }
   border-color: var(--line);
 }
 .tab:hover:not(.is-active) { color: var(--ink); }
+/* A tab whose data source this host does not have. Dimmed and non-clickable
+   rather than hidden: a missing tab looks like a broken build, a dimmed one
+   with a tooltip tells the operator the feature exists and what it needs. */
+.tab.is-disabled { opacity: .4; cursor: not-allowed; }
+.tab.is-disabled:hover { color: var(--muted); }
+.cap-notice {
+  margin: 12px 22px 0; padding: 10px 14px; font-size: 14px; line-height: 1.55;
+  color: var(--muted); background: var(--panel);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn);
+  border-radius: 8px;
+}
+.cap-notice b { color: var(--ink); font-weight: 600; }
+.cap-notice code {
+  font-family: var(--mono); font-size: 13px; color: var(--ink);
+  background: var(--bg); border-radius: 4px; padding: 1px 5px;
+}
 
 main { padding: 0 22px 40px; max-width: 1180px; margin: 0 auto; width: 100%; }
 .view { background: var(--panel); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 20px; }

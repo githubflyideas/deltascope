@@ -37,6 +37,7 @@ type Server struct {
 	Version    string
 	WebFS      fs.FS
 	SecureCk   bool
+	Caps       Capabilities
 }
 
 func (s *Server) Routes() http.Handler {
@@ -250,10 +251,40 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
-		"user":    r.Context().Value(ctxUser{}),
-		"archive": s.Archive,
-		"version": s.Version,
+		"user":         r.Context().Value(ctxUser{}),
+		"archive":      s.Archive,
+		"version":      s.Version,
+		"capabilities": s.Caps,
 	})
+}
+
+// metricsNote returns the reason the metric leg cannot run on this host, or
+// "" when it can. Engines that degrade leg-by-leg pass this through instead
+// of failing the whole request.
+func (s *Server) metricsNote() string {
+	if s.Caps.Metrics {
+		return ""
+	}
+	if s.Caps.Reason != "" {
+		return "Performance metrics unavailable: " + s.Caps.Reason
+	}
+	return "Performance metrics unavailable: PCP archives are not available on this host."
+}
+
+// requireMetrics rejects the archive-backed engines when this host has no
+// usable PCP source, with the reason the operator needs rather than a
+// generic gateway error. 503 rather than 502: nothing failed, the feature
+// simply is not available here.
+func (s *Server) requireMetrics(w http.ResponseWriter) bool {
+	if s.Caps.Metrics {
+		return true
+	}
+	reason := s.Caps.Reason
+	if reason == "" {
+		reason = "PCP archives are not available on this host."
+	}
+	writeErr(w, http.StatusServiceUnavailable, reason)
+	return false
 }
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
@@ -269,6 +300,9 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
+	if !s.requireMetrics(w) {
+		return
+	}
 	q := r.URL.Query()
 	aStart, err1 := parseLocal(q.Get("a_start"))
 	aEnd, err2 := parseLocal(q.Get("a_end"))
@@ -321,6 +355,9 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
+	if !s.requireMetrics(w) {
+		return
+	}
 	q := r.URL.Query()
 	start, err1 := parseLocal(q.Get("start"))
 	end, err2 := parseLocal(q.Get("end"))
@@ -362,6 +399,7 @@ func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 	d, err := diagnose.Run(ctx, diagnose.Deps{
 		Runner: s.Runner, Archive: s.Archive,
 		StateStore: s.StateStore, Threshold: threshold,
+		MetricsUnavailable: s.metricsNote(),
 	})
 	if err != nil {
 		log.Printf("diagnose: %v", err)
@@ -378,6 +416,9 @@ func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
 // replacing it, so both can be compared against the same real data
 // before deciding whether to migrate.
 func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
+	if !s.requireMetrics(w) {
+		return
+	}
 	threshold := 15.0
 	if t := r.URL.Query().Get("threshold"); t != "" {
 		if v, err := strconv.ParseFloat(t, 64); err == nil && v >= 0 && v <= 10000 {

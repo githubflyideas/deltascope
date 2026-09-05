@@ -64,6 +64,13 @@ type Deps struct {
 	Archive    string
 	StateStore *state.Store
 	Threshold  float64
+
+	// MetricsUnavailable, when non-empty, means this host has no usable PCP
+	// source. The metric leg is then skipped and this string is reported as
+	// the note, so the operator reads "install the pcp package" instead of
+	// "executable file not found in $PATH". The other two legs are
+	// unaffected -- they read /proc and the snapshot store, not archives.
+	MetricsUnavailable string
 }
 
 // Run picks windows automatically, runs the three engines concurrently,
@@ -95,6 +102,10 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 	// 1. metric regression from PCP archives
 	go func() {
 		defer wg.Done()
+		if d.MetricsUnavailable != "" {
+			note(d.MetricsUnavailable)
+			return
+		}
 		rep, err := pcp.Compare(ctx, d.Runner, d.Archive, pcp.Windows{
 			AStart: w.AStart, AEnd: w.AEnd, BStart: w.BStart, BEnd: w.BEnd,
 			ThresholdPct: threshold,
