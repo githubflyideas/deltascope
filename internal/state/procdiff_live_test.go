@@ -3,13 +3,21 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"testing"
 	"time"
 )
 
 // TestLiveProcCollection exercises the /proc parser against the real
 // filesystem, then verifies that a CPU burst shows up as a rate.
+//
+// This needs a real procfs, so it skips off Linux rather than failing: a
+// contributor reading the code on macOS or Windows should get a green
+// `go test ./...`, not a red suite reporting a platform they cannot change.
 func TestLiveProcCollection(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skipf("needs a real /proc, not available on %s", runtime.GOOS)
+	}
 	ctx := context.Background()
 	s1 := Capture(ctx, "test")
 
