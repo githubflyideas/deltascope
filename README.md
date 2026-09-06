@@ -96,6 +96,8 @@ if you forget passwd
  ./deltascope user del  admin
  add admin in web
 
+<img width="1233" height="181" alt="image" src="https://github.com/user-attachments/assets/2318b0ac-9855-4504-a962-f893fe0d621b" />
+
 
 ## Command line
 
