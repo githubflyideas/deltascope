@@ -93,7 +93,10 @@ exports as JSON.
 <img width="473" height="647" alt="image" src="https://github.com/user-attachments/assets/f38fca46-e2d6-4412-b07f-7c0c4420601e" />
 
 if you forget passwd 
- ./deltascope user del  admin
+ ./deltascope user del  admin 
+ or
+ rm  /var/lib/deltascope
+ ./deltascope serve -listen 0.0.0.0:8080 
  add admin in web
 
 <img width="1233" height="181" alt="image" src="https://github.com/user-attachments/assets/2318b0ac-9855-4504-a962-f893fe0d621b" />
