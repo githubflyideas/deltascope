@@ -90,6 +90,12 @@ Open it in a browser; the login page creates the admin account on first
 visit. State is snapshotted every 10 minutes, so history accumulates with
 no cron job. The UI ships in ten languages and six themes, and any report
 exports as JSON.
+<img width="473" height="647" alt="image" src="https://github.com/user-attachments/assets/f38fca46-e2d6-4412-b07f-7c0c4420601e" />
+
+if you forget passwd 
+ ./deltascope user del  admin
+ add admin in web
+
 
 ## Command line
 
