@@ -132,16 +132,43 @@ function fmtByUnit(v, unit) {
 
 if (page === "login") {
   initLang();
-  (async () => {
-    let needsSetup = false;
-    try {
-      const status = await api("/api/setup-status");
-      needsSetup = !!status.needs_setup;
-    } catch (e) { /* status check failed, fall back to the login form */ }
-    $("#setupPanel").classList.toggle("hidden", !needsSetup);
-    $("#loginForm").classList.toggle("hidden", needsSetup);
-    (needsSetup ? $("#setupUsername") : $("#username")).focus();
-  })();
+
+  // Which of the two panels to show depends on a request, and both start
+  // hidden, so until it resolves the card is blank. The failure path is what
+  // matters: this used to swallow the error and fall back to the sign-in
+  // form, but on a server with no account yet that is a form which cannot
+  // succeed -- there is nothing to sign in to. The only way out was to keep
+  // reloading until the request happened to land, which is exactly what it
+  // looked like: an install page you have to refresh several times to reach.
+  // Retry here, and if it still fails say so instead of showing a dead form.
+  async function showSetupOrLogin() {
+    const errBox = $("#statusError");
+    const retry = $("#statusRetry");
+    errBox.classList.add("hidden");
+    retry.classList.add("hidden");
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const status = await api("/api/setup-status");
+        const needsSetup = !!status.needs_setup;
+        $("#setupPanel").classList.toggle("hidden", !needsSetup);
+        $("#loginForm").classList.toggle("hidden", needsSetup);
+        (needsSetup ? $("#setupUsername") : $("#username")).focus();
+        return;
+      } catch (e) {
+        if (attempt >= 2) {
+          $("#setupPanel").classList.add("hidden");
+          $("#loginForm").classList.add("hidden");
+          errBox.textContent = t("status_failed", e.message);
+          errBox.classList.remove("hidden");
+          retry.classList.remove("hidden");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+      }
+    }
+  }
+  $("#statusRetry").addEventListener("click", showSetupOrLogin);
+  showSetupOrLogin();
 
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();

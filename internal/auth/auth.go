@@ -68,34 +68,67 @@ func NewSessions(secret []byte, ttl time.Duration) *Sessions {
 type sessionPayload struct {
 	User string `json:"u"`
 	Exp  int64  `json:"e"`
+	FP   string `json:"f"`
 }
 
-func (s *Sessions) Issue(user string) string {
-	p, _ := json.Marshal(sessionPayload{User: user, Exp: time.Now().Add(s.TTL).Unix()})
+// Claims is what a session token asserts. FP is the credential fingerprint
+// the token was issued against; the caller checks it against the account as
+// it stands now, which is what makes the token revocable.
+type Claims struct {
+	User string
+	FP   string
+}
+
+// Fingerprint reduces a stored password hash to a short tag that rides along
+// inside the session token.
+//
+// The token is self-contained and signed, so nothing on the server side can
+// take it back: it stays valid for its whole TTL. Carrying a fingerprint of
+// the credential it was issued against gives every request a cheap way to
+// notice that the credential is gone or different -- deleting the account or
+// changing its password now ends the sessions that were opened with it,
+// instead of leaving them working for up to another 12 hours.
+func Fingerprint(storedHash string) string {
+	sum := sha256.Sum256([]byte(storedHash))
+	return base64.RawURLEncoding.EncodeToString(sum[:8])
+}
+
+func (s *Sessions) Issue(user, fingerprint string) string {
+	p, _ := json.Marshal(sessionPayload{
+		User: user,
+		Exp:  time.Now().Add(s.TTL).Unix(),
+		FP:   fingerprint,
+	})
 	body := base64.RawURLEncoding.EncodeToString(p)
 	return body + "." + s.sign(body)
 }
 
-func (s *Sessions) Verify(token string) (string, bool) {
+func (s *Sessions) Verify(token string) (Claims, bool) {
 	body, sig, ok := strings.Cut(token, ".")
 	if !ok {
-		return "", false
+		return Claims{}, false
 	}
 	if subtle.ConstantTimeCompare([]byte(s.sign(body)), []byte(sig)) != 1 {
-		return "", false
+		return Claims{}, false
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(body)
 	if err != nil {
-		return "", false
+		return Claims{}, false
 	}
 	var p sessionPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return "", false
+		return Claims{}, false
 	}
 	if time.Now().Unix() >= p.Exp || p.User == "" {
-		return "", false
+		return Claims{}, false
 	}
-	return p.User, true
+	// A token minted before fingerprints existed carries no FP, and treating
+	// an empty one as "matches anything" would reopen exactly the hole this
+	// closes. Reject it: the cost is one re-login on upgrade.
+	if p.FP == "" {
+		return Claims{}, false
+	}
+	return Claims{User: p.User, FP: p.FP}, true
 }
 
 func (s *Sessions) sign(body string) string {

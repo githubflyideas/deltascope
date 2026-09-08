@@ -16,9 +16,11 @@
     </div>
     <p class="login-sub" data-i18n="login_sub">Whole-machine change &amp; performance diagnostics · local auth</p>
 
+    <div class="notice hidden" id="statusError"></div>
+    <button class="btn btn-block hidden" id="statusRetry" type="button" data-i18n="retry">Try again</button>
+
     <div id="setupPanel" class="hidden">
-      <p class="setup-lead" data-i18n="setup_lead">No admin account exists yet. Create one to finish setting up this server.</p>
-      <form id="setupForm" autocomplete="off">
+      <p class="setup-lead" data-i18n="setup_lead">No admin account exists yet. Create one to finish setting up this server.</p>      <form id="setupForm" autocomplete="off">
         <label><span data-i18n="label_username">Username</span>
           <input type="text" id="setupUsername" autocomplete="username" required autofocus>
         </label>

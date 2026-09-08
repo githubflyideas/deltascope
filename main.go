@@ -114,13 +114,23 @@ func resolveDataDir(dataDir string) string {
 func openStore(dataDir string) *store.Store {
 	dataDir = resolveDataDir(dataDir)
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
-		log.Fatalf("failed to create data directory: %v", err)
+		// deploy.sh runs the service as an unprivileged account that owns
+		// only this directory, so once the directory is gone the service
+		// cannot put it back -- it fails here on every restart, and with
+		// Restart=on-failure that reads from the outside as "the web UI is
+		// down" with nothing pointing at the cause. Name the fix.
+		log.Fatalf(`failed to create data directory %s: %v
+  If deltascope runs as a service account (deploy.sh creates "deltascope"),
+  it cannot recreate this directory itself. As root:
+    mkdir -p %s && chown deltascope:deltascope %s && chmod 750 %s`,
+			dataDir, err, dataDir, dataDir, dataDir)
 	}
 	dbPath := filepath.Join(dataDir, "deltascope.db")
 	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open SQLite: %v", err)
 	}
+	alignDataOwnership(dataDir, dbPath, dbPath+"-wal", dbPath+"-shm")
 	log.Printf("data directory: %s", dataDir)
 	return st
 }

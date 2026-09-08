@@ -33,10 +33,14 @@ func TestHashVerify(t *testing.T) {
 func TestSessions(t *testing.T) {
 	secret, _ := GenerateSecret()
 	s := NewSessions(secret, time.Hour)
-	tok := s.Issue("admin")
-	u, ok := s.Verify(tok)
-	if !ok || u != "admin" {
-		t.Fatalf("session verification failed: %v %v", u, ok)
+	fp := Fingerprint("pbkdf2-sha256$600000$c2FsdA$a2V5")
+	tok := s.Issue("admin", fp)
+	cl, ok := s.Verify(tok)
+	if !ok || cl.User != "admin" {
+		t.Fatalf("session verification failed: %v %v", cl, ok)
+	}
+	if cl.FP != fp {
+		t.Errorf("fingerprint did not survive the round trip: %q want %q", cl.FP, fp)
 	}
 	if _, ok := s.Verify(tok + "x"); ok {
 		t.Error("tampered signature should fail")
@@ -46,12 +50,35 @@ func TestSessions(t *testing.T) {
 		t.Error("tampered payload should fail")
 	}
 	sExp := NewSessions(secret, -time.Minute)
-	if _, ok := sExp.Verify(sExp.Issue("admin")); ok {
+	if _, ok := sExp.Verify(sExp.Issue("admin", fp)); ok {
 		t.Error("expired session should fail")
 	}
 	secret2, _ := GenerateSecret()
 	if _, ok := NewSessions(secret2, time.Hour).Verify(tok); ok {
 		t.Error("verification with a different key should fail")
+	}
+	// A token from a build that predates fingerprints has no FP. Accepting it
+	// would keep the pre-fix sessions alive past the upgrade that was supposed
+	// to make them revocable.
+	if _, ok := s.Verify(s.Issue("admin", "")); ok {
+		t.Error("a session with no credential fingerprint should fail")
+	}
+}
+
+// Changing the password or deleting the account must change what the
+// fingerprint of the stored credential is, or the session check in the HTTP
+// layer has nothing to notice.
+func TestFingerprintTracksTheCredential(t *testing.T) {
+	h1, _ := HashPassword("correct horse battery")
+	h2, _ := HashPassword("correct horse battery")
+	if Fingerprint(h1) == Fingerprint(h2) {
+		t.Error("re-hashing the same password produced the same fingerprint; the salt should make it differ")
+	}
+	if Fingerprint(h1) != Fingerprint(h1) {
+		t.Error("Fingerprint is not deterministic")
+	}
+	if Fingerprint("") == Fingerprint(h1) {
+		t.Error("a missing credential fingerprints the same as a real one")
 	}
 }
 

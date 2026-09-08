@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -94,16 +95,38 @@ func (s *Server) servePage(path string, needAuth bool) http.HandlerFunc {
 	}
 }
 
+// currentUser returns the signed-in user, or "" when the request carries no
+// usable session.
+//
+// This deliberately goes back to the user table on every request instead of
+// trusting the cookie alone. The cookie is a signed, self-contained token, so
+// on its own it keeps working for its full TTL no matter what happens to the
+// account -- delete the account or change its password and every session
+// opened with it stayed live. That also had a way of stranding the operator:
+// a still-valid cookie kept /login from ever offering to create the first
+// admin again, so "delete the account and start over" quietly did nothing.
 func (s *Server) currentUser(r *http.Request) string {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return ""
 	}
-	u, ok := s.Sessions.Verify(c.Value)
+	cl, ok := s.Sessions.Verify(c.Value)
 	if !ok {
 		return ""
 	}
-	return u
+	hash, err := s.Store.PasswordHash(cl.User)
+	if err != nil {
+		// Fail closed, including on a database error: a request that cannot
+		// be checked is not a request that has been authorized.
+		if !errors.Is(err, store.ErrNotFound) {
+			log.Printf("auth: could not check the session's account: %v", err)
+		}
+		return ""
+	}
+	if subtle.ConstantTimeCompare([]byte(auth.Fingerprint(hash)), []byte(cl.FP)) != 1 {
+		return ""
+	}
+	return cl.User
 }
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.Handler {
@@ -235,7 +258,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	s.Limiter.Reset(ip)
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: s.Sessions.Issue(req.Username),
+		Name: sessionCookie, Value: s.Sessions.Issue(req.Username, auth.Fingerprint(hash)),
 		Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: s.SecureCk, MaxAge: int(s.Sessions.TTL.Seconds()),
 	})
