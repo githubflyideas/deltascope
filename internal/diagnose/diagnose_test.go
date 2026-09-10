@@ -35,7 +35,7 @@ func TestSynthesizeCorrelation(t *testing.T) {
 		},
 	}}, Total: 2}
 
-	synthesize(out, nil, pd, sd)
+	synthesize(out, nil, 0, pd, sd)
 
 	if out.Severity != "crit" {
 		t.Errorf("severity = %q, want crit", out.Severity)
@@ -68,7 +68,7 @@ func TestFindingOutranksTriage(t *testing.T) {
 			{Key: "cpu", Label: "CPU", Status: pcp.TriageBad, Headline: "user CPU +200%"},
 		},
 	}
-	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
 	if !contains(out.Headline, "swapping") {
 		t.Errorf("rule conclusion should win the headline, got %q", out.Headline)
 	}
@@ -86,7 +86,7 @@ func TestMemoryCulpritByRSS(t *testing.T) {
 		{Name: "java", CPUPctA: f(50), CPUPctB: f(52), RSSKBA: f(500000), RSSKBB: f(520000), RSSDelta: f(4), Verdict: state.PVFlat},
 		{Name: "nginx", RSSKBA: f(102400), RSSKBB: f(3800000), RSSDelta: f(3611), Verdict: state.PVWorse},
 	}}
-	synthesize(out, nil, pd, state.Diff{})
+	synthesize(out, nil, 0, pd, state.Diff{})
 	if !contains(out.Culprit, "nginx") {
 		t.Errorf("memory culprit should be nginx (+3611%%), got %q", out.Culprit)
 	}
@@ -99,7 +99,7 @@ func TestHealthyMachine(t *testing.T) {
 		{Key: "cpu", Label: "CPU", Status: pcp.TriageOK, Headline: "normal"},
 		{Key: "mem", Label: "Memory", Status: pcp.TriageOK, Headline: "normal"},
 	}}
-	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
 	if out.Severity != "ok" {
 		t.Errorf("severity = %q, want ok", out.Severity)
 	}
@@ -119,7 +119,7 @@ func TestChangesOnlyIsInfo(t *testing.T) {
 		Name: "security", Title: "Security Posture",
 		Changes: []state.Change{{Key: "net.ipv4.ip_forward", Kind: state.Modified, Old: "0", New: "1"}},
 	}}, Total: 1}
-	synthesize(out, nil, state.ProcDiff{}, sd)
+	synthesize(out, nil, 0, state.ProcDiff{}, sd)
 	if out.Severity != "info" {
 		t.Errorf("severity = %q, want info", out.Severity)
 	}
@@ -148,6 +148,66 @@ func TestPickWindowEndsAtNowNotTheLastFullHour(t *testing.T) {
 	}
 	if w.AEnd.AddDate(0, 0, 1) != w.BEnd {
 		t.Errorf("baseline A end must be exactly one day before B end: %v vs %v", w.AEnd, w.BEnd)
+	}
+}
+
+// TestNothingMeasuredIsNotHealthy is the anti-false-green guarantee. On a
+// host with no PCP, an empty archive, or a window outside it, all three
+// engines return nothing -- and the old default branch called that "no
+// regression and no configuration changes detected", which is a green light
+// asserted from zero evidence. The distinction between "we looked and it was
+// fine" and "we could not look" is the whole value of the verdict.
+func TestNothingMeasuredIsNotHealthy(t *testing.T) {
+	out := &Diagnosis{}
+	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+
+	if out.Severity != "unknown" {
+		t.Errorf("severity = %q, want unknown: nothing was measured", out.Severity)
+	}
+	if contains(out.Headline, "No regression") {
+		t.Errorf("headline must not claim health from no data, got %q", out.Headline)
+	}
+	if len(out.Next) == 0 {
+		t.Error("an unmeasured verdict must say how to get a measurement")
+	}
+	t.Logf("headline: %s", out.Headline)
+}
+
+// TestChangesWithoutMetricsSaysSo covers the common half-measured case:
+// snapshots need no PCP, so the configuration side can answer while the
+// performance side cannot. Reporting only the changes would imply the
+// performance side came back clean.
+func TestChangesWithoutMetricsSaysSo(t *testing.T) {
+	out := &Diagnosis{}
+	sd := state.Diff{Sections: []state.SectionDiff{{
+		Name: "sysctl", Title: "Kernel Parameters",
+		Changes: []state.Change{{Key: "vm.swappiness", Kind: state.Modified, Old: "60", New: "1"}},
+	}}, Total: 1}
+	synthesize(out, nil, 0, state.ProcDiff{}, sd)
+
+	if out.Severity != "info" {
+		t.Errorf("severity = %q, want info", out.Severity)
+	}
+	if contains(out.Headline, "No performance regression") {
+		t.Errorf("headline must not claim the performance side was checked, got %q", out.Headline)
+	}
+	if !contains(out.Headline, "not measured") {
+		t.Errorf("headline should say performance was not measured, got %q", out.Headline)
+	}
+	t.Logf("headline: %s", out.Headline)
+}
+
+// TestMeasuredAndQuietStaysHealthy pins the other side of the same fork: a
+// metric report that came back with rows and found nothing wrong is still
+// entitled to say so. Triage blocks are the evidence of measurement here,
+// the way they are in production.
+func TestMeasuredAndQuietStaysHealthy(t *testing.T) {
+	out := &Diagnosis{Triage: []pcp.TriageBlock{
+		{Key: "cpu", Label: "CPU", Status: pcp.TriageOK, Headline: "normal"},
+	}}
+	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	if out.Severity != "ok" {
+		t.Errorf("severity = %q, want ok: the window was measured and was quiet", out.Severity)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/githubflyideas/deltascope/internal/native"
 	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/state"
@@ -20,7 +21,7 @@ import (
 // reports the reader has to join up themselves.
 type Diagnosis struct {
 	Window   Window   `json:"window"`
-	Severity string   `json:"severity"` // crit | warn | info | ok
+	Severity string   `json:"severity"` // crit | warn | info | ok | unknown
 	Headline string   `json:"headline"`
 	Culprit  string   `json:"culprit,omitempty"`
 	Changed  string   `json:"changed,omitempty"`
@@ -66,11 +67,27 @@ type Deps struct {
 	Threshold  float64
 
 	// MetricsUnavailable, when non-empty, means this host has no usable PCP
-	// source. The metric leg is then skipped and this string is reported as
-	// the note, so the operator reads "install the pcp package" instead of
+	// source. The metric leg then falls back to Native if one is supplied,
+	// and is skipped entirely otherwise with this string reported as the
+	// note, so the operator reads "install the pcp package" instead of
 	// "executable file not found in $PATH". The other two legs are
 	// unaffected -- they read /proc and the snapshot store, not archives.
 	MetricsUnavailable string
+
+	// Native is a rolling /proc history, used only when there is no archive.
+	// It cannot replace the archive leg: the rule engine behind Triage and
+	// Findings consumes a whole DiffReport with its own summary statistics,
+	// and /proc yields rows. What it can do is feed the reasoning chain,
+	// which is where the per-core and named-state conclusions live -- so on a
+	// PCP-less host the one-click page goes from having no performance
+	// evidence at all to having the 78 states.
+	Native NativeSource
+}
+
+// NativeSource is the /proc-backed metric source, satisfied by
+// *native.Sampler. An interface so a Diagnosis can be tested on any OS.
+type NativeSource interface {
+	Window(thresholdPct float64) (native.Window, error)
 }
 
 // Run picks windows automatically, runs the three engines concurrently,
@@ -85,11 +102,12 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 	out := &Diagnosis{Window: w}
 
 	var (
-		wg        sync.WaitGroup
-		mu        sync.Mutex
-		metricRep *pcp.DiffReport
-		procDiff  state.ProcDiff
-		stateDiff state.Diff
+		wg         sync.WaitGroup
+		mu         sync.Mutex
+		metricRep  *pcp.DiffReport
+		nativeRows []pcp.DiffRow
+		procDiff   state.ProcDiff
+		stateDiff  state.Diff
 	)
 	note := func(s string) {
 		mu.Lock()
@@ -99,11 +117,39 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 
 	wg.Add(3)
 
-	// 1. metric regression from PCP archives
+	// 1. metric regression from PCP archives, or the reasoning chain off
+	//    /proc when there is no archive to read
 	go func() {
 		defer wg.Done()
 		if d.MetricsUnavailable != "" {
-			note(d.MetricsUnavailable)
+			if d.Native == nil {
+				note(d.MetricsUnavailable)
+				return
+			}
+			nw, err := d.Native.Window(threshold)
+			if err != nil {
+				// Both sources failed, and the reader needs both reasons: the
+				// archive one says what to install, the /proc one says whether
+				// waiting would help.
+				note(d.MetricsUnavailable + " Reading /proc instead: " + firstLine(err.Error()))
+				return
+			}
+			mu.Lock()
+			nativeRows = nw.Rows
+			mu.Unlock()
+			// The window is named because it is not the window the rest of
+			// this page describes. The change and process legs cover the hour
+			// picked above; /proc can only speak for the last minute, and a
+			// reader correlating a burst against a config change needs to know
+			// the two are not measured over the same span.
+			if nw.BaselineSamples > 0 {
+				note(fmt.Sprintf("No PCP archive on this host: performance was read from /proc instead, "+
+					"the last %s against the %s before it.",
+					nw.Elapsed.Round(time.Second), nw.BaselineElapsed.Round(time.Second)))
+			} else {
+				note(fmt.Sprintf("No PCP archive on this host: performance was read from /proc instead, "+
+					"the last %s with no baseline to compare against yet.", nw.Elapsed.Round(time.Second)))
+			}
 			return
 		}
 		rep, err := pcp.Compare(ctx, d.Runner, d.Archive, pcp.Windows{
@@ -183,11 +229,19 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 		// next to a diagnosis that says a core is saturated.
 		out.Reasoning = reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, metricRep.Rows))
 		escalateCPUFromReasoning(out)
+	} else if len(nativeRows) > 0 {
+		// No archive, so no Triage and no Findings: the rule engine behind
+		// both consumes a DiffReport built from pmlogsummary's own statistics,
+		// which /proc does not produce. The reasoning chain does run, and it
+		// is the half of the analysis that names causes rather than colours,
+		// so a PCP-less host still gets a real answer instead of a page of
+		// notes explaining what it cannot do.
+		out.Reasoning = reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, nativeRows))
 	}
 	out.Processes = topProcesses(procDiff.Rows, 12)
 	out.Changes = summarizeChanges(stateDiff, 40)
 
-	synthesize(out, metricRep, procDiff, stateDiff)
+	synthesize(out, metricRep, len(nativeRows), procDiff, stateDiff)
 	return out, nil
 }
 
@@ -265,7 +319,7 @@ func PickWindow(now time.Time) Window {
 
 // synthesize is the correlation step: it decides the single headline and
 // attaches the culprit process and the related configuration change.
-func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state.Diff) {
+func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.ProcDiff, sd state.Diff) {
 	// Descending priority: a rule-engine conclusion beats a bare resource
 	// signal, because a rule already knows what the combination means.
 	var crit, warn *pcp.Finding
@@ -287,10 +341,25 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	// real conclusion, whereas the triage block only knows a colour. It
 	// sits just below crit findings for the same reason those do -- a rule
 	// that fired already understands the whole combination.
+	//
+	// Which results are eligible depends on whether the archive leg ran. With
+	// an archive, only the CPU states the aggregate view is structurally blind
+	// to may speak, because everything else is the metric engine's to report
+	// and two engines describing one problem produced two contradictory
+	// headlines. With no archive there is nothing to defer to, and the filter
+	// would leave a crit memory diagnosis sitting in the payload under a
+	// headline claiming no regression was found.
+	eligible := func(id string) bool {
+		if rep == nil {
+			return true
+		}
+		_, relevant := cpuReasoningHeadline[id]
+		return relevant
+	}
 	var reasonCrit, reasonWarn *reasoning.Result
 	for i := range out.Reasoning {
 		r := &out.Reasoning[i]
-		if _, relevant := cpuReasoningHeadline[r.ID]; !relevant {
+		if !eligible(r.ID) {
 			continue
 		}
 		if r.Severity == "crit" && reasonCrit == nil {
@@ -301,6 +370,24 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 		}
 	}
 
+	// Whether anything was actually measured decides the two quiet branches
+	// below. "No regression detected" is a claim about data, and on a host
+	// where PCP is absent, the archive is empty, or the window falls outside
+	// it, there is no data for the claim to be about: every branch above is
+	// unreachable and a green light is the one answer that is certainly
+	// wrong. Triage blocks and findings both come from the metric engine, so
+	// their presence is the evidence that a measurement happened -- green
+	// requires evidence, and silence is not evidence. Rows read from /proc
+	// count as the same kind of evidence: fewer states are answerable from
+	// them, but the ones that are were genuinely checked.
+	measured := len(out.Triage) > 0 || len(out.Findings) > 0 ||
+		(rep != nil && len(rep.Rows) > 0) || nativeRows > 0
+
+	// headlineFrom records the reasoning result that won the headline, if one
+	// did. It is the only thing that knows which resource the answer is about
+	// when there are no triage blocks to ask.
+	var headlineFrom *reasoning.Result
+
 	switch {
 	case crit != nil:
 		out.Severity, out.Headline = "crit", crit.Conclusion
@@ -308,6 +395,7 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	case reasonCrit != nil:
 		out.Severity, out.Headline = "crit", reasonCrit.Conclusion
 		out.Evidence, out.Next = reasonCrit.Evidence, reasonCrit.Next
+		headlineFrom = reasonCrit
 	case worstBlock != nil && worstBlock.Status == pcp.TriageBad:
 		out.Severity = "crit"
 		out.Headline = worstBlock.Label + " is degraded: " + worstBlock.Headline
@@ -317,28 +405,59 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	case reasonWarn != nil:
 		out.Severity, out.Headline = "warn", reasonWarn.Conclusion
 		out.Evidence, out.Next = reasonWarn.Evidence, reasonWarn.Next
+		headlineFrom = reasonWarn
 	case worstBlock != nil && worstBlock.Status == pcp.TriageWarn:
 		out.Severity = "warn"
 		out.Headline = worstBlock.Label + " needs watching: " + worstBlock.Headline
+	case sd.Total > 0 && !measured:
+		// Snapshots work without PCP, so this is a real and common state:
+		// we can see what changed on the box and nothing at all about how it
+		// performed. Reporting only the changes would imply the performance
+		// side came back clean.
+		out.Severity = "info"
+		out.Headline = fmt.Sprintf("%d configuration change(s) detected; performance was not measured", sd.Total)
 	case sd.Total > 0:
 		out.Severity = "info"
 		out.Headline = fmt.Sprintf("No performance regression, but %d configuration change(s) were detected", sd.Total)
-	default:
+	case measured:
 		out.Severity = "ok"
 		out.Headline = "No regression and no configuration changes detected"
+	default:
+		out.Severity = "unknown"
+		out.Headline = "Nothing was measured: no metric data for this window, so nothing can be ruled out"
+		out.Next = []string{
+			"deltascope check",
+			"systemctl status pmcd pmlogger",
+		}
 	}
 
 	// Culprit: attribute the sick resource to a process where we can.
 	// Only CPU and memory have per-process attribution -- claiming a
 	// culprit for disk or network would be a guess, so we stay silent.
-	var culpritRow *state.ProcRow
+	//
+	// resourceKey is which resource to attribute against. Normally the triage
+	// block, but there is no triage on a host with no archive, and the process
+	// figures come from snapshots, which work without PCP. Dropping
+	// attribution there would mean the one page that has both a memory
+	// diagnosis and the RSS growth behind it declines to connect them.
+	resourceKey := ""
 	if worstBlock != nil && worstBlock.Status != pcp.TriageOK {
-		switch worstBlock.Key {
-		case "cpu":
-			out.Culprit, culpritRow = culpritByCPU(pd.Rows)
-		case "mem":
-			out.Culprit, culpritRow = culpritByRSS(pd.Rows)
+		resourceKey = worstBlock.Key
+	} else if headlineFrom != nil {
+		switch headlineFrom.Branch {
+		case reasoning.BranchCPU:
+			resourceKey = "cpu"
+		case reasoning.BranchMemory:
+			resourceKey = "mem"
 		}
+	}
+
+	var culpritRow *state.ProcRow
+	switch resourceKey {
+	case "cpu":
+		out.Culprit, culpritRow = culpritByCPU(pd.Rows)
+	case "mem":
+		out.Culprit, culpritRow = culpritByRSS(pd.Rows)
 	}
 	// Deliberately NO generic fallback culprit. Naming a CPU or memory
 	// process when the degraded resource is network or disk is a
@@ -355,8 +474,8 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	// command that inspects sh, not the diagnosis's generic "pidstat -w"
 	// (which chases context switches -- a different process entirely). A
 	// command aimed at a concrete PID beats one the reader has to re-target.
-	if culpritRow != nil && culpritRow.PID > 0 && worstBlock != nil {
-		out.Next = culpritCommands(worstBlock.Key, culpritRow.PID, out.Next)
+	if culpritRow != nil && culpritRow.PID > 0 && resourceKey != "" {
+		out.Next = culpritCommands(resourceKey, culpritRow.PID, out.Next)
 	}
 
 	// Related change: only surface a change that plausibly relates to the
@@ -365,11 +484,7 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state
 	// nothing to do with disk queue depth, and pairing them invites a
 	// wrong conclusion. Fall back to "any change" only when no resource
 	// is implicated, where the change itself is the story.
-	if worstBlock != nil && worstBlock.Status != pcp.TriageOK {
-		out.Changed = relatedChange(sd, worstBlock.Key)
-	} else {
-		out.Changed = relatedChange(sd, "")
-	}
+	out.Changed = relatedChange(sd, resourceKey)
 }
 
 func worstTriage(blocks []pcp.TriageBlock) *pcp.TriageBlock {

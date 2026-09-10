@@ -26,6 +26,16 @@ type Capabilities struct {
 	// accounting and process accounting. Independent of PCP entirely.
 	Change bool `json:"change"`
 
+	// Reasoning is true when the state/diagnosis chain has some metric
+	// source: a PCP archive, or the rolling /proc sampler that serves in its
+	// place. It is deliberately not the same flag as Metrics -- the diff and
+	// the trend charts need an archive because they answer questions about an
+	// arbitrary past window, and /proc cannot be asked about the past. The
+	// reasoning chain only ever asks about now, which is the one question
+	// /proc can answer, so gating it on Metrics kept the most useful screen
+	// on a PCP-less host switched off for no reason.
+	Reasoning bool `json:"reasoning"`
+
 	// Reason explains a false Metrics in one actionable sentence, so the UI
 	// can tell the operator what to install rather than just that something
 	// is missing.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/githubflyideas/deltascope/internal/auth"
 	"github.com/githubflyideas/deltascope/internal/httpapi"
+	"github.com/githubflyideas/deltascope/internal/native"
 	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/state"
 	"github.com/githubflyideas/deltascope/internal/store"
@@ -55,6 +56,8 @@ func main() {
 		cmdProcDiff(os.Args[2:])
 	case "verify":
 		cmdVerify(os.Args[2:])
+	case "check":
+		cmdCheck(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -66,6 +69,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   deltascope serve [flags]     start the web server
+  deltascope check              diagnose this host right now from /proc, no PCP and no database
   deltascope user add <name>   create/reset a user (password via DSCOPE_PASSWORD or prompt)
   deltascope user del <name>   delete a user
   deltascope user list          list users
@@ -84,7 +88,14 @@ serve flags:
   -archive  PCP archive directory (default /var/log/pcp/pmlogger/<hostname>)
   -data     data directory for SQLite and session keys (default /var/lib/deltascope)
   -tls-cert / -tls-key  optional, serve HTTPS when provided
-  -session-ttl          session lifetime (default 12h)`)
+  -session-ttl          session lifetime (default 12h)
+
+check flags:
+  -for       how long to sample (default 10s; 60s unlocks the burst states)
+  -interval  delay between samples (default 1s)
+  -format    text or json
+  -all       also list the states that were checked and did not hold
+  exit codes: 0 nothing found · 1 nothing could be measured · 2 critical`)
 }
 
 func defaultArchive() string {
@@ -186,6 +197,20 @@ func cmdServe(args []string) {
 		log.Printf("change accounting and process accounting do not need PCP and stay available")
 	}
 
+	// Without an archive the reasoning chain still has a data source: /proc,
+	// sampled continuously so that by the time anyone asks there are two
+	// windows to compare. This is not a smaller version of the archive path.
+	// It cannot answer about last Tuesday, and it is the only thing that can
+	// answer the twelve states a one-shot `deltascope check` has to decline --
+	// the ten needing thirty samples and the two needing a baseline. Sampling
+	// is skipped when PCP is present: the archive already covers this window
+	// and two sources disagreeing about the same minute would be worse than
+	// one.
+	nativeOK := !metricsOK && native.Supported()
+	if !metricsOK && !nativeOK {
+		metricsWhy += " This host has no readable /proc either, so the reasoning chain has no data source at all."
+	}
+
 	resolvedData := resolveDataDir(*dataDir)
 	st := openStore(*dataDir)
 	defer st.Close()
@@ -209,10 +234,24 @@ func cmdServe(args []string) {
 		WebFS:      webFS,
 		SecureCk:   *tlsCert != "",
 		Caps: httpapi.Capabilities{
-			Metrics: metricsOK,
-			Change:  stateStore != nil,
-			Reason:  metricsWhy,
+			Metrics:   metricsOK,
+			Change:    stateStore != nil,
+			Reasoning: metricsOK || nativeOK,
+			Reason:    metricsWhy,
 		},
+	}
+
+	// Assigned here rather than in the literal above: Sampler is an interface,
+	// and a typed nil pointer stored in one is not nil, so a `var s *Sampler`
+	// left unset would pass the handler's nil check and then panic.
+	if nativeOK {
+		sampler := native.NewSampler(native.DefaultSampleInterval, native.DefaultKeepSamples)
+		srv.Sampler = sampler
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go sampler.Run(ctx)
+		log.Printf("reasoning: sampling /proc every %s, %d passes retained (no PCP archive to read)",
+			native.DefaultSampleInterval, native.DefaultKeepSamples)
 	}
 
 	if stateStore != nil {
@@ -232,7 +271,10 @@ func cmdServe(args []string) {
 	// which engines are live instead.
 	source := "archive " + *archive
 	if !metricsOK {
-		source = "no PCP: change accounting only"
+		source = "no PCP: change accounting from snapshots"
+		if nativeOK {
+			source = "no PCP: reasoning from /proc, change accounting from snapshots"
+		}
 	}
 	if *tlsCert != "" {
 		log.Printf("v%s listening HTTPS on %s, %s", version, *listen, source)

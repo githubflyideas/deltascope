@@ -22,7 +22,7 @@ func TestNextStepTargetsCulpritPID(t *testing.T) {
 	pd := state.ProcDiff{Rows: []state.ProcRow{
 		{Name: "sh", PID: 1291929, CPUPctB: fp(99), FromZero: true},
 	}}
-	synthesize(out, nil, pd, state.Diff{})
+	synthesize(out, nil, 0, pd, state.Diff{})
 
 	if !containsStr(out.Culprit, "sh") {
 		t.Fatalf("culprit should be sh, got %q", out.Culprit)
@@ -51,7 +51,7 @@ func TestNoPIDFallsBackToGenericCommands(t *testing.T) {
 		Findings: []pcp.Finding{{Severity: "crit", Conclusion: "cpu", Next: []string{"pidstat 1 5"}}},
 	}
 	pd := state.ProcDiff{Rows: []state.ProcRow{{Name: "sh", PID: 0, CPUPctB: fp(99), FromZero: true}}}
-	synthesize(out, nil, pd, state.Diff{})
+	synthesize(out, nil, 0, pd, state.Diff{})
 	for _, c := range out.Next {
 		if containsStr(c, "-p 0") {
 			t.Errorf("must not emit a command with pid 0: %q", c)

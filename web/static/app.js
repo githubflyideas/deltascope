@@ -34,6 +34,17 @@ function toLocalInput(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// isRealTime rejects Go's zero time.Time as well as an absent value.
+//
+// A struct field of type time.Time that was never set marshals to
+// "0001-01-01T00:00:00Z", which is a non-empty string and therefore truthy.
+// Every "if (x) show a date" in this file is a place that would otherwise
+// render the year 1 as if it were a measurement -- and the one that mattered
+// printed a baseline window for a /proc sampler that had not collected one.
+function isRealTime(v) {
+  return !!v && !String(v).startsWith("0001-01-01");
+}
+
 // A <input type="datetime-local"> value is bare wall-clock text ("2026-07-29T18:54")
 // with no timezone. Sending it as-is forced the server to guess which zone it
 // meant, and it guessed its own -- so a browser even a few hours off from the
@@ -264,13 +275,20 @@ async function main() {
 // null for tabs that work regardless. Diagnose is deliberately null: it runs
 // three legs concurrently and each degrades on its own, so it stays useful
 // with the metric leg missing.
+//
+// Reasoning asks for "reasoning" rather than "metrics" because it has two
+// possible sources. The diff and the trend charts genuinely need an archive --
+// they answer questions about an arbitrary past window, and /proc cannot be
+// asked about the past. The reasoning chain only ever asks about now, which
+// /proc can answer, so gating it on PCP dimmed the most useful screen on a
+// PCP-less host for no reason.
 const TAB_NEEDS = {
   diag: null,
   diff: "metrics",
   trend: "metrics",
   proc: "change",
   change: "change",
-  reasoning: "metrics",
+  reasoning: "reasoning",
 };
 
 // LANDING_ORDER is the preference for which tab to open on load, first
@@ -279,7 +297,7 @@ const TAB_NEEDS = {
 // but /proc, so it always has something to show.
 const LANDING_ORDER = ["trend", "change", "diag", "diff", "proc", "reasoning"];
 
-let CAPS = { metrics: true, change: true, reason: "" };
+let CAPS = { metrics: true, change: true, reasoning: true, reason: "" };
 
 function activateTab(el) {
   if (!el) return;
@@ -300,7 +318,7 @@ function activateTab(el) {
 // machine with no PCP lands on an empty chart and a gateway error, which
 // reads as "this tool is broken" rather than "this tool needs pmlogger".
 function applyCapabilities(caps) {
-  CAPS = Object.assign({ metrics: true, change: true, reason: "" }, caps || {});
+  CAPS = Object.assign({ metrics: true, change: true, reasoning: true, reason: "" }, caps || {});
 
   document.querySelectorAll(".tab").forEach((el) => {
     const need = TAB_NEEDS[el.dataset.tab];
@@ -322,8 +340,13 @@ function applyCapabilities(caps) {
 function renderCapText() {
   document.querySelectorAll(".tab").forEach((el) => {
     if (!el.classList.contains("is-disabled")) return;
-    el.title = TAB_NEEDS[el.dataset.tab] === "metrics"
-      ? t("cap_tab_needs_pcp")
+    // Three reasons a tab can be dark, and they need three different
+    // sentences: the reasoning tab is only ever disabled when BOTH an archive
+    // and /proc are missing, so telling its reader to install pcp would send
+    // them after the wrong thing.
+    const need = TAB_NEEDS[el.dataset.tab];
+    el.title = need === "metrics" ? t("cap_tab_needs_pcp")
+      : need === "reasoning" ? t("cap_tab_needs_any_metrics")
       : t("cap_tab_needs_store");
   });
 
@@ -332,7 +355,14 @@ function renderCapText() {
     box.classList.add("hidden");
     return;
   }
-  box.innerHTML = t("cap_metrics_off_html", escapeHtml(CAPS.reason || ""));
+  // Two different banners, because the two situations call for two different
+  // actions. With /proc behind the reasoning chain there is still a working
+  // engine on this host and the reader should be told which screens moved;
+  // with neither source there is nothing to measure with and the honest
+  // message is that no performance question can be answered at all.
+  box.innerHTML = CAPS.reasoning
+    ? t("cap_metrics_off_html", escapeHtml(CAPS.reason || ""))
+    : t("cap_no_metrics_html", escapeHtml(CAPS.reason || ""));
   box.classList.remove("hidden");
   // The footer chip normally names the archive directory being compared.
   // With no archive to read, that path is not being touched at all, so
@@ -555,10 +585,22 @@ function renderTriage(triage, rows) {
         }
       }
     }));
-  board.querySelectorAll(".triage-jump[data-tab-jump]").forEach((btn) =>
+  wireTabJumps(board);
+}
+
+// wireTabJumps turns any [data-tab-jump] inside root into a tab switch. Shared
+// by the triage board and the one-click page rather than duplicated, because
+// clicking the real tab button is what matters: activateTab() is where the
+// lazy per-tab init runs, so synthesising the switch by hand would land the
+// reader on a tab that had never fetched anything.
+function wireTabJumps(root) {
+  root.querySelectorAll("[data-tab-jump]").forEach((btn) =>
     btn.addEventListener("click", () => {
-      const tab = [...document.querySelectorAll(".tab")].find((t) => t.dataset.tab === btn.dataset.tabJump);
-      if (tab) tab.click();
+      const tab = [...document.querySelectorAll(".tab")]
+        .find((x) => x.dataset.tab === btn.dataset.tabJump);
+      if (!tab || tab.classList.contains("is-disabled")) return;
+      tab.click();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }));
 }
 
@@ -1202,11 +1244,16 @@ function diagInit() {
   runDiagnose();
 }
 
+// "unknown" is not a shade of info. It is the verdict for a window where
+// nothing was measured, and it has to look unlike the other four: a grey
+// card with no coloured edge, so a reader skimming for colour does not read
+// it as a clean bill of health.
 const SEV_STYLE = {
-  crit: { cls: "d-crit", icon: "\u{1F534}", key: "sev_crit" },
-  warn: { cls: "d-warn", icon: "\u{1F7E1}", key: "sev_warn" },
-  info: { cls: "d-info", icon: "\u{1F535}", key: "sev_info" },
-  ok:   { cls: "d-ok",   icon: "\u{1F7E2}", key: "sev_ok" },
+  crit:    { cls: "d-crit", icon: "\u{1F534}", key: "sev_crit" },
+  warn:    { cls: "d-warn", icon: "\u{1F7E1}", key: "sev_warn" },
+  info:    { cls: "d-info", icon: "\u{1F535}", key: "sev_info" },
+  ok:      { cls: "d-ok",   icon: "\u{1F7E2}", key: "sev_ok" },
+  unknown: { cls: "d-unknown", icon: "\u{26AA}", key: "sev_unknown" },
 };
 
 async function runDiagnose() {
@@ -1340,7 +1387,26 @@ function renderDiagnosis(d) {
       <table class="report"><tbody>${trs}</tbody></table></details>`;
   }
 
+  // The one-click page is deliberately an answer, not a derivation: a
+  // headline, who is responsible, what changed. The reasoning tab is the same
+  // engine over the same kind of window with everything shown -- every state
+  // that was checked, the ones that could not be measured, and the resources
+  // the metric engine flagged that no diagnosis covers.
+  //
+  // That last case is why this link is unconditional. When no diagnosis fires,
+  // this page has the least to say and the reasoning tab has the most: it can
+  // still name the flagged resource and say how many states came back quiet.
+  // Rendering the link only alongside a reasoning section would hide it in
+  // exactly the situation that sends people looking for it.
+  if (CAPS.reasoning) {
+    html += `<div class="diag-more">
+      <button class="btn btn-ghost diag-more-btn" data-tab-jump="reasoning">${t("diag_see_reasoning")}</button>
+      <span class="diag-more-hint">${t("diag_see_reasoning_hint")}</span>
+    </div>`;
+  }
+
   $("#diagResult").innerHTML = html;
+  wireTabJumps($("#diagResult"));
 }
 
 
@@ -1414,23 +1480,18 @@ function applyTheme(name) {
 let reasoningReady = false;
 let lastReasoning = null;
 
-function reasoningPreset30() {
-  // Default and the "Last 30 min" button both land here: B is the last 30
-  // minutes, A the 30 minutes before it, so the chain compares the machine
-  // now against its own immediate past rather than against yesterday.
-  const now = new Date();
-  const half = 30 * 60e3;
-  $("#rsBEnd").value = toLocalInput(now);
-  $("#rsBStart").value = toLocalInput(new Date(now - half));
-  $("#rsAEnd").value = toLocalInput(new Date(now - half));
-  $("#rsAStart").value = toLocalInput(new Date(now - 2 * half));
-}
+// This tab has no window pickers, and that is deliberate. It answers "what is
+// wrong with this machine now" -- the last half hour against the half hour
+// before it on a host with archives, or whatever the /proc sampler is holding
+// on one without. Offering the same four datetime inputs the Regression Diff
+// tab has made the two screens read as duplicates of each other while giving
+// this one nothing the other did not already have; the difference that earns
+// two tabs is depth, not window. The server ignores the old parameters, so a
+// page cached from before this change still works.
 
 function reasoningInit() {
   if (reasoningReady) return;
   reasoningReady = true;
-  reasoningPreset30();
-  $("#rsRecent").addEventListener("click", () => { reasoningPreset30(); runReasoning(); });
   $("#reasoningRun").addEventListener("click", runReasoning);
   runReasoning();
 }
@@ -1442,11 +1503,7 @@ async function runReasoning() {
   btn.disabled = true;
   btn.textContent = t("reasoning_running");
   try {
-    const q = new URLSearchParams({
-      a_start: inputToISO($("#rsAStart").value), a_end: inputToISO($("#rsAEnd").value),
-      b_start: inputToISO($("#rsBStart").value), b_end: inputToISO($("#rsBEnd").value),
-    });
-    const d = await api("/api/reasoning?" + q.toString());
+    const d = await api("/api/reasoning");
     lastReasoning = d;
     renderReasoning(d);
     $("#reasoningEmpty").classList.add("hidden");
@@ -1460,15 +1517,112 @@ async function runReasoning() {
   }
 }
 
+// renderUnexplained is the cross-check between the two engines, and it is what
+// lets this tab be the fullest report rather than the narrowest one.
+//
+// The metric engine is relative: it flags a metric that moved a long way from
+// its baseline. Every state in this catalog is absolute or scale-relative -- a
+// load average is high once it passes four times the core count, a core counts
+// as pegged at 850 ms/s on any machine. Those are different questions, and a
+// load average that jumped tenfold off an idle baseline answers yes to the
+// first and no to the second. Neither engine is wrong. But a reader looking at
+// one warn about the network concludes the CPU is fine, while the other engine
+// has just called it degraded -- so the disagreement itself belongs on screen,
+// naming the resource and pointing at the states that were checked and came
+// back quiet. That last part is the answer to "why did the chain say nothing",
+// and it is already in the payload; this only says where to look.
+function renderUnexplained(d) {
+  const blocks = d.unexplained || [];
+  if (!blocks.length) return "";
+  const states = d.states || [];
+  const items = blocks.map((b) => {
+    const domains = b.domains || [];
+    const inDomain = states.filter((s) => domains.includes(s.domain));
+    const quiet = inDomain.filter((s) => !s.active && !s.reason).length;
+    const gaps = inDomain.filter((s) => !s.active && s.reason).length;
+    const sv = b.status === "bad" ? SEV_STYLE.crit : SEV_STYLE.warn;
+    // The gap count is kept separate from the quiet count for the same reason
+    // the state table keeps them separate: a state whose metric this source
+    // never recorded is not a state that came back clean, and folding the two
+    // together is how "nothing matched" comes to sound like "nothing is wrong".
+    const counts = gaps
+      ? t("rs_unexplained_counts_partial", quiet, gaps)
+      : t("rs_unexplained_counts", quiet);
+    return `<div class="diag-verdict ${sv.cls} dv-unexplained">
+      <div class="dv-top"><span class="dv-badge">${sv.icon} ${escapeHtml(b.label)}</span>
+        <span class="rsn-id">${escapeHtml(b.headline || "")}</span></div>
+      <div class="dv-headline">${t("rs_unexplained_body", escapeHtml(b.label))}</div>
+      <div class="dv-evidence">${counts}</div>
+    </div>`;
+  }).join("");
+  return `<div class="cat-head" style="margin-top:18px"><span>${t("rs_unexplained_head")}</span>` +
+    `<span>${blocks.length}</span></div>${items}`;
+}
+
+// renderReasoningProcs is the other leg the chain cannot supply on its own.
+// Every metric it reasons over is machine-wide, so it can describe a CPU
+// problem completely and still never say which process is causing it. Process
+// figures come from the snapshot store, which needs no PCP, so there is no host
+// where the states are answerable and this panel is not.
+//
+// Deliberately the same columns and the same formatters as the Process
+// Accounting tab: this is the same data, and two different presentations of it
+// would make a reader wonder which one to believe.
+function renderReasoningProcs(rows) {
+  if (!rows || !rows.length) return "";
+  const trs = rows.map((r) => {
+    const v = PV[r.verdict] || PV.flat;
+    const mark = r.restarted ? ` <span class="restart-tag">⟳</span>` : "";
+    const inst = r.instances > 1 ? ` <code>${r.instances}×</code>` : "";
+    return `<tr class="${v.cls}">
+      <td class="proc-name"><span class="p-dot">${v.icon}</span>${escapeHtml(r.name)}${mark}${inst}</td>
+      <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td>
+      <td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
+      <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
+      <td class="delta-cell">${deltaValFrom(r.rss_delta_pct, r.from_zero)}</td>
+      <td>${t(v.key)}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="cat-block" style="margin-top:18px"><div class="cat-head">
+      <span>${t("rs_procs_head")}</span><span>${rows.length}</span></div>
+    <table class="report"><thead>
+      <tr class="grp-head">
+        <th></th>
+        <th colspan="3" class="grp grp-cpu">${t("group_cpu")}</th>
+        <th colspan="3" class="grp grp-mem">${t("group_mem")}</th>
+        <th></th>
+      </tr>
+      <tr>
+        <th>${t("th_process")}</th>
+        <th>A</th><th>B</th><th>${t("th_delta")}</th>
+        <th>A</th><th>B</th><th>${t("th_delta")}</th>
+        <th>${t("th_verdict")}</th>
+      </tr></thead><tbody>${trs}</tbody></table>
+    <div class="table-legend">${t("rs_procs_legend")}</div></div>`;
+}
+
 function renderReasoning(d) {
   const w = d.window || {};
-  const fmt = (x) => x ? new Date(x).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  const fmt = (x) => isRealTime(x) ? new Date(x).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
   // The core count is shown because every scale-relative threshold is
   // derived from it -- a reader checking whether a verdict is reasonable
   // needs to know what "50% of capacity" was measured against.
   const ncpu = d.machine && d.machine.ncpu ? ` \u00b7 ${d.machine.ncpu} CPU` : "";
-  $("#reasoningWindow").textContent = w.label
-    ? `${w.label} \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}${ncpu}` : "";
+  // "A vs B" only when there is an A. A /proc window that has not collected
+  // enough history to split has a zero baseline timestamp, and Go marshals
+  // that as 0001-01-01T00:00:00Z -- a truthy string, so the old check printed
+  // "A 01/01 00:00 vs B ..." and asserted a comparison against the year 1.
+  const span = isRealTime(w.a_start)
+    ? ` \u00b7 A ${fmt(w.a_start)} vs B ${fmt(w.b_start)}`
+    : (isRealTime(w.b_start) ? ` \u00b7 ${fmt(w.b_start)} \u2013 ${fmt(w.b_end)}` : "");
+  $("#reasoningWindow").textContent = w.label ? `${w.label}${span}${ncpu}` : "";
+
+  // The server's note explains what this window could not answer -- a missing
+  // baseline, or that /proc answered instead of an archive. It is the only
+  // thing on screen that distinguishes "checked and fine" from "not checked".
+  const noteBox = $("#reasoningNote");
+  noteBox.textContent = d.note || "";
+  noteBox.classList.toggle("hidden", !d.note);
 
   let html = "";
   const diags = d.diagnoses || [];
@@ -1481,11 +1635,17 @@ function renderReasoning(d) {
     // human-readable signal even before the catalog has an opinion about
     // what combination it means.
     const activeStates = (d.states || []).filter((s) => s.active);
+    const gapCount = (d.states || []).filter((s) => !s.active && s.reason).length;
     if (activeStates.length) {
       html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_active_no_pattern", activeStates.length)}` +
         `<div style="margin-top:8px">` +
         activeStates.map((s) => `<code class="rsn-id">${escapeHtml(s.id)}</code>`).join(" ") +
         `</div></div>`;
+    } else if (gapCount) {
+      // A green tick over an archive that could not answer most of the
+      // catalog is the one message this screen must never show. Nothing
+      // matched is only good news about the states that were measured.
+      html += `<div class="no-finding nf-unknown" style="margin-bottom:18px">${t("reasoning_no_diagnosis_partial", gapCount)}</div>`;
     } else {
       html += `<div class="no-finding" style="margin-bottom:18px">${t("reasoning_no_diagnosis")}</div>`;
     }
@@ -1511,12 +1671,18 @@ function renderReasoning(d) {
     }).join("");
   }
 
-  // Show every state that was checked, including the ones that did NOT
-  // hold: a diagnosis that hinges on something being absent can only be
-  // audited if the reader can see that it was actually checked.
+  html += renderUnexplained(d);
+  html += renderReasoningProcs(d.processes);
+
+  // Show every state in one of three conditions: it held, it was checked and
+  // did not hold, or it could not be checked. A diagnosis that hinges on
+  // something being absent can only be audited if the reader can see that it
+  // was actually checked -- and an unmeasured state listed as "not met" is
+  // the opposite of an audit, because it asserts a negative nobody verified.
   const states = d.states || [];
   if (states.length) {
     const activeCount = states.filter((x) => x.active).length;
+    const gapTotal = states.filter((x) => !x.active && x.reason).length;
 
     // Grouped by domain, and the active ones first within each group. A flat
     // list was fine at 17 states; at ~60 the reader needs the shape of the
@@ -1530,30 +1696,45 @@ function renderReasoning(d) {
     });
 
     const stateRow = (st) => {
-      const cls = st.active ? "v-worse" : "v-flat";
-      const mark = st.active ? "\u25CF" : "\u25CB";
-      const label = st.active ? t("reasoning_active") : t("reasoning_inactive");
+      const unknown = !st.active && !!st.reason;
+      // Three marks for three answers. The unmeasured mark is deliberately
+      // not the empty circle used for "checked and did not hold".
+      const cls = st.active ? "v-worse" : unknown ? "v-unknown" : "v-flat";
+      const mark = st.active ? "\u25CF" : unknown ? "\u25CC" : "\u25CB";
+      const label = st.active
+        ? t("reasoning_active")
+        : unknown ? t("reasoning_unmeasured") : t("reasoning_inactive");
+      // The reason takes the evidence column: for an unmeasured state, why it
+      // could not be judged IS the only evidence there is.
+      const detail = unknown
+        ? escapeHtml(st.reason)
+        : (st.evidence && st.evidence.length ? st.evidence.map(escapeHtml).join(" \u00b7 ") : "");
       return `<tr class="${cls}">
         <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code></span>
-          ${st.evidence && st.evidence.length ? `<span class="m-name">${st.evidence.map(escapeHtml).join(" \u00b7 ")}</span>` : ""}</td>
+          ${detail ? `<span class="m-name">${detail}</span>` : ""}</td>
         <td>${label}</td>
       </tr>`;
     };
 
     const groups = [...byDomain.entries()].map(([domain, list]) => {
       const act = list.filter((x) => x.active);
-      const inact = list.filter((x) => !x.active);
-      const rows = [...act, ...inact].map(stateRow).join("");
-      // Groups with nothing active start collapsed: the negative evidence
-      // stays available for auditing without pushing the findings off screen.
+      const gaps = list.filter((x) => !x.active && x.reason);
+      const quiet = list.filter((x) => !x.active && !x.reason);
+      const rows = [...act, ...gaps, ...quiet].map(stateRow).join("");
+      // Active first, then the unmeasured, then the quiet ones: the two
+      // groups that carry information lead. The denominator counts only the
+      // states this window could actually answer, so a domain where nothing
+      // was measured cannot read as "0 / 12 active".
       const open = act.length ? " open" : "";
+      const gapNote = gaps.length
+        ? ` \u00b7 ${gaps.length} ${t("reasoning_unmeasured")}` : "";
       return `<details class="cat-block"${open}><summary class="cat-head">
-        <span>${escapeHtml(domain)}</span><span>${act.length} / ${list.length} ${t("reasoning_active")}</span></summary>
+        <span>${escapeHtml(domain)}</span><span>${act.length} / ${list.length - gaps.length} ${t("reasoning_active")}${gapNote}</span></summary>
         <table class="report"><tbody>${rows}</tbody></table></details>`;
     }).join("");
 
     html += `<div class="cat-head" style="margin-top:18px">
-        <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length} ${t("reasoning_active")}</span>
+        <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length - gapTotal} ${t("reasoning_active")}${gapTotal ? ` \u00b7 ${gapTotal} ${t("reasoning_unmeasured")}` : ""}</span>
       </div>${groups}`;
   }
 

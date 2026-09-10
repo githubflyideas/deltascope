@@ -150,14 +150,9 @@ func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active
 	// Derived rows are computed here rather than by the caller so that
 	// every entry point into the state layer sees them. A state that
 	// depends on a derived metric would otherwise silently never fire
-	// depending on which code path built the row set.
-	byMetric := map[string][]pcp.DiffRow{}
-	for _, r := range rows {
-		byMetric[r.Metric] = append(byMetric[r.Metric], r)
-	}
-	for _, r := range Derive(rows) {
-		byMetric[r.Metric] = append(byMetric[r.Metric], r)
-	}
+	// depending on which code path built the row set. Unevaluated indexes
+	// the same way, through the same helper, so the two answers cannot drift.
+	byMetric := indexWithDerived(rows)
 
 	out := map[string]Active{}
 	for _, st := range states {

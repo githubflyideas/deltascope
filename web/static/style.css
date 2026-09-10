@@ -185,6 +185,14 @@ table.report { width: 100%; border-collapse: collapse; }
 .report tr.v-watch td.delta-cell { color: var(--warn); }
 .report tr.v-flat td { color: var(--muted); }
 .report tr.v-flat td.metric-cell .m-label { color: var(--muted); }
+/* An unmeasured state is dimmed like a quiet one -- it is not a finding --
+   but it keeps a dashed left edge so it is not silently one of the rows the
+   reader is scrolling past. "Not checked" must be visible without looking
+   like an alert. */
+.report tr.v-unknown td { color: var(--muted); }
+.report tr.v-unknown td.metric-cell { border-left: 2px dashed var(--line); padding-left: 8px; }
+.report tr.v-unknown td.metric-cell .m-label { color: var(--muted); font-style: italic; }
+.no-finding.nf-unknown { border-style: solid; border-color: var(--muted); }
 .units-cell { color: var(--muted); font-size: 13px; }
 
 .delta-bar-wrap { display: inline-block; width: 90px; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; vertical-align: middle; margin-left: 8px; position: relative; }
@@ -382,6 +390,9 @@ tr[hidden] { display: none; }
 .diag-verdict.d-warn { border-left-color: var(--warn); background: var(--warn-dim); }
 .diag-verdict.d-info { border-left-color: var(--a); background: var(--a-dim); }
 .diag-verdict.d-ok   { border-left-color: var(--good); background: var(--good-dim); }
+/* Deliberately colourless: "nothing was measured" must not borrow the
+   green of a healthy verdict or the blue of an informational one. */
+.diag-verdict.d-unknown { border-left-color: var(--muted); background: transparent; }
 .dv-badge { font-family: var(--mono); font-size: 12.5px; letter-spacing: 1.5px; font-weight: 700; color: var(--muted); }
 .dv-headline { font-size: 20px; line-height: 1.5; color: var(--ink); margin: 8px 0 4px; font-weight: 500; }
 .dv-chain { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -564,3 +575,22 @@ body.theme-iris-light .report tr[data-bg] { mix-blend-mode: multiply; }
 
 .rsn-id { margin-left: auto; font-size: 11px; color: var(--muted); opacity: .8; }
 .diag-verdict .dv-top { display: flex; align-items: center; gap: 10px; }
+
+/* The reasoning tab has one control and one sentence explaining why there are
+   no others. Same shape as .diag-hero, which is the other single-button tab. */
+.rs-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.rs-fixed-note { color: var(--muted); font-size: 13.5px; line-height: 1.5; max-width: 62ch; }
+
+/* The hand-off at the foot of the one-click page. Separated by a rule rather
+   than boxed: it is a way out of the page, not another finding on it. */
+.diag-more { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.diag-more-btn { flex-shrink: 0; }
+.diag-more-hint { color: var(--muted); font-size: 13.5px; line-height: 1.5; max-width: 62ch; }
+
+/* An unexplained block is a disagreement between the two engines, not a
+   verdict of its own, so it is drawn a step quieter than a diagnosis: dashed
+   left edge, no tinted fill. The severity colour still comes through, because
+   which resource the metric engine flagged is the point. */
+.diag-verdict.dv-unexplained { border-left-style: dashed; background: var(--panel); }
+.diag-verdict.dv-unexplained .dv-headline { font-size: 16px; color: var(--muted); }
