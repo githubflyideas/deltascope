@@ -72,16 +72,10 @@ en: {
   footer_text: "Offline comparison against local historical archives · default 7-day retention, configurable",
 
   login_sub: "Whole-machine change & performance diagnostics · local auth",
-  setup_lead: "No admin account exists yet. Create one to finish setting up this server.",
   label_username: "Username",
   label_password: "Password",
-  password_hint: "at least 8 characters",
-  create_admin: "Create admin account",
   sign_in: "Sign in",
   login_foot: "Credentials are stored locally only; nothing is sent to any external service",
-  status_failed: (msg) =>
-    "Could not ask the server whether this install already has an admin account: " + msg,
-  retry: "Try again",
 
   verdict_worse: "worse", verdict_better: "better", verdict_watch: "watch",
   verdict_flat: "flat", verdict_appeared: "appeared", verdict_gone: "gone",
@@ -214,15 +208,10 @@ zh: {
   footer_text: "对本机历史归档做离线对比 · 默认保留 7 天,可配置",
 
   login_sub: "全机变更与性能诊断 · 本地认证",
-  setup_lead: "尚未创建管理员账号。创建一个以完成本服务器的初始设置。",
   label_username: "用户名",
   label_password: "密码",
-  password_hint: "至少 8 位",
-  create_admin: "创建管理员账号",
   sign_in: "登录",
   login_foot: "凭证仅保存在本机,不会发送到任何外部服务",
-  status_failed: (msg) => "无法向服务端确认本机是否已经有管理员账号:" + msg,
-  retry: "重试",
 
   verdict_worse: "恶化", verdict_better: "改善", verdict_watch: "关注",
   verdict_flat: "平稳", verdict_appeared: "新出现", verdict_gone: "已消失",
@@ -355,16 +344,10 @@ es: {
   footer_text: "Comparación sin conexión con archivos históricos locales · retención de 7 días por defecto, configurable",
 
   login_sub: "Diagnóstico de cambios y rendimiento del sistema · autenticación local",
-  setup_lead: "Aún no existe una cuenta de administrador. Crea una para terminar de configurar este servidor.",
   label_username: "Usuario",
   label_password: "Contraseña",
-  password_hint: "al menos 8 caracteres",
-  create_admin: "Crear cuenta de administrador",
   sign_in: "Iniciar sesión",
   login_foot: "Las credenciales se guardan solo localmente; no se envían a ningún servicio externo",
-  status_failed: (msg) =>
-    "No se pudo consultar al servidor si esta instalación ya tiene una cuenta de administrador: " + msg,
-  retry: "Reintentar",
 
   verdict_worse: "peor", verdict_better: "mejor", verdict_watch: "vigilar",
   verdict_flat: "estable", verdict_appeared: "nuevo", verdict_gone: "desaparecido",
@@ -497,16 +480,10 @@ fr: {
   footer_text: "Comparaison hors ligne avec les archives historiques locales · rétention de 7 jours par défaut, configurable",
 
   login_sub: "Diagnostic des changements et de la performance machine · authentification locale",
-  setup_lead: "Aucun compte administrateur n'existe encore. Créez-en un pour terminer la configuration de ce serveur.",
   label_username: "Nom d'utilisateur",
   label_password: "Mot de passe",
-  password_hint: "8 caractères minimum",
-  create_admin: "Créer le compte administrateur",
   sign_in: "Se connecter",
   login_foot: "Les identifiants sont stockés localement uniquement ; rien n'est envoyé à un service externe",
-  status_failed: (msg) =>
-    "Impossible de demander au serveur si cette installation possède déjà un compte administrateur : " + msg,
-  retry: "Réessayer",
 
   verdict_worse: "dégradé", verdict_better: "amélioré", verdict_watch: "à surveiller",
   verdict_flat: "stable", verdict_appeared: "apparu", verdict_gone: "disparu",
@@ -639,16 +616,10 @@ pt: {
   footer_text: "Comparação offline com arquivos históricos locais · retenção padrão de 7 dias, configurável",
 
   login_sub: "Diagnóstico de mudanças e desempenho da máquina · autenticação local",
-  setup_lead: "Ainda não existe uma conta de administrador. Crie uma para concluir a configuração deste servidor.",
   label_username: "Usuário",
   label_password: "Senha",
-  password_hint: "mínimo de 8 caracteres",
-  create_admin: "Criar conta de administrador",
   sign_in: "Entrar",
   login_foot: "As credenciais são armazenadas apenas localmente; nada é enviado a serviços externos",
-  status_failed: (msg) =>
-    "Não foi possível perguntar ao servidor se esta instalação já tem uma conta de administrador: " + msg,
-  retry: "Tentar novamente",
 
   verdict_worse: "pior", verdict_better: "melhor", verdict_watch: "observar",
   verdict_flat: "estável", verdict_appeared: "novo", verdict_gone: "sumiu",
@@ -781,16 +752,10 @@ de: {
   footer_text: "Offline-Vergleich mit lokalen historischen Archiven · Standardaufbewahrung 7 Tage, konfigurierbar",
 
   login_sub: "Diagnose von Änderungen & Leistung der Maschine · lokale Authentifizierung",
-  setup_lead: "Es existiert noch kein Administratorkonto. Erstelle eines, um die Einrichtung dieses Servers abzuschließen.",
   label_username: "Benutzername",
   label_password: "Passwort",
-  password_hint: "mindestens 8 Zeichen",
-  create_admin: "Administratorkonto erstellen",
   sign_in: "Anmelden",
   login_foot: "Zugangsdaten werden nur lokal gespeichert; nichts wird an externe Dienste gesendet",
-  status_failed: (msg) =>
-    "Der Server konnte nicht gefragt werden, ob diese Installation schon ein Administratorkonto hat: " + msg,
-  retry: "Erneut versuchen",
 
   verdict_worse: "schlechter", verdict_better: "besser", verdict_watch: "beobachten",
   verdict_flat: "stabil", verdict_appeared: "neu", verdict_gone: "verschwunden",
@@ -923,16 +888,10 @@ ru: {
   footer_text: "Офлайн-сравнение с локальными историческими архивами · хранение по умолчанию 7 дней, настраивается",
 
   login_sub: "Диагностика изменений и производительности машины · локальная аутентификация",
-  setup_lead: "Учётная запись администратора ещё не создана. Создайте её, чтобы завершить настройку сервера.",
   label_username: "Имя пользователя",
   label_password: "Пароль",
-  password_hint: "минимум 8 символов",
-  create_admin: "Создать учётную запись администратора",
   sign_in: "Войти",
   login_foot: "Учётные данные хранятся только локально; ничего не отправляется во внешние сервисы",
-  status_failed: (msg) =>
-    "Не удалось узнать у сервера, есть ли на этой установке учётная запись администратора: " + msg,
-  retry: "Повторить",
 
   verdict_worse: "хуже", verdict_better: "лучше", verdict_watch: "наблюдать",
   verdict_flat: "стабильно", verdict_appeared: "появилось", verdict_gone: "исчезло",
@@ -1065,16 +1024,10 @@ ja: {
   footer_text: "ローカルの過去アーカイブとのオフライン比較 · デフォルトの保持期間は7日間、設定変更可能",
 
   login_sub: "マシン全体の変更とパフォーマンスの診断 · ローカル認証",
-  setup_lead: "管理者アカウントがまだ存在しません。このサーバーの設定を完了するには作成してください。",
   label_username: "ユーザー名",
   label_password: "パスワード",
-  password_hint: "8文字以上",
-  create_admin: "管理者アカウントを作成",
   sign_in: "サインイン",
   login_foot: "認証情報はローカルにのみ保存され、外部サービスには一切送信されません",
-  status_failed: (msg) =>
-    "この環境に管理者アカウントがすでにあるかどうかをサーバーに確認できませんでした: " + msg,
-  retry: "再試行",
 
   verdict_worse: "悪化", verdict_better: "改善", verdict_watch: "要注意",
   verdict_flat: "変化なし", verdict_appeared: "新規", verdict_gone: "消失",
@@ -1207,16 +1160,10 @@ ko: {
   footer_text: "로컬 이력 아카이브와의 오프라인 비교 · 기본 보존 기간 7일, 설정 가능",
 
   login_sub: "전체 시스템 변경 및 성능 진단 · 로컬 인증",
-  setup_lead: "아직 관리자 계정이 없습니다. 이 서버 설정을 완료하려면 계정을 생성하세요.",
   label_username: "사용자 이름",
   label_password: "비밀번호",
-  password_hint: "최소 8자",
-  create_admin: "관리자 계정 생성",
   sign_in: "로그인",
   login_foot: "자격 증명은 로컬에만 저장되며 외부 서비스로 전송되지 않습니다",
-  status_failed: (msg) =>
-    "이 설치에 이미 관리자 계정이 있는지 서버에 확인할 수 없습니다: " + msg,
-  retry: "다시 시도",
 
   verdict_worse: "악화", verdict_better: "개선", verdict_watch: "주의",
   verdict_flat: "변화 없음", verdict_appeared: "신규", verdict_gone: "사라짐",
@@ -1349,16 +1296,10 @@ id: {
   footer_text: "Perbandingan offline dengan arsip historis lokal · retensi default 7 hari, dapat dikonfigurasi",
 
   login_sub: "Diagnosis perubahan & performa seluruh mesin · autentikasi lokal",
-  setup_lead: "Belum ada akun admin. Buat satu untuk menyelesaikan pengaturan server ini.",
   label_username: "Nama pengguna",
   label_password: "Kata sandi",
-  password_hint: "minimal 8 karakter",
-  create_admin: "Buat akun admin",
   sign_in: "Masuk",
   login_foot: "Kredensial hanya disimpan secara lokal; tidak ada yang dikirim ke layanan eksternal",
-  status_failed: (msg) =>
-    "Tidak dapat menanyakan ke server apakah instalasi ini sudah punya akun admin: " + msg,
-  retry: "Coba lagi",
 
   verdict_worse: "memburuk", verdict_better: "membaik", verdict_watch: "diawasi",
   verdict_flat: "stabil", verdict_appeared: "muncul", verdict_gone: "hilang",

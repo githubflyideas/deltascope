@@ -236,8 +236,13 @@ const DIAG_FULL = {
   notes: ["No snapshots cover the baseline half."],
   window: { label: "last hour vs the same hour yesterday", a_start: "2026-09-09T14:00:00Z", b_start: "2026-09-10T14:00:00Z" },
   triage: [
-    { key: "cpu", label: "CPU", status: "bad", headline: "System load[15 minute] +spike" },
-    { key: "mem", label: "Memory", status: "ok", headline: "flat" },
+    { key: "cpu", label: "CPU", status: "bad", headline: "System load[15 minute] +spike",
+      improved: "Steal time -80%", improved_pct: -80 },
+    // A block that is green AND carries an improvement, plus a red block that
+    // also improved on a second metric: the improvement line has to render in
+    // both, since suppressing it under a red light would hide half the window.
+    { key: "mem", label: "Memory", status: "ok", headline: "flat",
+      improved: "Available memory +140%", improved_pct: 140 },
   ],
   reasoning: [
     { id: "diag.cpu.runaway", severity: "crit", conclusion: "A single process is consuming a core",
@@ -285,6 +290,7 @@ const DIAG_BARE = {
           "A single process is consuming a core", "I/O waits grew behind the CPU",
           "rc-child", "No snapshots cover the baseline half.",
           'data-tab-jump="reasoning"',
+          "Available memory +140%", "Steal time -80%", "tc-improved",
         ]);
       }
     }

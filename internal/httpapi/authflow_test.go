@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -73,8 +75,7 @@ func TestSessionSurvivesNothingElseChanging(t *testing.T) {
 // Deleting the account has to end its sessions. The token is signed and
 // self-contained, so before the credential fingerprint check it stayed valid
 // for its full TTL: the operator deleted the admin to start over, and the
-// browser they were holding open still had the whole UI -- and, because /
-// still authenticated, /login never offered to create the first admin again.
+// browser they were holding open still had the whole UI.
 func TestDeletingTheAccountEndsItsSessions(t *testing.T) {
 	s := testServer(t)
 	hash, _ := auth.HashPassword("hunter2hunter2")
@@ -86,14 +87,6 @@ func TestDeletingTheAccountEndsItsSessions(t *testing.T) {
 	}
 	if got := s.currentUser(authedRequest(c)); got != "" {
 		t.Errorf("session still authenticates as %q after the account was deleted", got)
-	}
-
-	// And the setup flow must now be reachable again, since that is the whole
-	// point of deleting the last account.
-	rec := httptest.NewRecorder()
-	s.handleSetupStatus(rec, httptest.NewRequest("GET", "/api/setup-status", nil))
-	if !strings.Contains(rec.Body.String(), `"needs_setup":true`) {
-		t.Errorf("setup-status = %s, want needs_setup true after the last account was deleted", rec.Body)
 	}
 }
 
@@ -129,32 +122,42 @@ func TestNoCookieIsNotAuthenticated(t *testing.T) {
 	}
 }
 
-// The first admin can only ever be created once; a second call has to be
-// refused, or the unauthenticated setup endpoint would be a way in on an
-// already-configured server.
-func TestSetupOnlyWorksOnce(t *testing.T) {
+// There is no unauthenticated write path any more. The web setup endpoint was
+// the one route that could create an account without a session; accounts now
+// come from `serve -user`, so nothing reachable from the network can add one.
+// This asserts the absence, because a route left mounted after its UI was
+// deleted is exactly the kind of thing that survives a refactor unnoticed.
+func TestNoUnauthenticatedAccountCreationRoute(t *testing.T) {
 	s := testServer(t)
-	body := `{"username":"admin","password":"hunter2hunter2"}`
+	s.Store.UpsertUser("admin", mustHash(t, "hunter2hunter2"))
+	s.WebFS = emptyFS{}
+	h := s.Routes()
 
-	rec := httptest.NewRecorder()
-	s.handleSetup(rec, httptest.NewRequest("POST", "/api/setup", strings.NewReader(body)))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("first setup failed: %d %s", rec.Code, rec.Body)
+	for _, tc := range []struct{ method, path string }{
+		{"POST", "/api/setup"},
+		{"GET", "/api/setup-status"},
+	} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path,
+			strings.NewReader(`{"username":"intruder","password":"hunter2hunter2"}`)))
+		if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s %s returned %d, want it gone", tc.method, tc.path, rec.Code)
+		}
 	}
-	// The account it creates must be usable immediately, with the password as
-	// typed -- this is the "the password only worked that one time" path.
-	login(t, s, "admin", "hunter2hunter2")
-
-	rec = httptest.NewRecorder()
-	s.handleSetup(rec, httptest.NewRequest("POST", "/api/setup", strings.NewReader(body)))
-	if rec.Code != http.StatusConflict {
-		t.Errorf("second setup returned %d, want 409", rec.Code)
+	if _, err := s.Store.PasswordHash("intruder"); !errors.Is(err, store.ErrNotFound) {
+		t.Error("an unauthenticated request created an account")
 	}
 }
 
-// A password written through the web setup form has to verify against a
-// freshly opened store, not just the one that wrote it: the report behind
-// this was "the password only works for the run that created it".
+// emptyFS stands in for the embedded web assets: Routes needs an fs.FS to build
+// the static handler, and this test never fetches a page.
+type emptyFS struct{}
+
+func (emptyFS) Open(string) (fs.File, error) { return nil, fs.ErrNotExist }
+
+// A password written the way `serve -user` writes it has to verify against a
+// freshly opened store, not just the one that wrote it: the report behind this
+// was "the password only works for the run that created it".
 func TestCredentialSurvivesReopeningTheDatabase(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "deltascope.db")
@@ -163,12 +166,8 @@ func TestCredentialSurvivesReopeningTheDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := httptest.NewRecorder()
-	s := &Server{Store: first, Limiter: auth.NewRateLimiter(10, time.Minute)}
-	s.handleSetup(rec, httptest.NewRequest("POST", "/api/setup",
-		strings.NewReader(`{"username":"admin","password":"hunter2hunter2"}`)))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("setup failed: %d %s", rec.Code, rec.Body)
+	if err := first.UpsertUser("admin", mustHash(t, "hunter2hunter2")); err != nil {
+		t.Fatal(err)
 	}
 	// Deliberately no Close(): the service is killed by systemd, and
 	// log.Fatal in the serve path skips the deferred close too, so recovery
@@ -181,7 +180,7 @@ func TestCredentialSurvivesReopeningTheDatabase(t *testing.T) {
 	defer second.Close()
 	hash, err := second.PasswordHash("admin")
 	if err != nil {
-		t.Fatalf("the account created via web setup is not in the reopened database: %v", err)
+		t.Fatalf("the account is not in the reopened database: %v", err)
 	}
 	if !auth.VerifyPassword(hash, "hunter2hunter2") {
 		t.Error("the password does not verify after the database was reopened")

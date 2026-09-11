@@ -83,21 +83,27 @@ ARM64 is in [`dist/`](dist/). Verify with `sha256sum -c dist/SHA256SUMS`.
 ## Quick start
 
 ```bash
-deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope
+deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope \
+  -user admin:choose-a-real-password
 ```
 
-Open it in a browser; the login page creates the admin account on first
-visit. State is snapshotted every 10 minutes, so history accumulates with
+Accounts are declared on the command line. `-user` repeats, so
+`-user admin:... -user oncall:...` gives you two, and they are written on
+every start — which is also how you fix a forgotten password: change the
+flag and restart. Nothing is created in the browser, and a server started
+with no account and none in its database refuses to start rather than
+listen on a port nobody can get through.
+
+The trade to know about: arguments are visible to other local users in
+`ps`, and they land in shell history and in the unit file. Where that is
+not acceptable, `deltascope user add <name>` writes the same table with the
+password read from `DSCOPE_PASSWORD` or a prompt, and `serve` then needs no
+`-user` at all.
+
+State is snapshotted every 10 minutes, so history accumulates with
 no cron job. The UI ships in ten languages and six themes, and any report
 exports as JSON.
 <img width="473" height="647" alt="image" src="https://github.com/user-attachments/assets/f38fca46-e2d6-4412-b07f-7c0c4420601e" />
-
-if you forget passwd 
- ./deltascope user del  admin 
- or
- rm  /var/lib/deltascope
- ./deltascope serve -listen 0.0.0.0:8080 
- add admin in web
 
 <img width="1233" height="181" alt="image" src="https://github.com/user-attachments/assets/2318b0ac-9855-4504-a962-f893fe0d621b" />
 

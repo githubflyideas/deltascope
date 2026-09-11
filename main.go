@@ -88,6 +88,9 @@ serve flags:
   -listen   listen address (default 127.0.0.1:8080)
   -archive  PCP archive directory (default /var/log/pcp/pmlogger/<hostname>)
   -data     data directory for SQLite and session keys (default /var/lib/deltascope)
+  -user     account as name:password, repeat for more than one; written on every
+            start, so this is where a forgotten password gets fixed. Arguments
+            are visible in ps -- use "user add" instead if that matters here.
   -tls-cert / -tls-key  optional, serve HTTPS when provided
   -session-ttl          session lifetime (default 12h)
 
@@ -260,6 +263,143 @@ func loadOrCreateSecret(dataDir string) []byte {
 	return b
 }
 
+// userSpec is one account declared with -user.
+type userSpec struct {
+	name string
+	pass string
+	// split records whether the value actually contained a colon, so check
+	// below can tell "no password given" from "empty password given" without
+	// having to look at the value again.
+	split bool
+}
+
+// userList collects a repeatable -user name:password flag.
+//
+// Accounts are declared on the command line and reconciled on every start,
+// which makes the command line -- not the database, and not a page in the
+// browser -- the authoritative record of who may log in. That is the point of
+// doing it this way: a forgotten password is fixed by editing the unit file and
+// restarting, and there is no state hidden in the database that the operator
+// cannot read off the outside of the process.
+//
+// The cost is real and worth stating rather than burying: an argument to a
+// process is world-readable in `ps` on a normal host, and it lands in shell
+// history and in the unit file. On a single-admin box that is usually an
+// acceptable trade against being locked out of your own monitoring; where it is
+// not, `deltascope user add` still writes the same table without putting the
+// password in argv.
+type userList []userSpec
+
+func (u *userList) String() string { return "" }
+
+// Set never fails, and that is deliberate.
+//
+// flag prints the offending value verbatim when a Value.Set returns an error --
+// `invalid value "admin:hunter2" for flag -user: ...` -- so validating here
+// would write the password to the terminal and into the journal on every typo.
+// That is a worse leak than the `ps` exposure this feature already accepts,
+// because a journal is kept and shipped. So parsing happens here and judgement
+// happens in check, where the wording is ours.
+func (u *userList) Set(v string) error {
+	// Cut at the FIRST colon: a password may contain colons and often does,
+	// a username may not. Same rule as /etc/passwd, for the same reason.
+	name, pass, ok := strings.Cut(v, ":")
+	*u = append(*u, userSpec{name: strings.TrimSpace(name), pass: pass, split: ok})
+	return nil
+}
+
+// check rejects a malformed declaration without ever printing a password.
+//
+// A pair with no colon is identified by position only: whatever the operator
+// typed there might be a password with the colon left off, so it cannot be
+// echoed even to say what was wrong with it.
+func (u userList) check() error {
+	for i, s := range u {
+		if !s.split {
+			return fmt.Errorf("-user #%d: expected name:password", i+1)
+		}
+		if s.name == "" || len(s.name) > 64 {
+			return fmt.Errorf("-user #%d: the username must be non-empty and at most 64 characters", i+1)
+		}
+		// Same floor the deleted web setup form enforced. Keeping it means the
+		// change moves where accounts are declared without quietly lowering
+		// what counts as a password.
+		if len(s.pass) < 8 {
+			return fmt.Errorf("-user %q: the password must be at least 8 characters", s.name)
+		}
+	}
+	return nil
+}
+
+// applyUsers reconciles the declared accounts into the database and reports the
+// result. It never prints a password, and it exits rather than starting a server
+// nobody can log into.
+func applyUsers(st *store.Store, decl userList, dataDir string) {
+	for _, u := range decl {
+		// An unchanged password is left alone rather than rewritten. Hashing
+		// mints a fresh salt, and the credential fingerprint derived from the
+		// stored hash is what session tokens are checked against -- so
+		// rehashing on every start would log every open browser out on a plain
+		// restart. Skipping the write keeps a restart a restart, and when the
+		// password really did change the fingerprint moves and the old
+		// sessions die, which is the behaviour you want from changing it.
+		if cur, err := st.PasswordHash(u.name); err == nil && auth.VerifyPassword(cur, u.pass) {
+			continue
+		}
+		hash, err := auth.HashPassword(u.pass)
+		if err != nil {
+			log.Fatalf("failed to hash the password for %q: %v", u.name, err)
+		}
+		if err := st.UpsertUser(u.name, hash); err != nil {
+			log.Fatalf("failed to write the account %q: %v", u.name, err)
+		}
+	}
+
+	users, err := st.ListUsers()
+	if err != nil {
+		log.Printf("warning: could not list accounts: %v", err)
+		return
+	}
+	if len(users) == 0 {
+		// Every route but /login, /api/login and /api/version requires a
+		// session, so a server with no account is not a degraded server, it is
+		// an unreachable one. It used to be recoverable from the browser; that
+		// page is gone, so refuse at the door instead of listening on a port
+		// where the only possible outcome is a login failure.
+		log.Fatalf("no accounts exist in %s and none were declared: nobody could log in. Start with -user name:password (repeatable), or create one with deltascope user add <name> -data %s",
+			filepath.Join(dataDir, "deltascope.db"), dataDir)
+	}
+
+	if len(decl) > 0 {
+		names := make([]string, len(decl))
+		for i, u := range decl {
+			names[i] = u.name
+		}
+		log.Printf("accounts declared on the command line: %s (note: arguments are visible to other local users in ps)",
+			strings.Join(names, ", "))
+	}
+
+	declared := make(map[string]bool, len(decl))
+	for _, u := range decl {
+		declared[u.name] = true
+	}
+	var extra []string
+	for _, name := range users {
+		if !declared[name] {
+			extra = append(extra, name)
+		}
+	}
+	if len(extra) > 0 {
+		// Named, not deleted. -user says who may log in; it does not say who
+		// may not, and removing an account nobody asked to remove turns a typo
+		// in a unit file into lost access. Saying so keeps a leftover account
+		// from an earlier configuration from sitting there unnoticed, which is
+		// the actual risk.
+		log.Printf("note: %d account(s) in the database are not declared with -user: %s (remove with: deltascope user del <name> -data %s)",
+			len(extra), strings.Join(extra, ", "), dataDir)
+	}
+}
+
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	listen := fs.String("listen", "127.0.0.1:8080", "listen address")
@@ -270,7 +410,13 @@ func cmdServe(args []string) {
 	ttl := fs.Duration("session-ttl", 12*time.Hour, "session lifetime")
 	catalogPath := fs.String("catalog", "", "custom metric catalog JSON (optional)")
 	rulesPath := fs.String("rules", "", "custom diagnosis rules JSON (optional)")
+	var users userList
+	fs.Var(&users, "user", "account as name:password, repeatable (visible in ps; see deltascope user add for the alternative)")
 	fs.Parse(args)
+
+	if err := users.check(); err != nil {
+		log.Fatal(err)
+	}
 
 	if *catalogPath != "" {
 		if err := pcp.LoadCatalogFile(*catalogPath); err != nil {
@@ -313,10 +459,7 @@ func cmdServe(args []string) {
 	resolvedData := resolveDataDir(*dataDir)
 	st := openStore(*dataDir)
 	defer st.Close()
-	if users, err := st.ListUsers(); err == nil && len(users) == 0 {
-		log.Printf("note: no users found in this database (%s), run deltascope user add <name> -data %s to create an admin",
-			filepath.Join(resolvedData, "deltascope.db"), resolvedData)
-	}
+	applyUsers(st, users, resolvedData)
 	stateStore, err := state.NewStore(st.DB())
 	if err != nil {
 		log.Printf("warning: change accounting unavailable: %v", err)

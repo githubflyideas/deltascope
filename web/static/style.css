@@ -366,6 +366,9 @@ tr[hidden] { display: none; }
 .tc-dot { margin-left: auto; font-size: 13px; }
 .tc-headline { font-size: 14.5px; color: var(--muted); line-height: 1.5; flex: 1; }
 .triage-card.t-bad .tc-headline, .triage-card.t-warn .tc-headline { color: var(--ink); }
+/* The improvement line is readable but never louder than a regression: good
+   news that shouts drowns out the card next to it that is actually red. */
+.tc-improved { font-size: 13.5px; color: var(--good); line-height: 1.45; }
 .triage-jump { align-self: flex-start; margin-top: 4px; background: transparent; border: none; color: var(--a); font-size: 13.5px; cursor: pointer; padding: 2px 0; font-family: var(--mono); }
 .triage-jump:hover { text-decoration: underline; }
 .tc-ghost-links { display: flex; gap: 12px; }
@@ -555,9 +558,6 @@ body.theme-iris-light .report tr[data-bg] { mix-blend-mode: multiply; }
 .theme-toggle { background: transparent; border: 1px solid var(--line); color: var(--muted);
   border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 15px; line-height: 1; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
-
-.setup-lead { color: var(--muted); font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
-.field-hint { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
 
 .m-stats { color: var(--muted); opacity: .75; display: inline-block; line-height: 1.5; }
 

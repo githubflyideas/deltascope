@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# usage: LISTEN_ADDR=0.0.0.0:8080 ./deploy.sh
+# usage: ADMIN_PASSWORD='...' LISTEN_ADDR=0.0.0.0:8080 ./deploy.sh
 # offline: put pre-downloaded pcp rpms into ./rpms/
 #
-# Creating the admin account happens in the browser on first visit, not
-# here -- see the final message this script prints.
+# The admin account is created here, from ADMIN_PASSWORD, using `user add`
+# rather than `serve -user`. Both write the same table; the difference is that
+# `serve -user` would put the password in the unit file and in `ps` for the life
+# of the service, and a deployment script has no reason to accept that when it
+# already holds the password in its own environment for one command.
 set -euo pipefail
 
 RETENTION_DAYS="${RETENTION_DAYS:-7}"        # PCP archive retention (ring cleanup)
@@ -11,8 +14,21 @@ LISTEN_ADDR="${LISTEN_ADDR:-0.0.0.0:8080}"   # web listen address
 INSTALL_BIN="/usr/local/bin/deltascope"
 DATA_DIR="/var/lib/deltascope"
 SVC_USER="deltascope"
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 
 [[ $EUID -eq 0 ]] || { echo "must be run as root"; exit 1; }
+
+# Checked before anything is installed. There is no browser page that creates
+# the first account any more, and the service refuses to start without one, so
+# a run that gets to the end without a password would have installed PCP,
+# written a unit and enabled a service that then dies on boot.
+if (( ${#ADMIN_PASSWORD} < 8 )); then
+    echo "set ADMIN_PASSWORD to at least 8 characters, e.g."
+    echo "  ADMIN_PASSWORD='$(head -c 12 /dev/urandom | base64 | tr -d '/+=')' ./deploy.sh"
+    echo "(optionally ADMIN_USER, default 'admin')"
+    exit 1
+fi
 cd "$(dirname "$0")"
 [[ -x ./deltascope ]] || {
     echo "deltascope binary missing in this directory."
@@ -22,7 +38,7 @@ cd "$(dirname "$0")"
     exit 1
 }
 
-echo "==> [1/6] installing PCP"
+echo "==> [1/7] installing PCP"
 if compgen -G "rpms/*.rpm" >/dev/null; then
     echo "    using local offline RPMs (rpms/)"
     dnf install -y ./rpms/*.rpm || rpm -Uvh --replacepkgs rpms/*.rpm
@@ -33,7 +49,7 @@ else
 fi
 command -v pmrep >/dev/null || { echo "pmrep missing (pcp-system-tools), aborting"; exit 1; }
 
-echo "==> [2/6] enabling pmcd / pmlogger, ${RETENTION_DAYS}-day ring cleanup, tiered sampling"
+echo "==> [2/7] enabling pmcd / pmlogger, ${RETENTION_DAYS}-day ring cleanup, tiered sampling"
 systemctl enable --now pmcd pmlogger
 TIMERS=/etc/sysconfig/pmlogger_timers
 touch "$TIMERS"
@@ -97,7 +113,7 @@ else
     echo "    default control line not found; point pmlogger -c at /etc/pcp/pmlogger/deltascope.config manually"
 fi
 
-echo "==> [3/6] installing binary and data directory"
+echo "==> [3/7] installing binary and data directory"
 install -m 0755 ./deltascope "$INSTALL_BIN"
 id "$SVC_USER" &>/dev/null || useradd --system --home-dir "$DATA_DIR" --shell /sbin/nologin "$SVC_USER"
 usermod -aG pcp "$SVC_USER"       # read /var/log/pcp/pmlogger archives
@@ -105,7 +121,15 @@ mkdir -p "$DATA_DIR"
 chown "$SVC_USER:$SVC_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
-echo "==> [4/6] writing systemd service"
+echo "==> [4/7] creating the ${ADMIN_USER} account"
+DSCOPE_PASSWORD="$ADMIN_PASSWORD" "$INSTALL_BIN" user add "$ADMIN_USER" -data "$DATA_DIR"
+# Recursive, and this is the reason: the command above ran as root, so
+# deltascope.db and the -wal / -shm sidecars SQLite opens beside it are owned by
+# root. The service runs as $SVC_USER and cannot write them -- the failure looks
+# like a service that starts, serves the login page, and rejects every password.
+chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
+
+echo "==> [5/7] writing systemd service"
 cat > /etc/systemd/system/deltascope.service <<EOF
 [Unit]
 Description=deltascope change & performance diagnostics web service
@@ -116,6 +140,9 @@ Wants=pmlogger.service
 User=${SVC_USER}
 Group=${SVC_USER}
 SupplementaryGroups=pcp
+# No -user here on purpose: the account was created in step 4 and putting the
+# password on this line would leave it in a world-readable unit file and in `ps`
+# for as long as the service runs.
 ExecStart=${INSTALL_BIN} serve -listen ${LISTEN_ADDR} -data ${DATA_DIR}
 Restart=on-failure
 RestartSec=3
@@ -136,7 +163,7 @@ EOF
 systemctl daemon-reload
 systemctl enable --now deltascope
 
-echo "==> [5/6] firewall (optional)"
+echo "==> [6/7] firewall (optional)"
 PORT="${LISTEN_ADDR##*:}"
 if systemctl is-active --quiet firewalld; then
     firewall-cmd --permanent --add-port="${PORT}/tcp" >/dev/null
@@ -146,18 +173,20 @@ else
     echo "    firewalld not running, skipping"
 fi
 
-echo "==> [6/6] waiting for the service to come up"
+echo "==> [7/7] waiting for the service to come up"
 for _ in $(seq 1 10); do
-    curl -sf "http://127.0.0.1:${PORT}/api/setup-status" >/dev/null 2>&1 && break
+    curl -sf "http://127.0.0.1:${PORT}/api/version" >/dev/null 2>&1 && break
     sleep 1
 done
 
 echo
 echo "deploy complete ✔"
 echo
-echo "  Open http://<this-host-ip>:${PORT}/ in a browser to create the"
-echo "  admin account -- the login page detects there's no account yet"
-echo "  and offers to create one directly, no CLI step required."
+echo "  Open http://<this-host-ip>:${PORT}/ and sign in as ${ADMIN_USER}"
+echo "  with the password you passed in ADMIN_PASSWORD."
+echo
+echo "  forgot it:          DSCOPE_PASSWORD='new-one' ${INSTALL_BIN} user add ${ADMIN_USER} -data ${DATA_DIR}"
+echo "                      (then chown -R ${SVC_USER}:${SVC_USER} ${DATA_DIR} and restart)"
 echo
 echo "  service status:     systemctl status deltascope"
 echo "  archive retention:  ${RETENTION_DAYS} days (edit $TIMERS, restart pmlogger_daily.timer)"

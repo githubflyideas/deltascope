@@ -144,43 +144,14 @@ function fmtByUnit(v, unit) {
 if (page === "login") {
   initLang();
 
-  // Which of the two panels to show depends on a request, and both start
-  // hidden, so until it resolves the card is blank. The failure path is what
-  // matters: this used to swallow the error and fall back to the sign-in
-  // form, but on a server with no account yet that is a form which cannot
-  // succeed -- there is nothing to sign in to. The only way out was to keep
-  // reloading until the request happened to land, which is exactly what it
-  // looked like: an install page you have to refresh several times to reach.
-  // Retry here, and if it still fails say so instead of showing a dead form.
-  async function showSetupOrLogin() {
-    const errBox = $("#statusError");
-    const retry = $("#statusRetry");
-    errBox.classList.add("hidden");
-    retry.classList.add("hidden");
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const status = await api("/api/setup-status");
-        const needsSetup = !!status.needs_setup;
-        $("#setupPanel").classList.toggle("hidden", !needsSetup);
-        $("#loginForm").classList.toggle("hidden", needsSetup);
-        (needsSetup ? $("#setupUsername") : $("#username")).focus();
-        return;
-      } catch (e) {
-        if (attempt >= 2) {
-          $("#setupPanel").classList.add("hidden");
-          $("#loginForm").classList.add("hidden");
-          errBox.textContent = t("status_failed", e.message);
-          errBox.classList.remove("hidden");
-          retry.classList.remove("hidden");
-          return;
-        }
-        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-      }
-    }
-  }
-  $("#statusRetry").addEventListener("click", showSetupOrLogin);
-  showSetupOrLogin();
-
+  // One form, and the markup shows it. There used to be two, and which one
+  // appeared depended on a /api/setup-status request, so the card was blank
+  // until that resolved and dead if it failed. Accounts are declared with
+  // `serve -user` now, so the browser has nothing to decide: there is no state
+  // in which this page can create an account, and therefore no state in which
+  // it has to ask the server what kind of page it is -- which is also why the
+  // username field can just carry `autofocus` instead of being focused from
+  // here once the answer came back.
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const errBox = $("#loginError");
@@ -193,28 +164,6 @@ if (page === "login") {
           password: $("#password").value,
         }),
       });
-      location.href = "/";
-    } catch (err) {
-      errBox.textContent = err.message;
-      errBox.classList.remove("hidden");
-    }
-  });
-
-  $("#setupForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const errBox = $("#setupError");
-    errBox.classList.add("hidden");
-    const username = $("#setupUsername").value.trim();
-    const password = $("#setupPassword").value;
-    if (password.length < 8) {
-      errBox.textContent = "password must be at least 8 characters";
-      errBox.classList.remove("hidden");
-      return;
-    }
-    try {
-      await api("/api/setup", { method: "POST", body: JSON.stringify({ username, password }) });
-      // the account now exists; sign in with the same credentials right away
-      await api("/api/login", { method: "POST", body: JSON.stringify({ username, password }) });
       location.href = "/";
     } catch (err) {
       errBox.textContent = err.message;
@@ -519,6 +468,16 @@ const TRIAGE_STATUS = {
   ok:   { cls: "t-ok",   dot: "\u{1F7E2}" },
 };
 
+// improvedLine is the second half of a triage card's sentence. Without it a
+// resource that got dramatically better rendered as "normal" -- the same word
+// as a resource where nothing happened -- so the most significant event on the
+// host was the one thing the board would not mention. It is a line rather than
+// a status because the dot answers "is there trouble", and there isn't.
+function improvedLine(b) {
+  if (!b.improved) return "";
+  return `<div class="tc-improved">\u{1F7E2} ${t("verdict_better")}: ${escapeHtml(b.improved)}</div>`;
+}
+
 function renderTriage(triage, rows) {
   const board = $("#triageBoard");
   if (!triage || !triage.length) { board.innerHTML = ""; return; }
@@ -531,6 +490,7 @@ function renderTriage(triage, rows) {
       <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key]||""}</span>
         <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
       <div class="tc-headline">${escapeHtml(b.headline)}</div>
+      ${improvedLine(b)}
       ${jump}
     </div>`;
   });
@@ -1306,7 +1266,7 @@ function renderDiagnosis(d) {
       return `<div class="triage-card ${st.cls}">
         <div class="tc-top"><span class="tc-icon">${TRIAGE_ICON[b.key] || ""}</span>
           <span class="tc-label">${escapeHtml(b.label)}</span><span class="tc-dot">${st.dot}</span></div>
-        <div class="tc-headline">${escapeHtml(b.headline)}</div></div>`;
+        <div class="tc-headline">${escapeHtml(b.headline)}</div>${improvedLine(b)}</div>`;
     }).join("") + `</div>`;
   }
 
