@@ -388,6 +388,12 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.Pr
 	// when there are no triage blocks to ask.
 	var headlineFrom *reasoning.Result
 
+	// An improvement, if one can be claimed with process evidence behind it.
+	// Computed here and used by exactly one branch below, which sits under
+	// every branch that reports trouble: a host with a real problem is not
+	// headlined with good news, however large the good news is.
+	rec := findRecovery(out.Triage, pd)
+
 	switch {
 	case crit != nil:
 		out.Severity, out.Headline = "crit", crit.Conclusion
@@ -409,6 +415,18 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.Pr
 	case worstBlock != nil && worstBlock.Status == pcp.TriageWarn:
 		out.Severity = "warn"
 		out.Headline = worstBlock.Label + " needs watching: " + worstBlock.Headline
+	case rec != nil:
+		// Nothing is wrong AND something got measurably better. Severity
+		// stays "ok" rather than gaining a sixth value: the reader's question
+		// is still "is there trouble here", the answer is still no, and adding
+		// a colour for good news would mean every severity switch in the UI,
+		// the CSS and ten locales has to learn about it to render one
+		// sentence. What changed is the sentence.
+		out.Severity = "ok"
+		out.Headline = recoveryHeadline(rec, sd.Total)
+		if ev := recoveryEvidence(rec); ev != "" {
+			out.Evidence = []string{ev}
+		}
 	case sd.Total > 0 && !measured:
 		// Snapshots work without PCP, so this is a real and common state:
 		// we can see what changed on the box and nothing at all about how it

@@ -21,6 +21,23 @@ type TriageBlock struct {
 	Status   TriageStatus `json:"status"`
 	Headline string       `json:"headline"` // one-line conclusion
 	WorstPct *float64     `json:"worst_pct,omitempty"`
+
+	// Improved names the core metric that got materially BETTER in this
+	// window, and it is deliberately independent of Status.
+	//
+	// Without it the block had one word for two very different situations. A
+	// host whose user CPU fell from 2.25 cores to 0.1 -- a bug fixed, the
+	// single most significant thing that happened here -- rendered exactly
+	// like a host where nothing moved at all: "normal". The status light is
+	// still driven only by regressions, because a green light means "no
+	// trouble found" and an improvement is not trouble; this is the second
+	// half of the sentence, not a fourth colour.
+	//
+	// Independent of Status on purpose: a block can regress on one core
+	// metric and improve on another, and suppressing the improvement because
+	// the light is red would hide half of what the window shows.
+	Improved    string   `json:"improved,omitempty"`
+	ImprovedPct *float64 `json:"improved_pct,omitempty"`
 }
 
 // resourceOf maps a catalog category to one of the four resource blocks.
@@ -82,9 +99,10 @@ var triageLabels = map[string]string{
 // The "software gremlin" block is filled in by the caller from process/change signals.
 func Triage(rows []DiffRow) []TriageBlock {
 	type acc struct {
-		worstBad  *DiffRow
-		worstWarn *DiffRow
-		worstAny  float64
+		worstBad    *DiffRow
+		worstWarn   *DiffRow
+		worstBetter *DiffRow
+		worstAny    float64
 	}
 	blocks := map[string]*acc{"cpu": {}, "mem": {}, "disk": {}, "net": {}}
 
@@ -121,6 +139,26 @@ func Triage(rows []DiffRow) []TriageBlock {
 				rr := r
 				a.worstWarn = &rr
 			}
+		case VBetter:
+			// Only core metrics, for the same reason only core metrics can
+			// flip a block red: a jittery secondary counter falling is not
+			// news, and an improvement claim has to be at least as hard to
+			// earn as a regression.
+			//
+			// A nil ratio is refused here even though the worse path accepts
+			// one. Verdict is VBetter with no DeltaPct only for a metric that
+			// went from zero to non-zero under BetterUp polarity -- which for
+			// mem.util.available means the metric was not sampled in the
+			// baseline half far more often than it means the memory came
+			// back. The VWatch branch above already distrusts that shape; an
+			// unquantified improvement would be the same artifact wearing a
+			// better word.
+			if core && r.DeltaPct != nil {
+				if a.worstBetter == nil || absDeltaVal(r) > absDeltaVal(*a.worstBetter) {
+					rr := r
+					a.worstBetter = &rr
+				}
+			}
 		}
 	}
 
@@ -138,6 +176,10 @@ func Triage(rows []DiffRow) []TriageBlock {
 			b.Status = TriageWarn
 			b.Headline = headline(*a.worstWarn)
 			b.WorstPct = a.worstWarn.DeltaPct
+		}
+		if a.worstBetter != nil {
+			b.Improved = headline(*a.worstBetter)
+			b.ImprovedPct = a.worstBetter.DeltaPct
 		}
 		out = append(out, b)
 	}
