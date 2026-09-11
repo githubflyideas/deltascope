@@ -7,3 +7,10 @@ package main
 // uid to follow here; this file exists so the package still builds for
 // contributors developing on Windows.
 func alignDataOwnership(dataDir string, files ...string) {}
+
+// idHint and ownerOf report nothing off unix. The permission check that calls
+// them still runs -- it probes by creating a file, which works anywhere -- it
+// just cannot add the uid/gid line that makes the failure obvious on the host
+// where this actually bites.
+func idHint(path string) string  { return "" }
+func ownerOf(path string) string { return "" }

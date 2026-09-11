@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -137,6 +138,9 @@ func openStore(dataDir string) *store.Store {
 			dataDir, err, dataDir, dataDir, dataDir)
 	}
 	dbPath := filepath.Join(dataDir, "deltascope.db")
+	if err := checkDataUsable(dataDir, dbPath); err != nil {
+		log.Fatal(err)
+	}
 	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open SQLite: %v", err)
@@ -146,7 +150,102 @@ func openStore(dataDir string) *store.Store {
 	return st
 }
 
+// checkDataUsable names the cause of a permission problem before SQLite gets a
+// chance to describe it, because SQLite's description of this one is actively
+// misleading. Running the binary by hand against a data directory owned by the
+// service account produced:
+//
+//	failed to open SQLite: failed to init schema: unable to open database file: out of memory (14)
+//
+// There is no memory problem. 14 is SQLITE_CANTOPEN, and the "out of memory"
+// half is what sqlite3_errmsg() returns when it is asked about a handle that
+// never opened at all -- the driver prints errstr(rc) and errmsg(db) side by
+// side, and the second is meaningless here. On a VM that message sends the
+// reader straight to `free -h`.
+//
+// The MkdirAll above cannot catch this: it returns nil for a directory that
+// already exists, whoever owns it. So its carefully-worded guard only covers a
+// data directory that is missing, and not the more common case -- the directory
+// is right there, and belongs to somebody else.
+//
+// It returns the error rather than exiting so a test can read the message: the
+// message is the entire point of the function, and an exit code proves nothing
+// about whether it names the fix.
+func checkDataUsable(dataDir, dbPath string) error {
+	// Probed by creating a file rather than by reading the mode bits, because
+	// predicting the kernel's answer means accounting for owner, group,
+	// supplementary groups and any ACL. Getting that arithmetic subtly wrong is
+	// how a preflight check ends up passing on a directory the process cannot
+	// write, which is worse than not checking at all.
+	if f, err := os.CreateTemp(dataDir, ".deltascope-probe-*"); err != nil {
+		return fmt.Errorf("cannot write to data directory %s: %v%s",
+			dataDir, err, adviseOnOwnership(dataDir))
+	} else {
+		f.Close()
+		os.Remove(f.Name())
+	}
+
+	// A writable directory is not enough. SQLite in WAL mode needs the database
+	// and both sidecars read-write -- opening it even to read requires writing
+	// the -shm file -- so one earlier run as root inside a directory owned by
+	// the service account leaves root-owned files that the service then cannot
+	// use. alignDataOwnership repairs that on the way out of a root run, but it
+	// cannot repair a database left behind by a version that predates it, and
+	// this is the report that makes the difference visible instead of silent.
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		fh, err := os.OpenFile(p, os.O_RDWR, 0)
+		if err == nil {
+			fh.Close()
+			continue
+		}
+		if os.IsNotExist(err) {
+			continue // first run, or the sidecars are simply not live
+		}
+		msg := fmt.Sprintf("cannot open %s read-write: %v", p, err)
+		if h := idHint(p); h != "" {
+			msg += "\n  " + h
+		}
+		msg += "\n  The database is there and this account cannot use it, which is what a" +
+			"\n  previous run as root leaves behind."
+		if o := ownerOf(dataDir); o != "" {
+			msg += fmt.Sprintf("\n  As root, hand the files to the directory's owner:"+
+				"\n    chown %s %s %s-wal %s-shm", o, dbPath, dbPath, dbPath)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// adviseOnOwnership assembles the "here is the way out" block for a data
+// directory that cannot be written.
+//
+// Assembled line by line rather than as one format string because two of the
+// lines depend on facts that may not be available: off unix there is no uid to
+// run as, and even on unix the Stat can fail. Filling a format string with a
+// value that turned out to be empty prints `sudo -u '#'` -- a command that
+// cannot work, offered as the fix -- and an indented blank line where the
+// ownership summary should be.
+func adviseOnOwnership(dataDir string) string {
+	self, args := os.Args[0], strings.Join(os.Args[1:], " ")
+	var b strings.Builder
+	if h := idHint(dataDir); h != "" {
+		b.WriteString("\n  " + h)
+	}
+	if o := ownerOf(dataDir); o != "" {
+		// Quoted because the '#' that makes sudo read this as a uid instead of a
+		// user name is a comment character to the shell it will be pasted into.
+		fmt.Fprintf(&b, "\n  Run it as the account that owns the directory:"+
+			"\n    sudo -u '#%s' %s %s", o, self, args)
+	}
+	fmt.Fprintf(&b, "\n  Or as root, which hands the database files back to that owner on startup:"+
+		"\n    sudo %s %s", self, args)
+	fmt.Fprintf(&b, "\n  Or point -data somewhere you own, which starts from an empty database:"+
+		"\n    %s serve -data ~/deltascope-data", self)
+	return b.String()
+}
+
 func loadOrCreateSecret(dataDir string) []byte {
+
 	p := filepath.Join(dataDir, "session.key")
 	if b, err := os.ReadFile(p); err == nil && len(b) >= 32 {
 		return b

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"syscall"
@@ -46,4 +47,37 @@ func alignDataOwnership(dataDir string, files ...string) {
 		}
 		log.Printf("gave %s back to uid %d:%d, matching %s", f, dst.Uid, dst.Gid, dataDir)
 	}
+}
+
+// idHint states who owns a path and who this process is, in the same terms the
+// kernel used when it refused the open. Printed next to a permission failure so
+// the reader does not have to go and run `ls -ld` and `id` to see the mismatch
+// that is already known here.
+func idHint(path string) string {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%s is uid %d gid %d mode %v; this process is uid %d gid %d",
+		path, st.Uid, st.Gid, fi.Mode().Perm(), os.Geteuid(), os.Getegid())
+}
+
+// ownerOf returns path's owner as the "uid:gid" a chown command line takes, or
+// "" if it cannot be read. Numeric on purpose: the account deploy.sh creates is
+// named "deltascope", but a hand-rolled unit may run as anything, and a numeric
+// pair is right in both cases without this having to guess a name.
+func ownerOf(path string) string {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", st.Uid, st.Gid)
 }
