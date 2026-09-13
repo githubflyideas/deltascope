@@ -215,12 +215,14 @@ func TestReasoningFromProcExplainsAMissingBaseline(t *testing.T) {
 	}
 }
 
-// A host with an archive must keep using it even if a sampler is somehow
-// attached. Both sources answer the same fixed window now, but they do not
-// answer it equally well: the archive has the full metric set and a real
-// baseline half, while the sampler holds only what it has managed to collect
-// since the process started. Silently preferring the narrower source would
-// shrink the report with nothing on screen saying so.
+// A host with an archive must keep using it as the primary source. A sampler is
+// always attached now -- it fills metrics the archive never recorded -- so this
+// pins that the fill is a fill and not a fallback: when the archive errors, the
+// request fails with the archive's error rather than quietly answering from the
+// narrower source. The two do not answer the fixed window equally well. The
+// archive has the full metric set and a real baseline half, while the sampler
+// holds only what it has collected since the process started, so substituting
+// one for the other would shrink the report with nothing on screen saying so.
 func TestReasoningPrefersTheArchiveWhenPCPIsPresent(t *testing.T) {
 	s := &Server{
 		Caps:    Capabilities{Metrics: true, Reasoning: true},

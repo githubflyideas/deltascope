@@ -401,16 +401,23 @@ func cmdServe(args []string) {
 		log.Printf("change accounting and process accounting do not need PCP and stay available")
 	}
 
-	// Without an archive the reasoning chain still has a data source: /proc,
-	// sampled continuously so that by the time anyone asks there are two
-	// windows to compare. This is not a smaller version of the archive path.
-	// It cannot answer about last Tuesday, and it is the only thing that can
-	// answer the twelve states a one-shot `deltascope check` has to decline --
-	// the ten needing thirty samples and the two needing a baseline. Sampling
-	// is skipped when PCP is present: the archive already covers this window
-	// and two sources disagreeing about the same minute would be worse than
-	// one.
-	nativeOK := !metricsOK && native.Supported()
+	// The reasoning chain has two possible data sources and this starts the
+	// second one unconditionally, because the two are not rivals. /proc alone
+	// carries the whole chain on a host with no archive: it cannot answer about
+	// last Tuesday, but it is the only thing that can answer the twelve states
+	// a one-shot `deltascope check` has to decline -- the ten needing thirty
+	// samples and the two needing a baseline.
+	//
+	// It runs alongside an archive too, and this used to be skipped there on the
+	// grounds that two sources disagreeing about the same minute is worse than
+	// one. That objection stands, and the fill respects it: /proc is consulted
+	// only for a metric the archive returned nothing at all about, so the
+	// archive still owns every metric it recorded and there is no minute for
+	// them to disagree over. What this buys is the gap a pmlogger config leaves
+	// -- the stock ones omit whole files, TcpExt and the socket-state counts
+	// among them, which is why eight network states read as unmeasured on a host
+	// whose kernel is publishing every number they need.
+	nativeOK := native.Supported()
 	if !metricsOK && !nativeOK {
 		metricsWhy += " This host has no readable /proc either, so the reasoning chain has no data source at all."
 	}
@@ -452,8 +459,12 @@ func cmdServe(args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go sampler.Run(ctx)
-		log.Printf("reasoning: sampling /proc every %s, %d passes retained (no PCP archive to read)",
-			native.DefaultSampleInterval, native.DefaultKeepSamples)
+		role := "no PCP archive to read, so this is the only metric source"
+		if metricsOK {
+			role = "used only for metrics this archive never recorded"
+		}
+		log.Printf("reasoning: sampling /proc every %s, %d passes retained (%s)",
+			native.DefaultSampleInterval, native.DefaultKeepSamples, role)
 	}
 
 	if stateStore != nil {

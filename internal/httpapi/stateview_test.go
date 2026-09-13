@@ -25,7 +25,7 @@ var viewCatalog = []reasoning.State{
 func TestStateViewsSeparatesQuietFromUnmeasured(t *testing.T) {
 	views := stateViews(viewCatalog,
 		map[string]reasoning.Active{"state.a": {ID: "state.a", Evidence: []string{"kernel.all.cpu.user B=0.9"}}},
-		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}})
+		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}}, nil)
 
 	if len(views) != 3 {
 		t.Fatalf("views = %d, want one per catalog state", len(views))
@@ -57,7 +57,7 @@ func TestStateViewsNeverBothActiveAndUnmeasured(t *testing.T) {
 		map[string]reasoning.Active{"state.a": {ID: "state.a"}},
 		// A stale gap entry for a state that fired: reasoning keeps these
 		// disjoint, but this layer must not depend on that to stay coherent.
-		map[string]reasoning.Gap{"state.a": {Kind: reasoning.GapNoData, Reason: "no data for kernel.all.cpu.user"}})
+		map[string]reasoning.Gap{"state.a": {Kind: reasoning.GapNoData, Reason: "no data for kernel.all.cpu.user"}}, nil)
 
 	for _, v := range views {
 		if v.Active && v.Reason != "" {
@@ -74,7 +74,7 @@ func TestStateViewsOnAnArchiveThatAnsweredNothing(t *testing.T) {
 	for _, st := range viewCatalog {
 		gaps[st.ID] = reasoning.Gap{Kind: reasoning.GapNoData, Reason: "no data for " + st.ID}
 	}
-	views := stateViews(viewCatalog, map[string]reasoning.Active{}, gaps)
+	views := stateViews(viewCatalog, map[string]reasoning.Active{}, gaps, nil)
 
 	measured := 0
 	for _, v := range views {
@@ -94,7 +94,7 @@ func TestStateViewsOnAnArchiveThatAnsweredNothing(t *testing.T) {
 func TestStateViewJSONOmitsReasonWhenMeasured(t *testing.T) {
 	views := stateViews(viewCatalog,
 		map[string]reasoning.Active{"state.a": {ID: "state.a"}},
-		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}})
+		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}}, nil)
 	blob, err := json.Marshal(views)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestStateViewJSONOmitsReasonWhenMeasured(t *testing.T) {
 // handler passes reasoning.States, and every one of the 78 must come back
 // classified, or states silently vanish from the screen.
 func TestStateViewsCoversTheWholeCatalog(t *testing.T) {
-	views := stateViews(reasoning.States, map[string]reasoning.Active{}, map[string]reasoning.Gap{})
+	views := stateViews(reasoning.States, map[string]reasoning.Active{}, map[string]reasoning.Gap{}, nil)
 	if len(views) != len(reasoning.States) {
 		t.Fatalf("views = %d, want %d", len(views), len(reasoning.States))
 	}
@@ -162,7 +162,7 @@ func TestGapsAlwaysCarryAKind(t *testing.T) {
 		map[string]reasoning.Gap{
 			"state.a": {Kind: reasoning.GapAbsent, Reason: "no data for swap.free"},
 			"state.b": {Kind: reasoning.GapNoBaseline, Reason: "no baseline"},
-		})
+		}, nil)
 	for _, v := range views {
 		if (v.Reason != "") != (v.GapKind != "") {
 			t.Errorf("%s: reason %q and kind %q must be set together", v.ID, v.Reason, v.GapKind)

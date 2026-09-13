@@ -182,6 +182,10 @@ table.report { width: 100%; border-collapse: collapse; }
    monospace the reason above uses: the reason names a metric, this names an
    action, and they must not read as one sentence. */
 .metric-cell .m-hint { display: block; font-size: 12.5px; color: var(--muted); opacity: .8; margin-top: 2px; }
+/* Provenance tag, deliberately quiet: it qualifies an answer rather than being
+   one, so it must not compete with the verdict mark beside it. */
+.metric-cell .m-src { font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; cursor: help; }
 .report td.col-a { color: var(--a); }
 .report td.col-b { color: var(--b); }
 .report tr.v-worse td.delta-cell { color: var(--bad); font-weight: 700; }

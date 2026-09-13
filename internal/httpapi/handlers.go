@@ -445,8 +445,34 @@ func (s *Server) handleReasoning(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// What the archive did not record, /proc can still answer. Which metric
+	// families a pmlogger writes is a config decision made long before
+	// deltascope ran, and the stock configs leave whole files out -- TcpExt and
+	// the socket-state counts among them -- so eight network states come back
+	// unmeasured on a host where the kernel is publishing every number they
+	// need. fillGaps only appends metrics the archive was silent about, so the
+	// archive still owns every metric it answered and the two sources never
+	// describe the same minute. The borrowed rows cover a different, shorter
+	// window, which is why they are disclosed rather than blended in quietly.
+	rows, filled := rep.Rows, map[string]bool{}
+	var fillNote string
+	if s.Sampler != nil {
+		if nw, err := s.Sampler.Window(threshold); err == nil {
+			rows, filled = fillGaps(rep.Rows, nw.Rows)
+			if len(filled) > 0 {
+				fillNote = fmt.Sprintf("%d metric(s) this archive never recorded were read from /proc instead, "+
+					"over the last %s rather than this tab's window.",
+					len(filled), nw.Elapsed.Round(time.Second))
+			}
+		} else {
+			// A sampler still warming up is not a failure of this report: the
+			// archive answered, and the fill was only ever going to add to it.
+			log.Printf("reasoning: no /proc fill this pass: %v", err)
+		}
+	}
+
 	procs, procNote := s.reasoningProcs(w2)
-	writeReasoning(w, w2, "pcp", rep.Rows, joinNotes("", procNote), procs)
+	writeReasoning(w, w2, "pcp", rows, joinNotes(fillNote, procNote), procs, filled)
 }
 
 // reasoningFromProc answers the same chain off the rolling sampler when this
@@ -497,7 +523,7 @@ func (s *Server) reasoningFromProc(w http.ResponseWriter, threshold float64) {
 	// also the only leg that can name a process: the metric rows the chain
 	// reasons over are machine-wide by construction.
 	procs, procNote := s.reasoningProcs(win)
-	writeReasoning(w, win, "proc", nw.Rows, joinNotes(note, procNote), procs)
+	writeReasoning(w, win, "proc", nw.Rows, joinNotes(note, procNote), procs, nil)
 }
 
 // reasoningProcs is the process leg of the reasoning report: the same
@@ -598,8 +624,12 @@ func joinNotes(a, b string) string {
 // tenfold off an idle baseline lights up triage and satisfies no state, and a
 // reader looking at one warn about the network would otherwise conclude the
 // CPU was fine when the other engine had just called it degraded.
+//
+// filled names the metrics that came from /proc because the archive had none;
+// it is empty on the /proc path, where every row has the same provenance and
+// marking them all would say nothing.
 func writeReasoning(w http.ResponseWriter, win diagnose.Window, source string,
-	rows []pcp.DiffRow, note string, procs []state.ProcRow) {
+	rows []pcp.DiffRow, note string, procs []state.ProcRow, filled map[string]bool) {
 	active := reasoning.Evaluate(reasoning.States, rows)
 	results := reasoning.Diagnose(reasoning.Diagnoses, active)
 	gaps := reasoning.UnevaluatedGaps(reasoning.States, rows)
@@ -609,7 +639,7 @@ func writeReasoning(w http.ResponseWriter, win diagnose.Window, source string,
 		"window":      win,
 		"machine":     reasoning.Host(),
 		"source":      source,
-		"states":      stateViews(reasoning.States, active, gaps),
+		"states":      stateViews(reasoning.States, active, gaps, filledStates(reasoning.States, filled)),
 		"diagnoses":   results,
 		"triage":      triage,
 		"unexplained": unexplained(triage, results),
@@ -700,6 +730,13 @@ type stateView struct {
 	// GapKind classifies Reason for the UI, which must not branch on the prose:
 	// the reasons are English and the interface is not. Set only when Reason is.
 	GapKind string `json:"gap_kind,omitempty"`
+	// Source is set to "proc" when this state's verdict rests on a metric the
+	// archive never recorded and the /proc sampler supplied instead. Absent
+	// means the row is answered entirely by whichever source the report names
+	// at the top, so the reader only sees a provenance tag where provenance
+	// actually differs -- and, more to the point, sees one wherever the answer
+	// was measured over a different span than the window in the heading.
+	Source string `json:"source,omitempty"`
 }
 
 // stateViews reports every state in one of three conditions, not two: it
@@ -712,7 +749,12 @@ type stateView struct {
 //
 // Split out of the handler so the three-way mapping is testable without an
 // archive: it is the invariant the whole screen rests on.
-func stateViews(catalog []reasoning.State, active map[string]reasoning.Active, gaps map[string]reasoning.Gap) []stateView {
+//
+// fromProc, when non-nil, marks the states the /proc fill answered. It is a
+// separate parameter rather than something inferred here because only the
+// handler knows which source produced which row.
+func stateViews(catalog []reasoning.State, active map[string]reasoning.Active,
+	gaps map[string]reasoning.Gap, fromProc map[string]bool) []stateView {
 	out := make([]stateView, 0, len(catalog))
 	for _, st := range catalog {
 		v := stateView{ID: st.ID, Domain: st.Domain, Judgment: string(st.Judgment())}
@@ -723,6 +765,14 @@ func stateViews(catalog []reasoning.State, active map[string]reasoning.Active, g
 			v.Active, v.Evidence = true, a.Evidence
 		} else if gap, missing := gaps[st.ID]; missing {
 			v.Reason, v.GapKind = gap.Reason, string(gap.Kind)
+		}
+		// Tagged whether it fired or came back quiet: a quiet row that was
+		// answered from a 2-minute /proc window is a weaker all-clear than a
+		// quiet row answered from half an hour of archive, and hiding that
+		// would be the same mistake as printing an unmeasured state as quiet.
+		// A row that stayed unmeasured is not tagged: the fill did not reach it.
+		if fromProc[st.ID] && v.Reason == "" {
+			v.Source = "proc"
 		}
 		out = append(out, v)
 	}

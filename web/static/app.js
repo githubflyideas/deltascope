@@ -1671,8 +1671,17 @@ function renderReasoning(d) {
         : (st.evidence && st.evidence.length ? st.evidence.map(escapeHtml).join(" \u00b7 ") : "");
       const hintKey = unknown ? GAP_HINT[st.gap_kind] : null;
       const hint = hintKey ? `<span class="m-hint">${t(hintKey)}</span>` : "";
+      // Provenance, shown only where it differs from the heading. An archive
+      // this host runs may simply not log a metric family -- the stock pmlogger
+      // configs leave several out -- and those rows are answered from /proc
+      // instead, over a much shorter span than the window named at the top. The
+      // answer is real either way, but a quiet row measured over two minutes is
+      // a weaker all-clear than one measured over half an hour, and the reader
+      // cannot weigh it without being told which they are looking at.
+      const src = st.source === "proc"
+        ? `<span class="m-src" title="${escapeHtml(t("src_proc_hint"))}">${t("src_proc")}</span>` : "";
       return `<tr class="${cls}">
-        <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code></span>
+        <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code>${src}</span>
           ${detail ? `<span class="m-name">${detail}</span>` : ""}${hint}</td>
         <td>${label}</td>
       </tr>`;
