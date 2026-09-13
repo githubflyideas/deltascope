@@ -28,16 +28,12 @@ sudo deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope \
   -user admin:a-strong-password
 ```
 
-`-user` repeats for more than one account and is applied on every start, so
-a forgotten password is fixed by changing it and restarting. It is visible
-in `ps`; where that matters, create the account separately instead and
-leave `-user` off:
-
-```bash
-sudo DSCOPE_PASSWORD='a-strong-password' deltascope user add admin -data /var/lib/deltascope
-sudo chown -R deltascope:deltascope /var/lib/deltascope   # only if serve runs as another user
-sudo deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope
-```
+`-user` repeats for more than one account and is the only place accounts
+exist: nothing is stored, so a forgotten password is fixed by changing this
+line and restarting, and a copied `deltascope.db` carries no credential.
+The cost is that the password is visible to other local users in `ps` and
+lands in shell history and in the unit file — there is no non-argument path,
+so keep the unit file mode 600 (`deploy.sh` does).
 
 ## Verify
 

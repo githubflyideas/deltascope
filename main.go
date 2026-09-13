@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -39,8 +38,6 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		cmdServe(os.Args[2:])
-	case "user":
-		cmdUser(os.Args[2:])
 	case "catalog":
 		cmdCatalog(os.Args[2:])
 	case "compare":
@@ -69,28 +66,28 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  deltascope serve [flags]     start the web server
-  deltascope check              diagnose this host right now from /proc, no PCP and no database
-  deltascope user add <name>   create/reset a user (password via DSCOPE_PASSWORD or prompt)
-  deltascope user del <name>   delete a user
-  deltascope user list          list users
-  deltascope catalog export     export the built-in metric catalog (edit, load with serve -catalog)
-  deltascope rules export       export the built-in diagnosis rules (edit, load with serve -rules)
-  deltascope version            print the version
-  deltascope snapshot           capture current whole-machine state and store it
-  deltascope statediff          diff two points in time, showing only what changed
-  deltascope proc-diff          per-process CPU/memory accounting (needs hotproc archive)
-  deltascope verify start       baseline before a release; verify report after, for an impact report
-  deltascope compare            headless diff: -a-start/-a-end/-b-start/-b-end
-                                [-format text|json] [-all] [-threshold N], exit 2 on regressions
+  deltascope serve [flags]    start the web server (needs -user)
+  deltascope check            diagnose this host from /proc, no PCP or database
+  deltascope catalog export   export the metric catalog (load: serve -catalog)
+  deltascope rules export     export the diagnosis rules (load: serve -rules)
+  deltascope version          print the version
+  deltascope snapshot         capture whole-machine state into the database
+  deltascope statediff        diff two points in time, only what changed
+  deltascope proc-diff        per-process CPU/memory from snapshots, no PCP
+  deltascope verify start     baseline before a release, impact report after
+  deltascope compare          headless diff, exit 2 on regressions
+                              -a-start/-a-end/-b-start/-b-end
+                              [-format text|json] [-all] [-threshold N]
 
 serve flags:
   -listen   listen address (default 127.0.0.1:8080)
   -archive  PCP archive directory (default /var/log/pcp/pmlogger/<hostname>)
-  -data     data directory for SQLite and session keys (default /var/lib/deltascope)
-  -user     account as name:password, repeat for more than one; written on every
-            start, so this is where a forgotten password gets fixed. Arguments
-            are visible in ps -- use "user add" instead if that matters here.
+  -data     data directory for SQLite and session keys
+            (default /var/lib/deltascope)
+  -user     account as name:password, required, repeat for more than one.
+            This is the only place accounts exist: nothing is written down,
+            so a forgotten password is fixed by editing this line and
+            restarting. Arguments are visible to other local users in ps.
   -tls-cert / -tls-key  optional, serve HTTPS when provided
   -session-ttl          session lifetime (default 12h)
 
@@ -147,6 +144,15 @@ func openStore(dataDir string) *store.Store {
 	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open SQLite: %v", err)
+	}
+	// One-time cleanup for a database written by 3.7.8 or earlier, which kept a
+	// users table with password hashes in it. Accounts are declared with -user
+	// now and nothing is stored, so leaving that table would leave a credential
+	// at rest that the operator has been told does not exist.
+	if dropped, err := st.DropLegacyUsers(); err != nil {
+		log.Printf("warning: %v", err)
+	} else if dropped {
+		log.Printf("removed the legacy users table: accounts come from -user and no password is stored")
 	}
 	alignDataOwnership(dataDir, dbPath, dbPath+"-wal", dbPath+"-shm")
 	log.Printf("data directory: %s", dataDir)
@@ -273,21 +279,18 @@ type userSpec struct {
 	split bool
 }
 
-// userList collects a repeatable -user name:password flag.
+// userList collects the repeatable -user name:password flag.
 //
-// Accounts are declared on the command line and reconciled on every start,
-// which makes the command line -- not the database, and not a page in the
-// browser -- the authoritative record of who may log in. That is the point of
-// doing it this way: a forgotten password is fixed by editing the unit file and
-// restarting, and there is no state hidden in the database that the operator
-// cannot read off the outside of the process.
+// This is the entire account model. Accounts are declared on the command line
+// and exist in memory for the life of the process: no users table, no stored
+// hash, no subcommand that writes one. The command line is therefore the whole
+// readable record of who may log in, a forgotten password is an edit and a
+// restart, and a copy of the database file carries no credential to crack.
 //
 // The cost is real and worth stating rather than burying: an argument to a
 // process is world-readable in `ps` on a normal host, and it lands in shell
-// history and in the unit file. On a single-admin box that is usually an
-// acceptable trade against being locked out of your own monitoring; where it is
-// not, `deltascope user add` still writes the same table without putting the
-// password in argv.
+// history and in the unit file. There is no second path -- removing it is what
+// this buys.
 type userList []userSpec
 
 func (u *userList) String() string { return "" }
@@ -331,73 +334,29 @@ func (u userList) check() error {
 	return nil
 }
 
-// applyUsers reconciles the declared accounts into the database and reports the
-// result. It never prints a password, and it exits rather than starting a server
-// nobody can log into.
-func applyUsers(st *store.Store, decl userList, dataDir string) {
+// declareAccounts turns the -user flags into the in-memory account store, or
+// refuses to go on.
+//
+// Every route but /login, /api/login and /api/version requires a session, so a
+// server with no account is not a degraded server, it is an unreachable one --
+// and since nothing is stored, "no -user" now means exactly that, with no
+// database to fall back on. Refuse at the door instead of listening on a port
+// where the only possible outcome is a login failure.
+func declareAccounts(decl userList, secret []byte) *auth.Accounts {
+	if len(decl) == 0 {
+		log.Fatal("no accounts declared: nobody could log in. Accounts are not stored, " +
+			"they are declared at every start:\n  deltascope serve -user admin:some-password\n" +
+			"Repeat -user for more than one account. Note that arguments are visible to " +
+			"other local users in ps.")
+	}
+	acc := auth.NewAccounts(secret)
 	for _, u := range decl {
-		// An unchanged password is left alone rather than rewritten. Hashing
-		// mints a fresh salt, and the credential fingerprint derived from the
-		// stored hash is what session tokens are checked against -- so
-		// rehashing on every start would log every open browser out on a plain
-		// restart. Skipping the write keeps a restart a restart, and when the
-		// password really did change the fingerprint moves and the old
-		// sessions die, which is the behaviour you want from changing it.
-		if cur, err := st.PasswordHash(u.name); err == nil && auth.VerifyPassword(cur, u.pass) {
-			continue
-		}
-		hash, err := auth.HashPassword(u.pass)
-		if err != nil {
-			log.Fatalf("failed to hash the password for %q: %v", u.name, err)
-		}
-		if err := st.UpsertUser(u.name, hash); err != nil {
-			log.Fatalf("failed to write the account %q: %v", u.name, err)
-		}
+		acc.Add(u.name, u.pass)
 	}
-
-	users, err := st.ListUsers()
-	if err != nil {
-		log.Printf("warning: could not list accounts: %v", err)
-		return
-	}
-	if len(users) == 0 {
-		// Every route but /login, /api/login and /api/version requires a
-		// session, so a server with no account is not a degraded server, it is
-		// an unreachable one. It used to be recoverable from the browser; that
-		// page is gone, so refuse at the door instead of listening on a port
-		// where the only possible outcome is a login failure.
-		log.Fatalf("no accounts exist in %s and none were declared: nobody could log in. Start with -user name:password (repeatable), or create one with deltascope user add <name> -data %s",
-			filepath.Join(dataDir, "deltascope.db"), dataDir)
-	}
-
-	if len(decl) > 0 {
-		names := make([]string, len(decl))
-		for i, u := range decl {
-			names[i] = u.name
-		}
-		log.Printf("accounts declared on the command line: %s (note: arguments are visible to other local users in ps)",
-			strings.Join(names, ", "))
-	}
-
-	declared := make(map[string]bool, len(decl))
-	for _, u := range decl {
-		declared[u.name] = true
-	}
-	var extra []string
-	for _, name := range users {
-		if !declared[name] {
-			extra = append(extra, name)
-		}
-	}
-	if len(extra) > 0 {
-		// Named, not deleted. -user says who may log in; it does not say who
-		// may not, and removing an account nobody asked to remove turns a typo
-		// in a unit file into lost access. Saying so keeps a leftover account
-		// from an earlier configuration from sitting there unnoticed, which is
-		// the actual risk.
-		log.Printf("note: %d account(s) in the database are not declared with -user: %s (remove with: deltascope user del <name> -data %s)",
-			len(extra), strings.Join(extra, ", "), dataDir)
-	}
+	log.Printf("accounts declared on the command line: %s (nothing is stored; "+
+		"note that arguments are visible to other local users in ps)",
+		strings.Join(acc.Names(), ", "))
+	return acc
 }
 
 func cmdServe(args []string) {
@@ -411,7 +370,7 @@ func cmdServe(args []string) {
 	catalogPath := fs.String("catalog", "", "custom metric catalog JSON (optional)")
 	rulesPath := fs.String("rules", "", "custom diagnosis rules JSON (optional)")
 	var users userList
-	fs.Var(&users, "user", "account as name:password, repeatable (visible in ps; see deltascope user add for the alternative)")
+	fs.Var(&users, "user", "account as name:password, required, repeatable (nothing is stored; visible in ps)")
 	fs.Parse(args)
 
 	if err := users.check(); err != nil {
@@ -459,16 +418,17 @@ func cmdServe(args []string) {
 	resolvedData := resolveDataDir(*dataDir)
 	st := openStore(*dataDir)
 	defer st.Close()
-	applyUsers(st, users, resolvedData)
+	secret := loadOrCreateSecret(resolvedData)
+	accounts := declareAccounts(users, secret)
 	stateStore, err := state.NewStore(st.DB())
 	if err != nil {
 		log.Printf("warning: change accounting unavailable: %v", err)
 	}
 
 	srv := &httpapi.Server{
-		Store:      st,
+		Accounts:   accounts,
 		StateStore: stateStore,
-		Sessions:   auth.NewSessions(loadOrCreateSecret(*dataDir), *ttl),
+		Sessions:   auth.NewSessions(secret, *ttl),
 		Limiter:    auth.NewRateLimiter(10, 15*time.Minute),
 		Runner:     pcp.ExecRunner{},
 		Archive:    *archive,
@@ -855,88 +815,4 @@ func cmdProcDiff(args []string) {
 			os.Exit(3)
 		}
 	}
-}
-func cmdUser(args []string) {
-	fs := flag.NewFlagSet("user", flag.ExitOnError)
-	dataDir := fs.String("data", "/var/lib/deltascope", "data directory")
-	var rest []string
-	for i := 0; i < len(args); i++ {
-		if args[i] == "-data" || args[i] == "--data" {
-			fs.Parse(args[i:])
-			break
-		}
-		rest = append(rest, args[i])
-	}
-	if len(rest) == 0 {
-		usage()
-		os.Exit(2)
-	}
-
-	st := openStore(*dataDir)
-	defer st.Close()
-
-	switch rest[0] {
-	case "add":
-		if len(rest) < 2 {
-			log.Fatal("usage: deltascope user add <name>")
-		}
-		name := strings.TrimSpace(rest[1])
-		if name == "" || len(name) > 64 {
-			log.Fatal("username must be non-empty and at most 64 chars")
-		}
-		pw := os.Getenv("DSCOPE_PASSWORD")
-		if pw == "" {
-			pw = promptPassword()
-		}
-		if len(pw) < 8 {
-			log.Fatal("password must be at least 8 characters")
-		}
-		hash, err := auth.HashPassword(pw)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := st.UpsertUser(name, hash); err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("user %s created/updated in %s\n", name, resolveDataDir(*dataDir))
-	case "del":
-		if len(rest) < 2 {
-			log.Fatal("usage: deltascope user del <name>")
-		}
-		if err := st.DeleteUser(rest[1]); err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println("deleted")
-	case "list":
-		users, err := st.ListUsers()
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, u := range users {
-			fmt.Println(u)
-		}
-	default:
-		usage()
-		os.Exit(2)
-	}
-}
-
-func promptPassword() string {
-	read := func(prompt string) string {
-		fmt.Fprint(os.Stderr, prompt)
-		_ = exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
-		defer func() {
-			_ = exec.Command("stty", "-F", "/dev/tty", "echo").Run()
-			fmt.Fprintln(os.Stderr)
-		}()
-		var s string
-		fmt.Scanln(&s)
-		return s
-	}
-	p1 := read("password: ")
-	p2 := read("confirm: ")
-	if p1 != p2 {
-		log.Fatal("passwords do not match")
-	}
-	return p1
 }

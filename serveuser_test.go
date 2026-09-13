@@ -104,9 +104,11 @@ func TestUserFlagRejectionDoesNotEchoThePassword(t *testing.T) {
 	}
 }
 
-// A hash written from a -user pair has to verify the password as typed. Trivial
-// to assert and the thing that broke before: trailing whitespace trimmed off a
-// password, or the name trimmed off the wrong side of the colon.
+// The account the flag declares has to accept the password as typed. Trivial to
+// assert and the thing that broke before: trailing whitespace trimmed off a
+// password, or the name trimmed off the wrong side of the colon. This goes
+// through declareAccounts because that is now the entire path from the command
+// line to a login.
 func TestUserFlagPasswordVerifies(t *testing.T) {
 	var u userList
 	if err := u.Set("admin: leading and trailing "); err != nil {
@@ -115,11 +117,15 @@ func TestUserFlagPasswordVerifies(t *testing.T) {
 	if err := u.check(); err != nil {
 		t.Fatal(err)
 	}
-	h, err := auth.HashPassword(u[0].pass)
+	secret, err := auth.GenerateSecret()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !auth.VerifyPassword(h, " leading and trailing ") {
+	acc := declareAccounts(u, secret)
+	if _, ok := acc.Verify("admin", " leading and trailing "); !ok {
 		t.Error("the password was altered on the way in")
+	}
+	if _, ok := acc.Verify("admin", "leading and trailing"); ok {
+		t.Error("a trimmed password verified, so the flag is trimming somewhere")
 	}
 }

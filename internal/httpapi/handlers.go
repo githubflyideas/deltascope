@@ -21,7 +21,6 @@ import (
 	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/reasoning"
 	"github.com/githubflyideas/deltascope/internal/state"
-	"github.com/githubflyideas/deltascope/internal/store"
 )
 
 const (
@@ -30,7 +29,9 @@ const (
 )
 
 type Server struct {
-	Store      *store.Store
+	// Accounts is the whole account store: what -user declared, in memory.
+	// There is no database of users to fall back on.
+	Accounts   *auth.Accounts
 	StateStore *state.Store
 	Sessions   *auth.Sessions
 	Limiter    *auth.RateLimiter
@@ -120,14 +121,13 @@ func (s *Server) servePage(path string, needAuth bool) http.HandlerFunc {
 // currentUser returns the signed-in user, or "" when the request carries no
 // usable session.
 //
-// This deliberately goes back to the user table on every request instead of
-// trusting the cookie alone. The cookie is a signed, self-contained token, so
-// on its own it keeps working for its full TTL no matter what happens to the
-// account -- delete the account or change its password and every session
-// opened with it stayed live. Now that accounts are declared with -user and
-// reconciled at every start, that check is what makes editing the flag mean
-// something: changing the password there has to take the old holder out, and it
-// only does because the fingerprint is re-read here.
+// This deliberately re-checks the declared accounts on every request instead of
+// trusting the cookie alone. The cookie is a signed, self-contained token, so on
+// its own it keeps working for its full TTL no matter what happens to the
+// account -- drop the account or change its password and every session opened
+// with it stayed live. Accounts are declared with -user, so this check is what
+// makes editing the flag mean something: the fingerprint is recomputed here, and
+// an edited password no longer matches the one the token was issued against.
 func (s *Server) currentUser(r *http.Request) string {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -137,16 +137,13 @@ func (s *Server) currentUser(r *http.Request) string {
 	if !ok {
 		return ""
 	}
-	hash, err := s.Store.PasswordHash(cl.User)
-	if err != nil {
-		// Fail closed, including on a database error: a request that cannot
-		// be checked is not a request that has been authorized.
-		if !errors.Is(err, store.ErrNotFound) {
-			log.Printf("auth: could not check the session's account: %v", err)
-		}
+	// Fail closed: an account that is no longer declared fingerprints as "",
+	// which cannot equal a fingerprint a token was issued with.
+	fp := s.Accounts.Fingerprint(cl.User)
+	if fp == "" {
 		return ""
 	}
-	if subtle.ConstantTimeCompare([]byte(auth.Fingerprint(hash)), []byte(cl.FP)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(fp), []byte(cl.FP)) != 1 {
 		return ""
 	}
 	return cl.User
@@ -183,19 +180,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := s.Store.PasswordHash(req.Username)
-	if errors.Is(err, store.ErrNotFound) {
-		auth.VerifyPassword("pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", req.Password)
-		s.Limiter.Fail(ip)
-		writeErr(w, http.StatusUnauthorized, "invalid username or password")
-		return
-	}
-	if err != nil {
-		log.Printf("login: failed to read user: %v", err)
-		writeErr(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if !auth.VerifyPassword(hash, req.Password) {
+	// One comparison covers both "no such account" and "wrong password", over
+	// every declared account and with no early exit, so the answer takes the
+	// same time either way and the reply can say the same thing either way.
+	fp, ok := s.Accounts.Verify(req.Username, req.Password)
+	if !ok {
 		s.Limiter.Fail(ip)
 		writeErr(w, http.StatusUnauthorized, "invalid username or password")
 		return
@@ -203,7 +192,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	s.Limiter.Reset(ip)
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: s.Sessions.Issue(req.Username, auth.Fingerprint(hash)),
+		Name: sessionCookie, Value: s.Sessions.Issue(req.Username, fp),
 		Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: s.SecureCk, MaxAge: int(s.Sessions.TTL.Seconds()),
 	})

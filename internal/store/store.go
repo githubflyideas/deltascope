@@ -2,14 +2,10 @@ package store
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
-	"time"
 )
 
 type Store struct{ db *sql.DB }
-
-var ErrNotFound = errors.New("user not found")
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open(driverName, path+dsnParams)
@@ -17,64 +13,46 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`
-CREATE TABLE IF NOT EXISTS users (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    username   TEXT NOT NULL UNIQUE,
-    pwhash     TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);`); err != nil {
+	// No schema of its own any more: accounts live in the -user flag and the
+	// only tables in this file belong to internal/state, which creates them.
+	// Open still exists because that package reuses this connection.
+	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to init schema: %w", err)
+		return nil, fmt.Errorf("failed to open the database: %w", err)
 	}
 	return &Store{db: db}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
 
-func (s *Store) UpsertUser(username, pwhash string) error {
-	_, err := s.db.Exec(`
-INSERT INTO users (username, pwhash, created_at) VALUES (?, ?, ?)
-ON CONFLICT(username) DO UPDATE SET pwhash = excluded.pwhash`,
-		username, pwhash, time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-func (s *Store) PasswordHash(username string) (string, error) {
-	var h string
-	err := s.db.QueryRow(`SELECT pwhash FROM users WHERE username = ?`, username).Scan(&h)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	return h, err
-}
-
-func (s *Store) DeleteUser(username string) error {
-	res, err := s.db.Exec(`DELETE FROM users WHERE username = ?`, username)
+// DropLegacyUsers removes the users table that 3.7.8 and earlier kept password
+// hashes in, and reports whether there was one.
+//
+// Accounts are now declared on the command line and never written down, so that
+// table is not merely unused: it is a credential at rest in a file nobody
+// reviews any more, on a host where the operator has been told there is no
+// stored password. Deleting the rows would leave the bytes sitting in a free
+// page, so this vacuums afterwards -- once, only on the upgrade run, because
+// the table is gone the next time round.
+//
+// Failure is not fatal to the caller: monitoring data is unaffected either way,
+// and a database opened read-only or on a full disk should still serve.
+func (s *Store) DropLegacyUsers() (bool, error) {
+	var name string
+	err := s.db.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'`).Scan(&name)
 	if err != nil {
-		return err
+		// sql.ErrNoRows is the normal case: no legacy table, nothing to do.
+		return false, nil
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
+	if _, err := s.db.Exec(`DROP TABLE users`); err != nil {
+		return false, fmt.Errorf("failed to drop the legacy users table: %w", err)
 	}
-	return nil
-}
-
-func (s *Store) ListUsers() ([]string, error) {
-	rows, err := s.db.Query(`SELECT username FROM users ORDER BY username`)
-	if err != nil {
-		return nil, err
+	if _, err := s.db.Exec(`VACUUM`); err != nil {
+		return true, fmt.Errorf("dropped the legacy users table but could not VACUUM, "+
+			"so the old password hashes may remain in free pages of the database file: %w", err)
 	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var u string
-		if err := rows.Scan(&u); err != nil {
-			return nil, err
-		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
+	return true, nil
 }
 
 // DB exposes the underlying connection, so the state-snapshot store can reuse the same database file.

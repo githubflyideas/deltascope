@@ -2,11 +2,13 @@
 # usage: ADMIN_PASSWORD='...' LISTEN_ADDR=0.0.0.0:8080 ./deploy.sh
 # offline: put pre-downloaded pcp rpms into ./rpms/
 #
-# The admin account is created here, from ADMIN_PASSWORD, using `user add`
-# rather than `serve -user`. Both write the same table; the difference is that
-# `serve -user` would put the password in the unit file and in `ps` for the life
-# of the service, and a deployment script has no reason to accept that when it
-# already holds the password in its own environment for one command.
+# The admin account is declared on the service's own command line, as
+# `serve -user name:password` in the unit file. deltascope stores no password
+# anywhere: accounts exist only in the running process, so this line is the
+# whole record of who may log in. Two consequences worth knowing before you
+# run this: the unit file is written mode 600 because it now holds a
+# credential, and the password is visible to other local users in `ps` for as
+# long as the service runs. Changing it means editing the unit and restarting.
 set -euo pipefail
 
 RETENTION_DAYS="${RETENTION_DAYS:-7}"        # PCP archive retention (ring cleanup)
@@ -29,6 +31,18 @@ if (( ${#ADMIN_PASSWORD} < 8 )); then
     echo "(optionally ADMIN_USER, default 'admin')"
     exit 1
 fi
+# The password goes onto ExecStart, and systemd reads that line: it expands $VAR
+# and %-specifiers and does its own quote removal, so a password containing any
+# of those would reach deltascope as something other than what you typed. That
+# failure looks like "the password I set does not work", so refuse it here
+# instead of writing a unit that lies about the credential.
+if printf '%s' "${ADMIN_USER}${ADMIN_PASSWORD}" | LC_ALL=C grep -q '[^A-Za-z0-9._:@,+=/^~!?#-]'; then
+    echo "ADMIN_USER / ADMIN_PASSWORD may only use letters, digits and ._:@,+=/^~!?#-"
+    echo "because both end up on the service's systemd ExecStart line, where \$, %,"
+    echo "quotes, backslashes and spaces are reinterpreted. Generate one with:"
+    echo "  ADMIN_PASSWORD='$(head -c 12 /dev/urandom | base64 | tr -d '/+=')' ./deploy.sh"
+    exit 1
+fi
 cd "$(dirname "$0")"
 [[ -x ./deltascope ]] || {
     echo "deltascope binary missing in this directory."
@@ -38,7 +52,7 @@ cd "$(dirname "$0")"
     exit 1
 }
 
-echo "==> [1/7] installing PCP"
+echo "==> [1/6] installing PCP"
 if compgen -G "rpms/*.rpm" >/dev/null; then
     echo "    using local offline RPMs (rpms/)"
     dnf install -y ./rpms/*.rpm || rpm -Uvh --replacepkgs rpms/*.rpm
@@ -49,7 +63,7 @@ else
 fi
 command -v pmrep >/dev/null || { echo "pmrep missing (pcp-system-tools), aborting"; exit 1; }
 
-echo "==> [2/7] enabling pmcd / pmlogger, ${RETENTION_DAYS}-day ring cleanup, tiered sampling"
+echo "==> [2/6] enabling pmcd / pmlogger, ${RETENTION_DAYS}-day ring cleanup, tiered sampling"
 systemctl enable --now pmcd pmlogger
 TIMERS=/etc/sysconfig/pmlogger_timers
 touch "$TIMERS"
@@ -113,24 +127,27 @@ else
     echo "    default control line not found; point pmlogger -c at /etc/pcp/pmlogger/deltascope.config manually"
 fi
 
-echo "==> [3/7] installing binary and data directory"
+echo "==> [3/6] installing binary and data directory"
 install -m 0755 ./deltascope "$INSTALL_BIN"
 id "$SVC_USER" &>/dev/null || useradd --system --home-dir "$DATA_DIR" --shell /sbin/nologin "$SVC_USER"
 usermod -aG pcp "$SVC_USER"       # read /var/log/pcp/pmlogger archives
 mkdir -p "$DATA_DIR"
-chown "$SVC_USER:$SVC_USER" "$DATA_DIR"
+# Recursive, and this is the reason: an earlier run of any deltascope CLI
+# subcommand as root leaves deltascope.db and the -wal / -shm sidecars SQLite
+# opens beside it owned by root. The service runs as $SVC_USER and cannot write
+# them -- the failure looks like a service that starts, serves the login page,
+# and then fails on the first request that touches the database.
+chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
-echo "==> [4/7] creating the ${ADMIN_USER} account"
-DSCOPE_PASSWORD="$ADMIN_PASSWORD" "$INSTALL_BIN" user add "$ADMIN_USER" -data "$DATA_DIR"
-# Recursive, and this is the reason: the command above ran as root, so
-# deltascope.db and the -wal / -shm sidecars SQLite opens beside it are owned by
-# root. The service runs as $SVC_USER and cannot write them -- the failure looks
-# like a service that starts, serves the login page, and rejects every password.
-chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
-
-echo "==> [5/7] writing systemd service"
-cat > /etc/systemd/system/deltascope.service <<EOF
+echo "==> [4/6] writing systemd service"
+UNIT=/etc/systemd/system/deltascope.service
+# Created 0600 before anything is written to it, not chmod'ed afterwards: the
+# ExecStart line below carries the password, and a unit that is briefly
+# world-readable is still world-readable to whoever was looking. systemd runs as
+# root and does not need to read it as anyone else.
+install -m 0600 /dev/null "$UNIT"
+cat > "$UNIT" <<EOF
 [Unit]
 Description=deltascope change & performance diagnostics web service
 After=network.target pmlogger.service
@@ -140,10 +157,11 @@ Wants=pmlogger.service
 User=${SVC_USER}
 Group=${SVC_USER}
 SupplementaryGroups=pcp
-# No -user here on purpose: the account was created in step 4 and putting the
-# password on this line would leave it in a world-readable unit file and in `ps`
-# for as long as the service runs.
-ExecStart=${INSTALL_BIN} serve -listen ${LISTEN_ADDR} -data ${DATA_DIR}
+# -user is the whole account store: nothing is written down, so this line is
+# what makes a login possible, and editing it plus a restart is how the
+# password is changed. The cost, stated rather than buried: this argument is
+# visible to every local user in \`ps\`.
+ExecStart=${INSTALL_BIN} serve -listen ${LISTEN_ADDR} -data ${DATA_DIR} -user "${ADMIN_USER}:${ADMIN_PASSWORD}"
 Restart=on-failure
 RestartSec=3
 
@@ -163,7 +181,7 @@ EOF
 systemctl daemon-reload
 systemctl enable --now deltascope
 
-echo "==> [6/7] firewall (optional)"
+echo "==> [5/6] firewall (optional)"
 PORT="${LISTEN_ADDR##*:}"
 if systemctl is-active --quiet firewalld; then
     firewall-cmd --permanent --add-port="${PORT}/tcp" >/dev/null
@@ -173,7 +191,7 @@ else
     echo "    firewalld not running, skipping"
 fi
 
-echo "==> [7/7] waiting for the service to come up"
+echo "==> [6/6] waiting for the service to come up"
 for _ in $(seq 1 10); do
     curl -sf "http://127.0.0.1:${PORT}/api/version" >/dev/null 2>&1 && break
     sleep 1
@@ -185,8 +203,11 @@ echo
 echo "  Open http://<this-host-ip>:${PORT}/ and sign in as ${ADMIN_USER}"
 echo "  with the password you passed in ADMIN_PASSWORD."
 echo
-echo "  forgot it:          DSCOPE_PASSWORD='new-one' ${INSTALL_BIN} user add ${ADMIN_USER} -data ${DATA_DIR}"
-echo "                      (then chown -R ${SVC_USER}:${SVC_USER} ${DATA_DIR} and restart)"
+echo "  the password:       lives only on the ExecStart line of ${UNIT}"
+echo "                      (mode 600); nothing is stored in ${DATA_DIR}"
+echo "  forgot or change:   edit -user in ${UNIT}, then"
+echo "                      systemctl daemon-reload && systemctl restart deltascope"
+echo "                      (open sessions on the old password stop working)"
 echo
 echo "  service status:     systemctl status deltascope"
 echo "  archive retention:  ${RETENTION_DAYS} days (edit $TIMERS, restart pmlogger_daily.timer)"

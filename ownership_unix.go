@@ -15,12 +15,12 @@ import (
 // This exists because of one specific way to lock yourself out. SQLite in WAL
 // mode keeps two sidecar files next to the database, and opening the database
 // -- even just to read it -- requires write access to the -shm file. So a
-// single `sudo deltascope user del admin` against a data directory owned by
-// the service account leaves root-owned files behind, and from that moment
-// the service cannot read its own user table. The account is still there and
-// the password is still right, but every login fails, and the only clue is a
-// permission error the operator never sees. Following the directory's owner
-// keeps the CLI and the service able to share one database.
+// single `sudo deltascope snapshot` against a data directory owned by the
+// service account leaves root-owned files behind, and from that moment the
+// service cannot open its own database. Nothing looks broken: the process
+// starts and serves the login page, and the only clue is a permission error
+// the operator never sees. Following the directory's owner keeps the CLI and
+// the service able to share one database.
 func alignDataOwnership(dataDir string, files ...string) {
 	if os.Geteuid() != 0 {
 		return

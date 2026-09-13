@@ -8,53 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
-
-const (
-	pbkdf2Iters = 600_000
-	saltLen     = 16
-	keyLen      = 32
-	hashVersion = "pbkdf2-sha256"
-)
-
-func HashPassword(password string) (string, error) {
-	salt := make([]byte, saltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", err
-	}
-	dk := pbkdf2SHA256([]byte(password), salt, pbkdf2Iters, keyLen)
-	return strings.Join([]string{
-		hashVersion,
-		strconv.Itoa(pbkdf2Iters),
-		base64.RawStdEncoding.EncodeToString(salt),
-		base64.RawStdEncoding.EncodeToString(dk),
-	}, "$"), nil
-}
-
-func VerifyPassword(stored, password string) bool {
-	parts := strings.Split(stored, "$")
-	if len(parts) != 4 || parts[0] != hashVersion {
-		return false
-	}
-	iters, err := strconv.Atoi(parts[1])
-	if err != nil || iters < 10_000 || iters > 10_000_000 {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[2])
-	if err != nil {
-		return false
-	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[3])
-	if err != nil {
-		return false
-	}
-	got := pbkdf2SHA256([]byte(password), salt, iters, len(want))
-	return subtle.ConstantTimeCompare(got, want) == 1
-}
 
 type Sessions struct {
 	secret []byte
@@ -73,24 +30,10 @@ type sessionPayload struct {
 
 // Claims is what a session token asserts. FP is the credential fingerprint
 // the token was issued against; the caller checks it against the account as
-// it stands now, which is what makes the token revocable.
+// it stands now, which is what makes the token revocable. See Accounts.
 type Claims struct {
 	User string
 	FP   string
-}
-
-// Fingerprint reduces a stored password hash to a short tag that rides along
-// inside the session token.
-//
-// The token is self-contained and signed, so nothing on the server side can
-// take it back: it stays valid for its whole TTL. Carrying a fingerprint of
-// the credential it was issued against gives every request a cheap way to
-// notice that the credential is gone or different -- deleting the account or
-// changing its password now ends the sessions that were opened with it,
-// instead of leaving them working for up to another 12 hours.
-func Fingerprint(storedHash string) string {
-	sum := sha256.Sum256([]byte(storedHash))
-	return base64.RawURLEncoding.EncodeToString(sum[:8])
 }
 
 func (s *Sessions) Issue(user, fingerprint string) string {

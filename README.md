@@ -87,18 +87,22 @@ deltascope serve -listen 0.0.0.0:8080 -data /var/lib/deltascope \
   -user admin:choose-a-real-password
 ```
 
-Accounts are declared on the command line. `-user` repeats, so
-`-user admin:... -user oncall:...` gives you two, and they are written on
-every start — which is also how you fix a forgotten password: change the
-flag and restart. Nothing is created in the browser, and a server started
-with no account and none in its database refuses to start rather than
+Accounts are declared on the command line and nowhere else. `-user` repeats,
+so `-user admin:... -user oncall:...` gives you two. They live in memory for
+the life of the process: no password is written down, which is also how you
+fix a forgotten one — change the flag and restart. Nothing is created in the
+browser, and a server started with no account refuses to start rather than
 listen on a port nobody can get through.
 
-The trade to know about: arguments are visible to other local users in
-`ps`, and they land in shell history and in the unit file. Where that is
-not acceptable, `deltascope user add <name>` writes the same table with the
-password read from `DSCOPE_PASSWORD` or a prompt, and `serve` then needs no
-`-user` at all.
+The trade to know about, and there is no way around it: arguments are visible
+to other local users in `ps`, and they land in shell history and in the unit
+file. `deploy.sh` writes that unit mode 600 for exactly this reason. In
+exchange, a stolen database file contains no credential at all — and one
+written by 3.7.8 or earlier has its old `users` table dropped and the file
+vacuumed on the first start of this version.
+
+Changing a password or dropping a `-user` line ends the sessions that were
+opened with it; a restart that leaves the line alone does not log anyone out.
 
 State is snapshotted every 10 minutes, so history accumulates with
 no cron job. The UI ships in ten languages and six themes, and any report
