@@ -23,14 +23,25 @@ import (
 // rows, keyed by state ID, with a one-line reason naming the metric and what
 // was missing. A state that appears here is unknown, not false.
 func Unevaluated(states []State, rows []pcp.DiffRow) map[string]string {
-	byMetric := indexWithDerived(rows)
 	out := map[string]string{}
+	for id, gap := range UnevaluatedGaps(states, rows) {
+		out[id] = gap.Reason
+	}
+	return out
+}
+
+// UnevaluatedGaps is Unevaluated with the reason classified, for callers that
+// need to decide what to tell the reader to do about it. The prose is
+// identical; only the kind is added.
+func UnevaluatedGaps(states []State, rows []pcp.DiffRow) map[string]Gap {
+	byMetric := indexWithDerived(rows)
+	out := map[string]Gap{}
 	for _, st := range states {
 		if len(st.When) == 0 {
 			continue // a state with no conditions is never evaluated at all
 		}
-		if reason := stateGap(st, byMetric); reason != "" {
-			out[st.ID] = reason
+		if gap := stateGap(st, byMetric); gap.Reason != "" {
+			out[st.ID] = gap
 		}
 	}
 	return out
@@ -51,15 +62,16 @@ func indexWithDerived(rows []pcp.DiffRow) map[string][]pcp.DiffRow {
 	return byMetric
 }
 
-// stateGap returns why the state could not be evaluated, or "" if it could.
-func stateGap(st State, byMetric map[string][]pcp.DiffRow) string {
+// stateGap returns why the state could not be evaluated, or a zero Gap if it
+// could.
+func stateGap(st State, byMetric map[string][]pcp.DiffRow) Gap {
 	if !st.SameInstance {
 		for _, c := range st.When {
-			if reason := condGap(c, byMetric[c.Metric]); reason != "" {
-				return reason
+			if gap := condGap(c, byMetric[c.Metric]); gap.Reason != "" {
+				return gap
 			}
 		}
-		return ""
+		return Gap{}
 	}
 
 	// A SameInstance state needs one instance carrying every condition. Two
@@ -74,26 +86,27 @@ func stateGap(st State, byMetric map[string][]pcp.DiffRow) string {
 		}
 	}
 	if len(instances) == 0 {
-		return fmt.Sprintf("no per-instance data for %s", strings.Join(condMetrics(st), ", "))
+		return Gap{Kind: classifyMissing(st.When[0].Metric),
+			Reason: fmt.Sprintf("no per-instance data for %s", strings.Join(condMetrics(st), ", "))}
 	}
-	var firstReason string
+	var first Gap
 	for _, inst := range sortedInstances(instances) {
 		ok := true
 		for _, c := range st.When {
-			reason := condGap(c, rowsForInstance(byMetric[c.Metric], inst))
-			if reason != "" {
+			gap := condGap(c, rowsForInstance(byMetric[c.Metric], inst))
+			if gap.Reason != "" {
 				ok = false
-				if firstReason == "" {
-					firstReason = reason + " on " + inst
+				if first.Reason == "" {
+					first = Gap{Kind: gap.Kind, Reason: gap.Reason + " on " + inst}
 				}
 				break
 			}
 		}
 		if ok {
-			return ""
+			return Gap{}
 		}
 	}
-	return firstReason
+	return first
 }
 
 // rowsForInstance keeps the rows a same-instance match would consider for
@@ -130,29 +143,29 @@ func condMetrics(st State) []string {
 	return out
 }
 
-// condGap reports why no row can answer the condition, or "" if one can.
-// "Can answer" is deliberately weaker than "does match": a row that carries
-// the fields the condition reads produces a real true-or-false, and that is
-// what makes the state evaluated.
-func condGap(c Cond, rows []pcp.DiffRow) string {
+// condGap reports why no row can answer the condition, or a zero Gap if one
+// can. "Can answer" is deliberately weaker than "does match": a row that
+// carries the fields the condition reads produces a real true-or-false, and
+// that is what makes the state evaluated.
+func condGap(c Cond, rows []pcp.DiffRow) Gap {
 	if len(rows) == 0 {
-		return "no data for " + c.Metric
+		return Gap{Kind: classifyMissing(c.Metric), Reason: "no data for " + c.Metric}
 	}
-	best := ""
+	var best Gap
 	for _, row := range rows {
-		reason := rowGap(c, row)
-		if reason == "" {
-			return ""
+		gap := rowGap(c, row)
+		if gap.Reason == "" {
+			return Gap{}
 		}
-		if best == "" {
-			best = reason
+		if best.Reason == "" {
+			best = gap
 		}
 	}
 	return best
 }
 
 // rowGap names the field this row lacks for this condition.
-func rowGap(c Cond, row pcp.DiffRow) string {
+func rowGap(c Cond, row pcp.DiffRow) Gap {
 	name := c.Metric
 	if row.Instance != "" {
 		name += "[" + row.Instance + "]"
@@ -160,20 +173,24 @@ func rowGap(c Cond, row pcp.DiffRow) string {
 	needsB := c.BGte != nil || c.BLte != nil || c.BGteCores != nil ||
 		c.BGteMachineFrac != nil || c.BGtePerCPU != nil
 	if needsB && row.B == nil {
-		return name + " has no value for this window"
+		// The metric is in the row set but this window has no value for it,
+		// which is a collection gap rather than a property of the host: the
+		// absence of the whole family is what classifyMissing judges.
+		return Gap{Kind: GapNoData, Reason: name + " has no value for this window"}
 	}
 	needsPeak := c.BMaxGte != nil || c.BMaxGteCores != nil ||
 		c.BMaxMachineFrac != nil || c.BMaxGtePerCPU != nil || c.PeakRatioGte != nil
 	if needsPeak && row.BMax == nil {
 		// pmlogsummary without -a reports no min/max, and a nil peak is the
 		// reason every peak state would otherwise look uniformly false.
-		return name + " carries no peak statistic"
+		return Gap{Kind: GapNoData, Reason: name + " carries no peak statistic"}
 	}
 	if c.PeakRatioGte != nil && row.B == nil {
-		return name + " has no mean to take a peak ratio against"
+		return Gap{Kind: GapNoData, Reason: name + " has no mean to take a peak ratio against"}
 	}
 	if c.MinSamples > 0 && row.BCount < c.MinSamples {
-		return fmt.Sprintf("%s has %d sample(s), needs %d", name, row.BCount, c.MinSamples)
+		return Gap{Kind: GapTooFewSamples,
+			Reason: fmt.Sprintf("%s has %d sample(s), needs %d", name, row.BCount, c.MinSamples)}
 	}
 	// Verdict and the Delta conditions describe a comparison against an
 	// earlier window. A single-window collection has no A side, so those
@@ -181,10 +198,10 @@ func rowGap(c Cond, row pcp.DiffRow) string {
 	// path depends on. Appeared is not listed: it reads A and B directly and
 	// gives a real answer either way.
 	if (c.DeltaGte != nil || c.DeltaLte != nil) && row.DeltaPct == nil {
-		return name + " has no baseline to compare against"
+		return Gap{Kind: GapNoBaseline, Reason: name + " has no baseline to compare against"}
 	}
 	if c.Verdict != "" && row.A == nil {
-		return name + " has no baseline, so it has no verdict"
+		return Gap{Kind: GapNoBaseline, Reason: name + " has no baseline, so it has no verdict"}
 	}
-	return ""
+	return Gap{}
 }

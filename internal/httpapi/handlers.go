@@ -602,7 +602,7 @@ func writeReasoning(w http.ResponseWriter, win diagnose.Window, source string,
 	rows []pcp.DiffRow, note string, procs []state.ProcRow) {
 	active := reasoning.Evaluate(reasoning.States, rows)
 	results := reasoning.Diagnose(reasoning.Diagnoses, active)
-	gaps := reasoning.Unevaluated(reasoning.States, rows)
+	gaps := reasoning.UnevaluatedGaps(reasoning.States, rows)
 	triage := pcp.Triage(rows)
 
 	out := map[string]any{
@@ -687,11 +687,19 @@ func unexplained(triage []pcp.TriageBlock, results []reasoning.Result) []unexpla
 // could not be judged; non-empty implies the state is neither active nor
 // quiet, so the UI keys off this one field rather than needing a flag too.
 type stateView struct {
-	ID       string   `json:"id"`
-	Domain   string   `json:"domain"`
+	ID     string `json:"id"`
+	Domain string `json:"domain"`
+	// Judgment is "absolute" or "change". The two are rostered separately
+	// because a quiet change-judgment list on a first collection means
+	// something entirely different from a quiet absolute one, and a reader who
+	// cannot tell them apart cannot tell what the screen is worth.
+	Judgment string   `json:"judgment"`
 	Active   bool     `json:"active"`
 	Evidence []string `json:"evidence,omitempty"`
 	Reason   string   `json:"reason,omitempty"`
+	// GapKind classifies Reason for the UI, which must not branch on the prose:
+	// the reasons are English and the interface is not. Set only when Reason is.
+	GapKind string `json:"gap_kind,omitempty"`
 }
 
 // stateViews reports every state in one of three conditions, not two: it
@@ -704,17 +712,17 @@ type stateView struct {
 //
 // Split out of the handler so the three-way mapping is testable without an
 // archive: it is the invariant the whole screen rests on.
-func stateViews(catalog []reasoning.State, active map[string]reasoning.Active, gaps map[string]string) []stateView {
+func stateViews(catalog []reasoning.State, active map[string]reasoning.Active, gaps map[string]reasoning.Gap) []stateView {
 	out := make([]stateView, 0, len(catalog))
 	for _, st := range catalog {
-		v := stateView{ID: st.ID, Domain: st.Domain}
+		v := stateView{ID: st.ID, Domain: st.Domain, Judgment: string(st.Judgment())}
 		if a, on := active[st.ID]; on {
 			// A state that fired was measured by definition, so a stale gap
 			// entry for it can never win here -- Active and Reason are
 			// mutually exclusive on purpose.
 			v.Active, v.Evidence = true, a.Evidence
-		} else {
-			v.Reason = gaps[st.ID]
+		} else if gap, missing := gaps[st.ID]; missing {
+			v.Reason, v.GapKind = gap.Reason, string(gap.Kind)
 		}
 		out = append(out, v)
 	}

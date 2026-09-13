@@ -178,6 +178,10 @@ table.report { width: 100%; border-collapse: collapse; }
 .report td.metric-cell { text-align: left; font-family: var(--sans); white-space: normal; overflow-wrap: break-word; }
 .metric-cell .m-label { display: block; }
 .metric-cell .m-name { display: block; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+/* What to do about an unmeasured state, one line, in prose rather than in the
+   monospace the reason above uses: the reason names a metric, this names an
+   action, and they must not read as one sentence. */
+.metric-cell .m-hint { display: block; font-size: 12.5px; color: var(--muted); opacity: .8; margin-top: 2px; }
 .report td.col-a { color: var(--a); }
 .report td.col-b { color: var(--b); }
 .report tr.v-worse td.delta-cell { color: var(--bad); font-weight: 700; }
@@ -580,6 +584,10 @@ body.theme-iris-light .report tr[data-bg] { mix-blend-mode: multiply; }
    no others. Same shape as .diag-hero, which is the other single-button tab. */
 .rs-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
 .rs-fixed-note { color: var(--muted); font-size: 13.5px; line-height: 1.5; max-width: 62ch; }
+/* Sits between a roster's heading and its domain blocks, saying what a quiet
+   result in that half is worth. Indented to read as a caption on the heading
+   rather than as a row of the table under it. */
+.rs-roster-note { color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 78ch; margin: 6px 0 10px 2px; }
 
 /* The hand-off at the foot of the one-click page. Separated by a rule rather
    than boxed: it is a way out of the page, not another finding on it. */

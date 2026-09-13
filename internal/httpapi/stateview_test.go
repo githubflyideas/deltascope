@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/githubflyideas/deltascope/internal/pcp"
 	"github.com/githubflyideas/deltascope/internal/reasoning"
 )
 
@@ -24,7 +25,7 @@ var viewCatalog = []reasoning.State{
 func TestStateViewsSeparatesQuietFromUnmeasured(t *testing.T) {
 	views := stateViews(viewCatalog,
 		map[string]reasoning.Active{"state.a": {ID: "state.a", Evidence: []string{"kernel.all.cpu.user B=0.9"}}},
-		map[string]string{"state.c": "no data for mem.util.available"})
+		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}})
 
 	if len(views) != 3 {
 		t.Fatalf("views = %d, want one per catalog state", len(views))
@@ -56,7 +57,7 @@ func TestStateViewsNeverBothActiveAndUnmeasured(t *testing.T) {
 		map[string]reasoning.Active{"state.a": {ID: "state.a"}},
 		// A stale gap entry for a state that fired: reasoning keeps these
 		// disjoint, but this layer must not depend on that to stay coherent.
-		map[string]string{"state.a": "no data for kernel.all.cpu.user"})
+		map[string]reasoning.Gap{"state.a": {Kind: reasoning.GapNoData, Reason: "no data for kernel.all.cpu.user"}})
 
 	for _, v := range views {
 		if v.Active && v.Reason != "" {
@@ -69,9 +70,9 @@ func TestStateViewsNeverBothActiveAndUnmeasured(t *testing.T) {
 // arithmetic on the shape a PCP-less host actually produces: nothing fired,
 // almost nothing was measured.
 func TestStateViewsOnAnArchiveThatAnsweredNothing(t *testing.T) {
-	gaps := map[string]string{}
+	gaps := map[string]reasoning.Gap{}
 	for _, st := range viewCatalog {
-		gaps[st.ID] = "no data for " + st.ID
+		gaps[st.ID] = reasoning.Gap{Kind: reasoning.GapNoData, Reason: "no data for " + st.ID}
 	}
 	views := stateViews(viewCatalog, map[string]reasoning.Active{}, gaps)
 
@@ -93,7 +94,7 @@ func TestStateViewsOnAnArchiveThatAnsweredNothing(t *testing.T) {
 func TestStateViewJSONOmitsReasonWhenMeasured(t *testing.T) {
 	views := stateViews(viewCatalog,
 		map[string]reasoning.Active{"state.a": {ID: "state.a"}},
-		map[string]string{"state.c": "no data for mem.util.available"})
+		map[string]reasoning.Gap{"state.c": {Kind: reasoning.GapNoData, Reason: "no data for mem.util.available"}})
 	blob, err := json.Marshal(views)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +112,7 @@ func TestStateViewJSONOmitsReasonWhenMeasured(t *testing.T) {
 // handler passes reasoning.States, and every one of the 78 must come back
 // classified, or states silently vanish from the screen.
 func TestStateViewsCoversTheWholeCatalog(t *testing.T) {
-	views := stateViews(reasoning.States, map[string]reasoning.Active{}, map[string]string{})
+	views := stateViews(reasoning.States, map[string]reasoning.Active{}, map[string]reasoning.Gap{})
 	if len(views) != len(reasoning.States) {
 		t.Fatalf("views = %d, want %d", len(views), len(reasoning.States))
 	}
@@ -123,6 +124,66 @@ func TestStateViewsCoversTheWholeCatalog(t *testing.T) {
 		seen[v.ID] = true
 		if v.Domain == "" {
 			t.Errorf("%s has no domain, so the UI cannot group it", v.ID)
+		}
+		// Every state lands in one of the two rosters. An empty judgment would
+		// drop the row off both halves of the screen rather than misfile it,
+		// which is the failure mode a reader cannot see.
+		if v.Judgment != "absolute" && v.Judgment != "change" {
+			t.Errorf("%s has judgment %q, want absolute or change", v.ID, v.Judgment)
+		}
+	}
+}
+
+// The two rosters must both have contents. A catalog that classified as all
+// absolute or all change would render one empty section and, more to the
+// point, would mean the classifier is reading the wrong field: this pins that
+// the split is real rather than accidentally constant.
+func TestCatalogSplitsAcrossBothJudgments(t *testing.T) {
+	abs, chg := 0, 0
+	for _, st := range reasoning.States {
+		if st.Judgment() == reasoning.JudgeAbsolute {
+			abs++
+		} else {
+			chg++
+		}
+	}
+	if abs == 0 || chg == 0 {
+		t.Fatalf("absolute = %d, change = %d: one roster would be empty", abs, chg)
+	}
+	t.Logf("catalog: %d absolute, %d change-relative", abs, chg)
+}
+
+// A gap always carries a kind. The UI decides whether to print an action hint
+// from the kind alone -- an unclassified gap would silently fall through to no
+// hint, which is indistinguishable on screen from the one kind that is
+// supposed to have none.
+func TestGapsAlwaysCarryAKind(t *testing.T) {
+	views := stateViews(viewCatalog, map[string]reasoning.Active{},
+		map[string]reasoning.Gap{
+			"state.a": {Kind: reasoning.GapAbsent, Reason: "no data for swap.free"},
+			"state.b": {Kind: reasoning.GapNoBaseline, Reason: "no baseline"},
+		})
+	for _, v := range views {
+		if (v.Reason != "") != (v.GapKind != "") {
+			t.Errorf("%s: reason %q and kind %q must be set together", v.ID, v.Reason, v.GapKind)
+		}
+	}
+}
+
+// Nothing measured, nothing collected: the shape of a first run against a
+// single window. Every change-judgment state must come back as no_baseline
+// rather than as no_data, because the reader's action differs -- take a second
+// snapshot, not go fix the collector.
+func TestSingleWindowGapsAreNoBaselineNotFailure(t *testing.T) {
+	rows := []pcp.DiffRow{}
+	for _, m := range []string{"kernel.all.cpu.user", "kernel.all.load", "mem.util.available"} {
+		v := 1.0
+		rows = append(rows, pcp.DiffRow{Metric: m, B: &v, BCount: 600})
+	}
+	gaps := reasoning.UnevaluatedGaps(reasoning.States, rows)
+	for id, g := range gaps {
+		if g.Kind == "" {
+			t.Errorf("%s: gap %q has no kind", id, g.Reason)
 		}
 	}
 }

@@ -1641,19 +1641,19 @@ function renderReasoning(d) {
   // the opposite of an audit, because it asserts a negative nobody verified.
   const states = d.states || [];
   if (states.length) {
-    const activeCount = states.filter((x) => x.active).length;
-    const gapTotal = states.filter((x) => !x.active && x.reason).length;
-
-    // Grouped by domain, and the active ones first within each group. A flat
-    // list was fine at 17 states; at ~60 the reader needs the shape of the
-    // machine, and the handful that hold must not be buried among the ones
-    // that don't.
-    const byDomain = new Map();
-    states.forEach((st) => {
-      const k = st.domain || "other";
-      if (!byDomain.has(k)) byDomain.set(k, []);
-      byDomain.get(k).push(st);
-    });
+    // What a reader has to do about an unmeasured state depends entirely on
+    // WHY it is unmeasured, and one of the five reasons asks for nothing at
+    // all: a host with no swap has no swap problems, and printing a to-do
+    // beside it would turn a correct configuration into a permanent chore.
+    // Keyed off the server's gap_kind rather than the reason prose, which is
+    // English while this interface is not.
+    const GAP_HINT = {
+      needs_root: "gap_needs_root",
+      absent: "gap_absent",
+      too_few_samples: "gap_too_few_samples",
+      no_baseline: "gap_no_baseline",
+      no_data: "gap_no_data",
+    };
 
     const stateRow = (st) => {
       const unknown = !st.active && !!st.reason;
@@ -1669,33 +1669,64 @@ function renderReasoning(d) {
       const detail = unknown
         ? escapeHtml(st.reason)
         : (st.evidence && st.evidence.length ? st.evidence.map(escapeHtml).join(" \u00b7 ") : "");
+      const hintKey = unknown ? GAP_HINT[st.gap_kind] : null;
+      const hint = hintKey ? `<span class="m-hint">${t(hintKey)}</span>` : "";
       return `<tr class="${cls}">
         <td class="metric-cell"><span class="m-label">${mark} <code>${escapeHtml(st.id)}</code></span>
-          ${detail ? `<span class="m-name">${detail}</span>` : ""}</td>
+          ${detail ? `<span class="m-name">${detail}</span>` : ""}${hint}</td>
         <td>${label}</td>
       </tr>`;
     };
 
-    const groups = [...byDomain.entries()].map(([domain, list]) => {
-      const act = list.filter((x) => x.active);
-      const gaps = list.filter((x) => !x.active && x.reason);
-      const quiet = list.filter((x) => !x.active && !x.reason);
-      const rows = [...act, ...gaps, ...quiet].map(stateRow).join("");
-      // Active first, then the unmeasured, then the quiet ones: the two
-      // groups that carry information lead. The denominator counts only the
-      // states this window could actually answer, so a domain where nothing
-      // was measured cannot read as "0 / 12 active".
-      const open = act.length ? " open" : "";
-      const gapNote = gaps.length
-        ? ` \u00b7 ${gaps.length} ${t("reasoning_unmeasured")}` : "";
-      return `<details class="cat-block"${open}><summary class="cat-head">
-        <span>${escapeHtml(domain)}</span><span>${act.length} / ${list.length - gaps.length} ${t("reasoning_active")}${gapNote}</span></summary>
-        <table class="report"><tbody>${rows}</tbody></table></details>`;
-    }).join("");
+    // Grouped by domain, and the active ones first within each group. A flat
+    // list was fine at 17 states; at ~60 the reader needs the shape of the
+    // machine, and the handful that hold must not be buried among the ones
+    // that don't.
+    const domainBlocks = (list) => {
+      const byDomain = new Map();
+      list.forEach((st) => {
+        const k = st.domain || "other";
+        if (!byDomain.has(k)) byDomain.set(k, []);
+        byDomain.get(k).push(st);
+      });
+      return [...byDomain.entries()].map(([domain, group]) => {
+        const act = group.filter((x) => x.active);
+        const gaps = group.filter((x) => !x.active && x.reason);
+        const quiet = group.filter((x) => !x.active && !x.reason);
+        const rows = [...act, ...gaps, ...quiet].map(stateRow).join("");
+        // Active first, then the unmeasured, then the quiet ones: the two
+        // groups that carry information lead. The denominator counts only the
+        // states this window could actually answer, so a domain where nothing
+        // was measured cannot read as "0 / 12 active".
+        const open = act.length ? " open" : "";
+        const gapNote = gaps.length
+          ? ` \u00b7 ${gaps.length} ${t("reasoning_unmeasured")}` : "";
+        return `<details class="cat-block"${open}><summary class="cat-head">
+          <span>${escapeHtml(domain)}</span><span>${act.length} / ${group.length - gaps.length} ${t("reasoning_active")}${gapNote}</span></summary>
+          <table class="report"><tbody>${rows}</tbody></table></details>`;
+      }).join("");
+    };
 
-    html += `<div class="cat-head" style="margin-top:18px">
-        <span>${t("reasoning_states")}</span><span>${activeCount} / ${states.length - gapTotal} ${t("reasoning_active")}${gapTotal ? ` \u00b7 ${gapTotal} ${t("reasoning_unmeasured")}` : ""}</span>
-      </div>${groups}`;
+    // The two halves answer different questions and a quiet result means
+    // different things in each, so they get separate headers and separate
+    // counts. An absolute check needs one window: nothing active there is a
+    // real all-clear. A change check needs a baseline, so on a single window
+    // every one of them is unmeasured -- and folding that into one number
+    // beside the absolute ones is exactly how "0 active" comes to be read as
+    // "nothing wrong" about questions that were never asked.
+    const roster = (list, headKey, noteKey) => {
+      if (!list.length) return "";
+      const act = list.filter((x) => x.active).length;
+      const gaps = list.filter((x) => !x.active && x.reason).length;
+      const gapNote = gaps ? ` \u00b7 ${gaps} ${t("reasoning_unmeasured")}` : "";
+      return `<div class="cat-head" style="margin-top:18px">
+          <span>${t(headKey)}</span><span>${act} / ${list.length - gaps} ${t("reasoning_active")}${gapNote}</span>
+        </div>
+        <div class="rs-roster-note">${t(noteKey)}</div>${domainBlocks(list)}`;
+    };
+
+    html += roster(states.filter((x) => x.judgment !== "change"), "rs_absolute_head", "rs_absolute_note");
+    html += roster(states.filter((x) => x.judgment === "change"), "rs_change_head", "rs_change_note");
   }
 
   $("#reasoningResult").innerHTML = html;
