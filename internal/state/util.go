@@ -19,12 +19,21 @@ func readFile(path string) (string, bool) {
 	return string(b), true
 }
 
-func fileHash(path string) (string, bool) {
+// fileHash returns a content fingerprint and the file's last-modification
+// time in Unix seconds. The mtime rides along because every caller storing a
+// hash wants it: the hash answers "did this change", the mtime answers "when",
+// and both come from one open. It is not compared (see Item.Mtime), so a touch
+// with no content change still produces no diff row.
+func fileHash(path string) (string, int64, bool) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return "", false
+		return "", 0, false
 	}
-	return hashBytes(b), true
+	var mtime int64
+	if fi, serr := os.Stat(path); serr == nil {
+		mtime = fi.ModTime().Unix()
+	}
+	return hashBytes(b), mtime, true
 }
 
 // runCmd runs a read-only command with a timeout. Returns stdout and success.

@@ -858,13 +858,17 @@ func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	diff := state.Compare(before, after)
-	writeJSON(w, map[string]any{
+	resp := map[string]any{
 		"a_time":          before.Taken,
 		"b_time":          after.Taken,
 		"total":           diff.Total,
 		"sections":        stateDiffJSON(diff),
 		"schema_boundary": diff.SchemaBoundary,
-	})
+	}
+	if events := state.Locate(s.StateStore, diff); len(events) > 0 {
+		resp["events"] = events
+	}
+	writeJSON(w, resp)
 }
 
 func stateDiffJSON(d state.Diff) []map[string]any {
@@ -873,7 +877,8 @@ func stateDiffJSON(d state.Diff) []map[string]any {
 		changes := make([]map[string]any, 0, len(sd.Changes))
 		for _, ch := range sd.Changes {
 			changes = append(changes, map[string]any{
-				"key": ch.Key, "kind": string(ch.Kind), "old": ch.Old, "new": ch.New, "note": ch.Note,
+				"key": ch.Key, "kind": string(ch.Kind), "old": ch.Old, "new": ch.New,
+				"note": ch.Note, "mtime": ch.Mtime,
 			})
 		}
 		out = append(out, map[string]any{"name": sd.Name, "title": sd.Title, "changes": changes})

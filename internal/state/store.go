@@ -133,6 +133,58 @@ func (s *Store) List(limit int) ([]Snapshot, error) {
 	return out, rows.Err()
 }
 
+// Stamp identifies one stored snapshot by row id and capture time, without
+// its body.
+//
+// The split matters for the timeline: a body is ~200 KB of JSON and a week of
+// history is ~1000 of them, so nothing may load them all. Reading the grid of
+// capture times is cheap (it comes off idx_snapshots_taken), and the timeline
+// then loads only the handful of bodies its bisect actually lands on.
+type Stamp struct {
+	ID    int64
+	Taken time.Time
+}
+
+// Stamps lists snapshots captured strictly between from and to, oldest first.
+//
+// Both ends are exclusive because the callers already hold them: the timeline
+// is given the A and B snapshots and wants the interior probe points. Ties on
+// taken are broken by id so the order is total -- two snapshots can share a
+// second (a manual statediff landing on the scheduler's tick), and a bisect
+// over a non-deterministic order would return a different answer per call.
+func (s *Store) Stamps(from, to time.Time) ([]Stamp, error) {
+	rows, err := s.db.Query(`
+		SELECT id, taken FROM snapshots
+		WHERE taken > ? AND taken < ?
+		ORDER BY taken ASC, id ASC`,
+		from.UTC().Format(time.RFC3339), to.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Stamp
+	for rows.Next() {
+		var (
+			id    int64
+			taken string
+		)
+		if err := rows.Scan(&id, &taken); err != nil {
+			return nil, err
+		}
+		t, perr := time.Parse(time.RFC3339, taken)
+		if perr != nil {
+			continue // unparseable row: skip the probe, do not fail the report
+		}
+		out = append(out, Stamp{ID: id, Taken: t})
+	}
+	return out, rows.Err()
+}
+
+// ByID loads one snapshot body by row id.
+func (s *Store) ByID(id int64) (Snapshot, error) {
+	return s.queryOne(`SELECT body FROM snapshots WHERE id = ?`, id)
+}
+
 // Prune deletes snapshots older than the retention period.
 func (s *Store) Prune(keepDays int) (int64, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -keepDays).Format(time.RFC3339)

@@ -753,12 +753,25 @@ func cmdStatediff(args []string) {
 	diff := state.Compare(a, b)
 	if *summary {
 		fmt.Println(state.RenderSummaryLine(diff))
+	} else if evs := state.Locate(ss, diff); useTimeline(evs) {
+		state.RenderTimeline(os.Stdout, diff, evs, !*noColor)
 	} else {
 		state.RenderText(os.Stdout, diff, !*noColor)
 	}
 	if diff.Total > 0 {
 		os.Exit(3)
 	}
+}
+
+// useTimeline reports whether the events are worth printing instead of the flat
+// section view. One undated event carries nothing the flat view does not -- it
+// is what Locate returns on a host with no stored history between A and B -- so
+// that case keeps the output it has always had.
+func useTimeline(evs []state.Event) bool {
+	if len(evs) == 0 {
+		return false
+	}
+	return len(evs) > 1 || evs[0].Dated
 }
 
 func cmdProcDiff(args []string) {

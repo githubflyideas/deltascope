@@ -104,7 +104,7 @@ eval(rd("web/static/i18n.js") + ";" + EXPORTS.map((n) => `global.${n}=${n};`).jo
   "global.__setLang=(l)=>{currentLang=l;};");
 
 const APP_EXPORTS = [
-  "renderUnexplained", "renderReasoningProcs", "renderDiagnosis",
+  "renderUnexplained", "renderReasoningProcs", "renderDiagnosis", "renderStateDiff",
   "escapeHtml", "SEV_STYLE", "PV", "wireTabJumps", "CAPS",
 ];
 eval(rd("web/static/app.js") + ";" + APP_EXPORTS.map((n) => `global.${n}=${n};`).join(""));
@@ -263,6 +263,43 @@ const DIAG_BARE = {
   triage: [], reasoning: [], processes: [], changes: [], notes: [],
 };
 
+// The change page in the shape the timeline gives it: a dated kernel event
+// whose four rows span four sections, an event the stored history could not
+// narrow at all, and one that flapped. Every branch of the event header is in
+// here, because they are the branches that carry the claim: a time, a shrug,
+// and "this moved more than once".
+const STATEDIFF_EVENTS = {
+  a_time: "2026-09-09T14:00:00Z", b_time: "2026-09-10T14:00:00Z", total: 6,
+  events: [
+    { from: "2026-09-10T03:10:00Z", to: "2026-09-10T03:20:00Z", dated: true,
+      class: "kernel", subject: "6.6.0", changes: [
+        { section: "system", title: "System", key: "kernel", kind: "modified", old: "6.1.0", new: "6.6.0" },
+        { section: "packages", title: "Packages", key: "kernel-core", kind: "modified", old: "6.1.0-1", new: "6.6.0-1" },
+        { section: "modules", title: "Modules", key: "intel_uncore_frequency", kind: "added", new: "loaded" },
+        { section: "sysctl", title: "Kernel parameters", key: "kernel.new_knob", kind: "added", new: "1" },
+      ] },
+    { from: "2026-09-09T14:00:00Z", to: "2026-09-10T14:00:00Z", dated: false,
+      class: "section", changes: [
+        { section: "configs", title: "Config files", key: "/etc/ssh/sshd_config", kind: "modified",
+          old: "sha256:aaa", new: "sha256:bbb", note: "root:root 0600", mtime: 1757430000 },
+      ] },
+    { from: "2026-09-10T09:00:00Z", to: "2026-09-10T09:10:00Z", dated: true,
+      class: "section", subject: "vm.swappiness", unstable: true, changes: [
+        { section: "sysctl", title: "Kernel parameters", key: "vm.swappiness", kind: "modified", old: "60", new: "10" },
+      ] },
+  ],
+};
+
+// The same page from a server that dates nothing: the flat fallback must still
+// render, since an older deltascope answers exactly this shape.
+const STATEDIFF_FLAT = {
+  a_time: "2026-09-09T14:00:00Z", b_time: "2026-09-10T14:00:00Z", total: 1,
+  schema_boundary: true,
+  sections: [{ name: "sysctl", title: "Kernel parameters", changes: [
+    { section: "sysctl", title: "Kernel parameters", key: "net.core.somaxconn", kind: "removed", old: "4096" },
+  ] }],
+};
+
 {
   for (const loc of Object.keys(I18N)) {
     global.__setLang(loc);
@@ -292,6 +329,28 @@ const DIAG_BARE = {
           'data-tab-jump="reasoning"',
           "Available memory +140%", "Steal time -80%", "tc-improved",
         ]);
+      }
+    }
+    // renderStateDiff also writes into the DOM. Both shapes go through it:
+    // the events one, and the flat one an older server still answers with.
+    for (const [name, payload] of [["events", STATEDIFF_EVENTS], ["flat", STATEDIFF_FLAT]]) {
+      const sink = fakeEl();
+      const realQS = document.querySelector;
+      document.querySelector = (sel) => (sel === "#changeResult" ? sink : fakeEl());
+      renderStateDiff(payload);
+      document.querySelector = realQS;
+      scan(`renderStateDiff(${name})[${loc}]`, sink.innerHTML);
+      if (name === "events") {
+        must(`renderStateDiff(events)[${loc}]`, sink.innerHTML, [
+          // The kernel event's fan-out, grouped under one header, and the two
+          // section events' own titles -- so a class label that stopped
+          // resolving would not pass unnoticed.
+          "6.6.0", "kernel-core", "intel_uncore_frequency", "kernel.new_knob",
+          "Kernel parameters", "Config files", "vm.swappiness",
+          "root:root 0600", "verdict-pill",
+        ]);
+      } else {
+        must(`renderStateDiff(flat)[${loc}]`, sink.innerHTML, ["net.core.somaxconn", "4096"]);
       }
     }
   }

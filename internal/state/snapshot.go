@@ -26,6 +26,18 @@ type Item struct {
 	// port, an installed package, an OOM kill -- leave this false so their
 	// add/remove is still reported.
 	ModifyOnly bool `json:"modify_only,omitempty"`
+	// Mtime is the file's last-modification time as a Unix second, for items
+	// whose Value is a content hash. Zero means unknown -- either the item is
+	// not file-backed, or the snapshot predates this field.
+	//
+	// Deliberately NOT part of the comparison (see Compare, which reads Value
+	// only). A touch that does not change content is not a configuration
+	// change, and diffing mtime would report one. What it is for is the
+	// opposite direction: once the hash says a file changed, its mtime says
+	// WHEN, to the second, instead of "somewhere in the last 24 hours". That
+	// is the one piece of provenance available without reading a package
+	// manager log or an audit trail.
+	Mtime int64 `json:"mtime,omitempty"`
 }
 
 // Section is a group of related facts produced by a single Collector.

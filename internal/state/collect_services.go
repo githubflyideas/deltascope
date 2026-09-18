@@ -138,8 +138,8 @@ func (crontab) Collect(ctx context.Context) Section {
 		"/etc/cron.daily/*", "/etc/cron.weekly/*", "/etc/cron.monthly/*",
 		"/var/spool/cron/*", "/var/spool/cron/crontabs/*",
 	}) {
-		if h, ok := fileHash(p); ok {
-			sec.Items = append(sec.Items, Item{Key: p, Value: h})
+		if h, mt, ok := fileHash(p); ok {
+			sec.Items = append(sec.Items, Item{Key: p, Value: h, Mtime: mt})
 		}
 	}
 	if len(sec.Items) == 0 {
@@ -165,8 +165,8 @@ func (configs) Collect(ctx context.Context) Section {
 		"/etc/pam.d/*",
 	}
 	for _, p := range globFiles(patterns) {
-		if h, ok := fileHash(p); ok {
-			sec.Items = append(sec.Items, Item{Key: p, Value: h})
+		if h, mt, ok := fileHash(p); ok {
+			sec.Items = append(sec.Items, Item{Key: p, Value: h, Mtime: mt})
 		}
 	}
 	if len(sec.Items) == 0 {
@@ -204,12 +204,14 @@ func (security) Collect(ctx context.Context) Section {
 			add(key, v)
 		}
 	}
-	if h, ok := fileHash("/etc/sudoers"); ok {
-		add("sudoers.hash", h)
+	// Appended directly rather than through add(): these carry an mtime, which
+	// is the only "when" this section has, and add() only takes a value.
+	if h, mt, ok := fileHash("/etc/sudoers"); ok {
+		sec.Items = append(sec.Items, Item{Key: "sudoers.hash", Value: h, Mtime: mt})
 	}
 	for _, p := range globFiles([]string{"/root/.ssh/authorized_keys", "/home/*/.ssh/authorized_keys"}) {
-		if h, ok := fileHash(p); ok {
-			add("authorized_keys:"+p, h)
+		if h, mt, ok := fileHash(p); ok {
+			sec.Items = append(sec.Items, Item{Key: "authorized_keys:" + p, Value: h, Mtime: mt})
 		}
 	}
 	if len(sec.Items) == 0 {

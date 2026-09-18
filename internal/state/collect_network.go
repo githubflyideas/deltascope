@@ -91,8 +91,8 @@ func (network) Collect(ctx context.Context) Section {
 			}
 		}
 	}
-	if h, ok := fileHash("/etc/hosts"); ok {
-		sec.Items = append(sec.Items, Item{Key: "hosts.hash", Value: h})
+	if h, mt, ok := fileHash("/etc/hosts"); ok {
+		sec.Items = append(sec.Items, Item{Key: "hosts.hash", Value: h, Mtime: mt})
 	}
 	return sec
 }
@@ -278,8 +278,8 @@ func (storage) Collect(ctx context.Context) Section {
 			}
 		}
 	}
-	if h, ok := fileHash("/etc/fstab"); ok {
-		sec.Items = append(sec.Items, Item{Key: "fstab.hash", Value: h})
+	if h, mt, ok := fileHash("/etc/fstab"); ok {
+		sec.Items = append(sec.Items, Item{Key: "fstab.hash", Value: h, Mtime: mt})
 	}
 	if v, ok := readFile("/proc/mdstat"); ok {
 		for _, l := range lines(v) {

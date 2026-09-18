@@ -1166,6 +1166,72 @@ const CHANGE_KIND = {
   removed:  { icon: "\u26AA",   cls: "v-gone", key: "change_removed" },
 };
 
+// One change as a table row. The second line under the key carries whatever
+// extra evidence the server had: the collector's own note, and the file's
+// modification time for file-backed items -- which is the only per-item
+// timestamp anywhere in change accounting, so it is worth the line.
+function changeRow(ch) {
+  const k = CHANGE_KIND[ch.kind] || CHANGE_KIND.modified;
+  let detail;
+  if (ch.kind === "added") detail = `<code>${escapeHtml(ch.new)}</code>`;
+  else if (ch.kind === "removed") detail = `<span class="was">${t("was_label")} <code>${escapeHtml(ch.old)}</code></span>`;
+  else detail = `<code>${escapeHtml(ch.old)}</code> &rarr; <code>${escapeHtml(ch.new)}</code>`;
+  const extra = [];
+  // Some collectors put the value itself in Note (a listening port's process
+  // is both), and repeating it would read as a second fact.
+  if (ch.note && ch.note !== ch.new && ch.note !== ch.old) extra.push(escapeHtml(ch.note));
+  if (ch.mtime) extra.push(`${t("ev_mtime")} ${new Date(ch.mtime * 1000).toLocaleString()}`);
+  const tail = extra.length ? `<div class="ch-note">${extra.join(" \u00B7 ")}</div>` : "";
+  return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(ch.key)}</span>${tail}</td><td>${detail}</td><td>${t(k.key)}</td></tr>`;
+}
+
+// The server sends what the event was as data -- a class and at most one
+// subject -- so the sentence is composed here, in the reader's language.
+// class "section" has no wording of its own: the section title already says
+// it, and every change in the event carries that title.
+function eventLabel(ev) {
+  const subject = ev.subject ? escapeHtml(ev.subject) : "";
+  if (ev.class === "section") {
+    const title = escapeHtml((ev.changes[0] && ev.changes[0].title) || "");
+    return subject ? `${title}: ${subject}` : title;
+  }
+  let base;
+  if (ev.class === "kernel") base = t("ev_kernel");
+  else if (ev.class === "packages") base = t("ev_packages");
+  else base = t("ev_mixed");
+  return subject ? `${base}: ${subject}` : base;
+}
+
+// Changes arrive sorted by section, so grouping is a single pass.
+function eventBody(ev) {
+  const groups = [];
+  let cur = null;
+  for (const ch of ev.changes) {
+    if (!cur || cur.name !== ch.section) {
+      cur = { name: ch.section, title: ch.title, rows: [] };
+      groups.push(cur);
+    }
+    cur.rows.push(changeRow(ch));
+  }
+  return groups.map((g) => `<table class="report"><tbody>`
+    + `<tr class="sec-row"><td colspan="3">${escapeHtml(g.title || g.name)}</td></tr>`
+    + g.rows.join("") + `</tbody></table>`).join("");
+}
+
+function renderEvent(ev, fmtT) {
+  // "changed at 14:20" and "changed sometime in the last day" are different
+  // claims. An undated event says so instead of showing its window as if the
+  // history had confirmed it.
+  const when = ev.dated
+    ? `${fmtT(ev.from)} &rarr; ${fmtT(ev.to)}`
+    : `<span class="was">${t("ev_undated")}</span>`;
+  const flag = ev.unstable ? ` <span class="verdict-pill pill-warn">${t("ev_unstable")}</span>` : "";
+  return `<details class="cat-block" open>
+    <summary class="cat-head"><span>${eventLabel(ev)}${flag}</span><span>${when} \u00B7 ${ev.changes.length} ${t("ev_changes")}</span></summary>
+    ${eventBody(ev)}
+  </details>`;
+}
+
 function renderStateDiff(rep) {
   const box = $("#changeResult");
   const fmtT = (s) => new Date(s).toLocaleString();
@@ -1177,22 +1243,25 @@ function renderStateDiff(rep) {
     return;
   }
 
-  const sections = rep.sections.map((sec) => {
-    const rows = sec.changes.map((ch) => {
-      const k = CHANGE_KIND[ch.kind] || CHANGE_KIND.modified;
-      let detail;
-      if (ch.kind === "added") detail = `<code>${escapeHtml(ch.new)}</code>`;
-      else if (ch.kind === "removed") detail = `<span class="was">${t("was_label")} <code>${escapeHtml(ch.old)}</code></span>`;
-      else detail = `<code>${escapeHtml(ch.old)}</code> &rarr; <code>${escapeHtml(ch.new)}</code>`;
-      return `<tr class="${k.cls}"><td class="metric-cell"><span class="m-label">${k.icon} ${escapeHtml(ch.key)}</span></td><td>${detail}</td><td>${t(k.key)}</td></tr>`;
-    }).join("");
-    return `<details class="cat-block" open>
-      <summary class="cat-head"><span>${escapeHtml(sec.title)}</span><span>${sec.changes.length} ${t("items_shown")}</span></summary>
-      <table class="report"><tbody>${rows}</tbody></table>
-    </details>`;
-  }).join("");
+  const events = rep.events || [];
+  let strip = `<div class="verdict-strip" style="margin-top:10px">`
+    + `<span class="verdict-pill pill-warn">\u26A0\uFE0F ${rep.total} ${t("ev_changes")}</span>`;
+  if (events.length > 1) {
+    // The count that matters when a kernel upgrade arrives as 300 rows: the
+    // reader is looking at a handful of events, not 300 unexplained rows.
+    strip += `<span class="verdict-pill pill-flat">${events.length} ${t("ev_events")}</span>`;
+  }
+  strip += `</div>`;
 
-  box.innerHTML = header + `<div class="verdict-strip" style="margin-top:10px"><span class="verdict-pill pill-warn">\u26A0\uFE0F ${rep.total} change(s)</span></div>` + sections;
+  // Flat sections are the fallback for a server that dates nothing.
+  const body = events.length
+    ? events.map((ev) => renderEvent(ev, fmtT)).join("")
+    : rep.sections.map((sec) => `<details class="cat-block" open>
+      <summary class="cat-head"><span>${escapeHtml(sec.title)}</span><span>${sec.changes.length} ${t("items_shown")}</span></summary>
+      <table class="report"><tbody>${sec.changes.map(changeRow).join("")}</tbody></table>
+    </details>`).join("");
+
+  box.innerHTML = header + strip + body;
 }
 
 let diagReady = false;

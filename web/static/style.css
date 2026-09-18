@@ -391,6 +391,10 @@ tr[hidden] { display: none; }
 .change-controls select { background: var(--panel); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 15px; }
 .change-window { color: var(--muted); font-family: var(--mono); font-size: 14px; }
 .report .was { color: var(--muted); }
+/* One event may span several sections -- a kernel upgrade touches four -- so
+   each group inside an event block names its own section. */
+.report tr.sec-row td { color: var(--muted); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--line); padding-top: 10px; }
+.report .ch-note { color: var(--muted); font-size: 13px; margin-top: 2px; }
 
 /* Diagnose: the one-click entry point */
 .diag-hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }

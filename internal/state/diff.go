@@ -22,6 +22,11 @@ type Change struct {
 	Old     string     `json:"old,omitempty"`
 	New     string     `json:"new,omitempty"`
 	Note    string     `json:"note,omitempty"`
+	// Mtime is the surviving side's file modification time in Unix seconds,
+	// for file-backed items (see Item.Mtime). Zero means unknown. It is the
+	// only per-item timestamp in change accounting: everything else is dated
+	// only by the interval between the two snapshots.
+	Mtime int64 `json:"mtime,omitempty"`
 }
 
 // SectionDiff summarizes all changes within one Section.
@@ -97,7 +102,7 @@ func Compare(a, b Snapshot) Diff {
 			case aok && bok && av.Value != bv.Value:
 				sd.Changes = append(sd.Changes, Change{
 					Section: name, Title: title, Key: k, Kind: Modified,
-					Old: av.Value, New: bv.Value, Note: bv.Note,
+					Old: av.Value, New: bv.Value, Note: bv.Note, Mtime: bv.Mtime,
 				})
 			case !aok && bok:
 				// A modify-only item appearing is list churn (a transient
@@ -111,7 +116,7 @@ func Compare(a, b Snapshot) Diff {
 				}
 				sd.Changes = append(sd.Changes, Change{
 					Section: name, Title: title, Key: k, Kind: Added,
-					New: bv.Value, Note: bv.Note,
+					New: bv.Value, Note: bv.Note, Mtime: bv.Mtime,
 				})
 			case aok && !bok:
 				if av.ModifyOnly || crossVersion {
@@ -119,7 +124,7 @@ func Compare(a, b Snapshot) Diff {
 				}
 				sd.Changes = append(sd.Changes, Change{
 					Section: name, Title: title, Key: k, Kind: Removed,
-					Old: av.Value, Note: av.Note,
+					Old: av.Value, Note: av.Note, Mtime: av.Mtime,
 				})
 			}
 		}
