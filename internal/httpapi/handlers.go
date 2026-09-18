@@ -846,29 +846,138 @@ func (s *Server) handleStateDiff(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	after := state.Capture(ctx, host)
-	if err := s.StateStore.Save(after); err != nil {
-		log.Printf("statediff: failed to persist snapshot: %v", err)
-	}
-
-	before, err := s.StateStore.NearestBefore(after.Taken.Add(-since))
+	// Deliberately not saved. A GET answers a question; it does not add to the
+	// history the scheduler owns. Saving here also let the page decide the
+	// shape of the stored history -- the timeline's probe grid got denser
+	// wherever someone had been clicking, which is not a property of the
+	// machine.
+	requested := after.Taken.Add(-since)
+	before, err := s.StateStore.NearestBefore(requested)
 	if err != nil {
-		// no history yet: capture a second live snapshot so the
-		// endpoint still works on a machine with zero prior snapshots.
-		before = state.Capture(ctx, host)
+		// This used to capture a SECOND live snapshot and compare the machine
+		// against itself milliseconds apart. That always reports zero changes,
+		// which reads as "the machine is quiet" when it means "there is no
+		// history to read" -- the one answer this page must never fake.
+		writeJSON(w, map[string]any{
+			"no_data": true,
+			"reason":  "no_baseline",
+			"b_time":  after.Taken,
+			"baseline": map[string]any{
+				"requested": requested,
+				"asked_sec": since.Seconds(),
+			},
+		})
+		return
 	}
 
 	diff := state.Compare(before, after)
+	baseline := map[string]any{
+		"requested":  requested,
+		"actual":     before.Taken,
+		"asked_sec":  since.Seconds(),
+		"actual_sec": after.Taken.Sub(before.Taken).Seconds(),
+	}
+	if substitutedBaseline(requested, before.Taken) {
+		baseline["substituted"] = true
+	}
 	resp := map[string]any{
 		"a_time":          before.Taken,
 		"b_time":          after.Taken,
 		"total":           diff.Total,
 		"sections":        stateDiffJSON(diff),
 		"schema_boundary": diff.SchemaBoundary,
+		"baseline":        baseline,
+	}
+	if cov := coverageJSON(diff, before, after); cov != nil {
+		resp["coverage"] = cov
 	}
 	if events := state.Locate(s.StateStore, diff); len(events) > 0 {
 		resp["events"] = events
 	}
 	writeJSON(w, resp)
+}
+
+// substitutedBaseline reports whether the snapshot we compared against is
+// materially newer than the one that was asked for.
+//
+// NearestBefore falls back to the OLDEST stored snapshot when nothing covers
+// the requested time, so a host with three hours of history answers a 24-hour
+// question with a three-hour window. Unsaid, that difference turns a short
+// history into a quiet machine.
+//
+// One snapshot interval of tolerance, because the stored grid is coarse: the
+// scheduler probes every DefaultSnapshotInterval, so no snapshot can be
+// expected to land on an arbitrary requested instant, and calling that normal
+// coarseness a substitution would flag every honest report.
+func substitutedBaseline(requested, actual time.Time) bool {
+	return actual.After(requested.Add(state.DefaultSnapshotInterval))
+}
+
+// coverageJSON reports what the comparison could not see. Compare already
+// works this out -- it excludes a section readable on only one side, because
+// the difference is in our access rather than in the machine -- and then the
+// answer was dropped on the floor, so the page showed a short report with no
+// hint that a whole area had been left out of it.
+//
+// Two kinds, and they are not the same claim: a section excluded because
+// access DIFFERED between the two captures, and a section that could not be
+// read either time and so was never in the comparison at all.
+func coverageJSON(d state.Diff, a, b state.Snapshot) map[string]any {
+	index := func(s state.Snapshot) map[string]state.Section {
+		m := make(map[string]state.Section, len(s.Sections))
+		for _, sec := range s.Sections {
+			m[sec.Name] = sec
+		}
+		return m
+	}
+	ai, bi := index(a), index(b)
+	title := func(name string) string {
+		if sec, ok := bi[name]; ok && sec.Title != "" {
+			return sec.Title
+		}
+		if sec, ok := ai[name]; ok && sec.Title != "" {
+			return sec.Title
+		}
+		return name
+	}
+
+	var unreadable, skipped []map[string]any
+	excluded := make(map[string]bool, len(d.Unreadable))
+	for _, name := range d.Unreadable {
+		excluded[name] = true
+		e := map[string]any{"section": name, "title": title(name)}
+		// Which side lost the access matters to whoever has to fix it: a
+		// baseline taken by the service user against a manual root run is a
+		// different story from a privilege the service used to have.
+		if sec, ok := ai[name]; ok && sec.Skipped != "" {
+			e["side"], e["reason"] = "a", sec.Skipped
+		} else if sec, ok := bi[name]; ok && sec.Skipped != "" {
+			e["side"], e["reason"] = "b", sec.Skipped
+		}
+		unreadable = append(unreadable, e)
+	}
+	for _, sec := range b.Sections {
+		if sec.Skipped == "" || excluded[sec.Name] {
+			continue
+		}
+		if as, ok := ai[sec.Name]; !ok || as.Skipped == "" {
+			continue // one side readable: already reported as excluded above
+		}
+		skipped = append(skipped, map[string]any{
+			"section": sec.Name, "title": title(sec.Name), "reason": sec.Skipped,
+		})
+	}
+	if len(unreadable) == 0 && len(skipped) == 0 {
+		return nil
+	}
+	out := map[string]any{}
+	if len(unreadable) > 0 {
+		out["unreadable"] = unreadable
+	}
+	if len(skipped) > 0 {
+		out["skipped"] = skipped
+	}
+	return out
 }
 
 func stateDiffJSON(d state.Diff) []map[string]any {

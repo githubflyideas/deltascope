@@ -291,14 +291,26 @@ const STATEDIFF_EVENTS = {
 };
 
 // The same page from a server that dates nothing: the flat fallback must still
-// render, since an older deltascope answers exactly this shape.
+// render, since an older deltascope answers exactly this shape. This one also
+// carries the two coverage kinds and a substituted baseline -- the three facts
+// the page used to compute and then drop.
 const STATEDIFF_FLAT = {
   a_time: "2026-09-09T14:00:00Z", b_time: "2026-09-10T14:00:00Z", total: 1,
   schema_boundary: true,
+  baseline: { requested: "2026-09-09T14:00:00Z", actual: "2026-09-10T11:00:00Z",
+    asked_sec: 86400, actual_sec: 10800, substituted: true },
+  coverage: {
+    unreadable: [{ section: "firewall", title: "Firewall", side: "a", reason: "needs root" }],
+    skipped: [{ section: "security", title: "Security", reason: "selinux tools not installed" }],
+  },
   sections: [{ name: "sysctl", title: "Kernel parameters", changes: [
     { section: "sysctl", title: "Kernel parameters", key: "net.core.somaxconn", kind: "removed", old: "4096" },
   ] }],
 };
+
+// No baseline at all. The endpoint refuses to compare rather than answer with a
+// live capture measured against itself, and the page has to say which it is.
+const STATEDIFF_NONE = { no_data: true, reason: "no_baseline", b_time: "2026-09-10T14:00:00Z" };
 
 {
   for (const loc of Object.keys(I18N)) {
@@ -333,7 +345,7 @@ const STATEDIFF_FLAT = {
     }
     // renderStateDiff also writes into the DOM. Both shapes go through it:
     // the events one, and the flat one an older server still answers with.
-    for (const [name, payload] of [["events", STATEDIFF_EVENTS], ["flat", STATEDIFF_FLAT]]) {
+    for (const [name, payload] of [["events", STATEDIFF_EVENTS], ["flat", STATEDIFF_FLAT], ["none", STATEDIFF_NONE]]) {
       const sink = fakeEl();
       const realQS = document.querySelector;
       document.querySelector = (sel) => (sel === "#changeResult" ? sink : fakeEl());
@@ -349,8 +361,20 @@ const STATEDIFF_FLAT = {
           "Kernel parameters", "Config files", "vm.swappiness",
           "root:root 0600", "verdict-pill",
         ]);
+      } else if (name === "flat") {
+        must(`renderStateDiff(flat)[${loc}]`, sink.innerHTML, [
+          "net.core.somaxconn", "4096",
+          // Coverage and the substituted baseline: the page has to carry both
+          // reasons, not just the section names.
+          "Firewall", "needs root", "Security", "selinux tools not installed",
+          "cov-block", "schema-note",
+        ]);
       } else {
-        must(`renderStateDiff(flat)[${loc}]`, sink.innerHTML, ["net.core.somaxconn", "4096"]);
+        // No baseline must not render as a comparison: no window, no count.
+        must(`renderStateDiff(none)[${loc}]`, sink.innerHTML, ["no-finding"]);
+        if (sink.innerHTML.includes("change-window")) {
+          fail(`renderStateDiff(none)[${loc}] printed a comparison window with no baseline`);
+        }
       }
     }
   }

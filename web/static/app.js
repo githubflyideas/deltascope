@@ -1232,14 +1232,48 @@ function renderEvent(ev, fmtT) {
   </details>`;
 }
 
+// What the comparison could not see. Two separate claims, and the page has to
+// keep them apart: an area excluded because our access differed between the two
+// captures, and an area that could not be read either time and so was never in
+// the comparison at all. Both used to be computed and then dropped, so the page
+// showed a short report with no hint that a whole area was missing from it.
+function coverageBlock(cov) {
+  if (!cov) return "";
+  const list = (rows, hint) => {
+    if (!rows || !rows.length) return "";
+    const items = rows.map((r) => {
+      const why = r.reason ? `<span class="cov-why">${escapeHtml(r.reason)}</span>` : "";
+      return `<li>${escapeHtml(r.title || r.section)} ${why}</li>`;
+    }).join("");
+    return `<div class="cov-block"><div class="cov-hint">${hint}</div><ul>${items}</ul></div>`;
+  };
+  return list(cov.unreadable, t("cov_unreadable")) + list(cov.skipped, t("cov_skipped"));
+}
+
 function renderStateDiff(rep) {
   const box = $("#changeResult");
   const fmtT = (s) => new Date(s).toLocaleString();
-  const header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`
-    + (rep.schema_boundary ? `<div class="schema-note">${t("schema_boundary_note")}</div>` : "");
+
+  // No baseline is not "no changes". The endpoint refuses to compare rather
+  // than answer with a live capture measured against itself.
+  if (rep.no_data) {
+    box.innerHTML = `<div class="no-finding">${t("change_no_baseline")}</div>`;
+    return;
+  }
+
+  let header = `<div class="change-window">A ${fmtT(rep.a_time)} &rarr; B ${fmtT(rep.b_time)}</div>`;
+  if (rep.baseline && rep.baseline.substituted) {
+    // The store keeps a week, but a host installed this morning answers a
+    // 24-hour question with whatever it has. Saying so is the difference
+    // between a short history and a quiet machine.
+    header += `<div class="schema-note">${t("change_baseline_short")}`
+      + ` <code>${fmtT(rep.baseline.requested)}</code> &rarr; <code>${fmtT(rep.baseline.actual)}</code></div>`;
+  }
+  if (rep.schema_boundary) header += `<div class="schema-note">${t("schema_boundary_note")}</div>`;
+  const coverage = coverageBlock(rep.coverage);
 
   if (!rep.total) {
-    box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">${t("no_change_hint")}</div>`;
+    box.innerHTML = header + `<div class="no-finding" style="margin-top:10px">${t("no_change_hint")}</div>` + coverage;
     return;
   }
 
@@ -1261,7 +1295,7 @@ function renderStateDiff(rep) {
       <table class="report"><tbody>${sec.changes.map(changeRow).join("")}</tbody></table>
     </details>`).join("");
 
-  box.innerHTML = header + strip + body;
+  box.innerHTML = header + strip + coverage + body;
 }
 
 let diagReady = false;

@@ -395,6 +395,13 @@ tr[hidden] { display: none; }
    each group inside an event block names its own section. */
 .report tr.sec-row td { color: var(--muted); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--line); padding-top: 10px; }
 .report .ch-note { color: var(--muted); font-size: 13px; margin-top: 2px; }
+/* Coverage: what the comparison could not see. Deliberately not styled as a
+   finding -- it is not a change, it is the edge of what was compared. */
+.cov-block { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; padding: 10px 16px; margin-top: 10px; background: var(--panel); }
+.cov-hint { color: var(--muted); font-size: 14px; }
+.cov-block ul { margin: 6px 0 0; padding-left: 20px; }
+.cov-block li { font-family: var(--mono); font-size: 14px; }
+.cov-why { color: var(--muted); font-size: 13px; }
 
 /* Diagnose: the one-click entry point */
 .diag-hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
