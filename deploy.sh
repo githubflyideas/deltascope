@@ -192,8 +192,11 @@ else
 fi
 
 echo "==> [6/6] waiting for the service to come up"
+# /readyz, not /api/version: the version answers as soon as the listener is up,
+# which is true even when the database behind it never opened. Readiness is what
+# this loop is actually waiting for.
 for _ in $(seq 1 10); do
-    curl -sf "http://127.0.0.1:${PORT}/api/version" >/dev/null 2>&1 && break
+    curl -sf "http://127.0.0.1:${PORT}/readyz" >/dev/null 2>&1 && break
     sleep 1
 done
 

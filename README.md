@@ -107,6 +107,14 @@ opened with it; a restart that leaves the line alone does not log anyone out.
 State is snapshotted every 10 minutes, so history accumulates with
 no cron job. The UI ships in ten languages and six themes, and any report
 exports as JSON.
+
+Two probes answer without a session, for supervisors and uptime checks:
+`/healthz` is 200 whenever the process is serving, and `/readyz` is 200 only
+when the change-accounting database also answers, 503 otherwise. Liveness
+deliberately ignores the database — restarting a process because its disk is
+busy just brings it back in the same state, having thrown away the sampling
+window you needed to see what was wrong. Neither reveals the version, the data
+path, or anything about the host.
 <img width="473" height="647" alt="image" src="https://github.com/user-attachments/assets/f38fca46-e2d6-4412-b07f-7c0c4420601e" />
 
 <img width="1233" height="181" alt="image" src="https://github.com/user-attachments/assets/2318b0ac-9855-4504-a962-f893fe0d621b" />

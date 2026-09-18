@@ -337,11 +337,11 @@ func (u userList) check() error {
 // declareAccounts turns the -user flags into the in-memory account store, or
 // refuses to go on.
 //
-// Every route but /login, /api/login and /api/version requires a session, so a
-// server with no account is not a degraded server, it is an unreachable one --
-// and since nothing is stored, "no -user" now means exactly that, with no
-// database to fall back on. Refuse at the door instead of listening on a port
-// where the only possible outcome is a login failure.
+// Every route but /login, /api/login, /api/version, /healthz and /readyz
+// requires a session, so a server with no account is not a degraded server, it
+// is an unreachable one -- and since nothing is stored, "no -user" now means
+// exactly that, with no database to fall back on. Refuse at the door instead of
+// listening on a port where the only possible outcome is a login failure.
 func declareAccounts(decl userList, secret []byte) *auth.Accounts {
 	if len(decl) == 0 {
 		log.Fatal("no accounts declared: nobody could log in. Accounts are not stored, " +

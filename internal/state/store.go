@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,15 @@ CREATE TABLE IF NOT EXISTS markers (
 	}
 	return &Store{db: db}, nil
 }
+
+// Ping reports whether the database behind this store is reachable, for the
+// readiness probe.
+//
+// It deliberately does not read the snapshots table. An empty store is a new
+// install, not an unhealthy one, and a probe that treats "no rows yet" as not
+// ready would hold a fresh deployment out of service until the first snapshot
+// lands 15 minutes later.
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 // SaveMarker saves a baseline snapshot under a name (used by verify start/report).
 func (s *Store) SaveMarker(name string, snap Snapshot) error {

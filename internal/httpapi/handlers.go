@@ -42,10 +42,11 @@ type Server struct {
 	SecureCk   bool
 	Caps       Capabilities
 
-	// Sampler is the fallback metric source for the reasoning chain on a host
-	// with no PCP: a rolling /proc history, already running when the request
-	// arrives. Left nil when PCP is present, because the archive path can
-	// answer any window the user picks and this one only ever answers "now".
+	// Sampler is the /proc metric source for the reasoning chain: a rolling
+	// history, already running when the request arrives. Set whenever /proc is
+	// readable, PCP or not -- with an archive it fills the gaps the archive
+	// cannot answer, and without one it is the only source. Nil only where
+	// /proc is unusable.
 	Sampler ProcSampler
 }
 
@@ -86,6 +87,13 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/diagnose", s.requireAuth(s.handleDiagnose))
 	mux.Handle("GET /api/reasoning", s.requireAuth(s.handleReasoning))
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+
+	// Unauthenticated on purpose: a supervisor, a load balancer and an uptime
+	// check have no cookie jar. Both are written to leak nothing about the
+	// host -- no version, no paths, no metric values, no state names -- so
+	// exposing them costs nothing that /api/version does not already cost.
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 
 	return securityHeaders(mux)
 }
@@ -342,6 +350,44 @@ func (s *Server) handleTrend(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"version": s.Version})
+}
+
+// Liveness and readiness answer two different questions, and collapsing them
+// into one endpoint hides whichever failure the other one would have caught.
+//
+// handleHealthz is liveness: this process is serving HTTP. It checks nothing
+// else on purpose. A liveness probe that fails because a dependency is down
+// asks the supervisor to restart a process that would come back in exactly the
+// same state -- a restart loop that also destroys the sampler's rolling window
+// on every pass, so the machine stops being measurable precisely while
+// something is wrong with it.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	writePlain(w, http.StatusOK, "ok")
+}
+
+// handleReadyz is readiness: the dependencies this build actually needs are
+// answering right now.
+//
+// A nil StateStore is ready. Change accounting is optional -- main() logs a
+// warning and serves without it -- so a store that was never opened describes
+// how this instance is configured, while a store that was opened and has
+// stopped answering is a fault. That is the same distinction the reasoning
+// chain draws between GapAbsent and GapNoData, and it matters here for the
+// same reason: reporting "not ready" for a feature the operator chose not to
+// run would hold a working instance out of service forever.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if s.StateStore != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := s.StateStore.Ping(ctx); err != nil {
+			// The reason goes to the log, not to an unauthenticated caller: a
+			// driver error carries the database path.
+			log.Printf("readyz: state store: %v", err)
+			writePlain(w, http.StatusServiceUnavailable, "state store unavailable")
+			return
+		}
+	}
+	writePlain(w, http.StatusOK, "ok")
 }
 
 func (s *Server) handleDiagnose(w http.ResponseWriter, r *http.Request) {
@@ -953,4 +999,11 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func writePlain(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	fmt.Fprintln(w, msg)
 }
