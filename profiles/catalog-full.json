@@ -172,6 +172,12 @@
       "min_abs": 10
     },
     {
+      "metric": "mem.physmem",
+      "label": "physical memory",
+      "category": "Memory",
+      "polarity": "neutral"
+    },
+    {
       "metric": "mem.util.available",
       "label": "available memory",
       "category": "Memory",
@@ -259,6 +265,12 @@
       "polarity": "better_up"
     },
     {
+      "metric": "swap.capacity",
+      "label": "swap capacity",
+      "category": "Memory",
+      "polarity": "neutral"
+    },
+    {
       "metric": "swap.pagesin",
       "label": "pages swapped in",
       "category": "Memory",
@@ -303,19 +315,22 @@
       "metric": "mem.vmstat.pgscan_kswapd",
       "label": "kswapd reclaim scans",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 100
     },
     {
       "metric": "mem.vmstat.allocstall",
       "label": "allocation stalls",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.vmstat.compact_stall",
       "label": "compaction stalls",
       "category": "Memory",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "mem.vmstat.thp_fault_alloc",
@@ -573,7 +588,14 @@
       "metric": "filesys.usedfiles",
       "label": "inodes used",
       "category": "Filesystem",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1000
+    },
+    {
+      "metric": "filesys.maxfiles",
+      "label": "inode capacity",
+      "category": "Filesystem",
+      "polarity": "neutral"
     },
     {
       "metric": "vfs.files.count",
@@ -581,6 +603,12 @@
       "category": "Filesystem",
       "polarity": "neutral",
       "min_abs": 50000
+    },
+    {
+      "metric": "vfs.files.max",
+      "label": "open-file limit",
+      "category": "Filesystem",
+      "polarity": "neutral"
     },
     {
       "metric": "vfs.inodes.count",
@@ -607,14 +635,14 @@
       "label": "inbound traffic",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10240
+      "min_abs": 102400
     },
     {
       "metric": "network.interface.out.bytes",
       "label": "outbound traffic",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10240
+      "min_abs": 102400
     },
     {
       "metric": "network.interface.in.packets",
@@ -634,31 +662,36 @@
       "metric": "network.interface.in.errors",
       "label": "inbound errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.interface.out.errors",
       "label": "outbound errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.interface.in.drops",
       "label": "inbound drops",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.interface.out.drops",
       "label": "outbound drops",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.interface.collisions",
       "label": "collisions",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.insegs",
@@ -687,7 +720,8 @@
       "metric": "network.tcp.inerrs",
       "label": "TCP in errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.outrsts",
@@ -700,7 +734,8 @@
       "metric": "network.tcp.timeouts",
       "label": "TCP timeouts",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.currestab",
@@ -753,7 +788,8 @@
       "metric": "network.tcp.syncookiessent",
       "label": "SYN cookies sent",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.syncookiesrecv",
@@ -765,7 +801,8 @@
       "metric": "network.tcp.syncookiesfailed",
       "label": "SYN cookies failed",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.udp.indatagrams",
@@ -787,25 +824,29 @@
       "metric": "network.udp.inerrors",
       "label": "UDP in errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.udp.noports",
       "label": "UDP no port",
       "category": "Network",
-      "polarity": "neutral"
+      "polarity": "neutral",
+      "min_abs": 5
     },
     {
       "metric": "network.udp.recvbuferrors",
       "label": "UDP recv buffer errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.udp.sndbuferrors",
       "label": "UDP send buffer errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.sockstat.tcp.inuse",
@@ -829,11 +870,35 @@
       "min_abs": 500
     },
     {
+      "metric": "network.sockstat.tcp.max_tw_buckets",
+      "label": "TIME-WAIT capacity",
+      "category": "Network",
+      "polarity": "neutral"
+    },
+    {
       "metric": "network.sockstat.tcp.orphan",
       "label": "orphan connections",
       "category": "Network",
       "polarity": "worse_up",
       "min_abs": 1
+    },
+    {
+      "metric": "network.sockstat.tcp.max_orphans",
+      "label": "orphan-socket limit",
+      "category": "Network",
+      "polarity": "neutral"
+    },
+    {
+      "metric": "network.conntrack.count",
+      "label": "conntrack entries",
+      "category": "Network",
+      "polarity": "worse_up"
+    },
+    {
+      "metric": "network.conntrack.max",
+      "label": "conntrack table size",
+      "category": "Network",
+      "polarity": "neutral"
     },
     {
       "metric": "network.sockstat.udp.inuse",
@@ -845,13 +910,15 @@
       "metric": "network.softnet.dropped",
       "label": "softnet drops",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.softnet.time_squeeze",
       "label": "softnet time squeeze",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 5
     },
     {
       "metric": "network.softnet.processed",
@@ -877,13 +944,15 @@
       "metric": "network.tcpconn.close_wait",
       "label": "conn state CLOSE-WAIT",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 50
     },
     {
       "metric": "network.tcpconn.syn_recv",
       "label": "conn state SYN-RECV",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 20
     },
     {
       "metric": "network.tcpconn.listen",
@@ -895,13 +964,15 @@
       "metric": "network.tcp.prunecalled",
       "label": "receive buffer pruning",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.rcvcollapsed",
       "label": "receive queue collapses",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.tcp.delayedacks",
@@ -930,7 +1001,8 @@
       "metric": "network.icmp.inerrors",
       "label": "ICMP in errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.icmp.indestunreachs",
@@ -959,19 +1031,22 @@
       "metric": "network.ip.inhdrerrors",
       "label": "IP header errors",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.ip.indiscards",
       "label": "IP in discards",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.ip.outdiscards",
       "label": "IP out discards",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.ip.forwdatagrams",
@@ -985,13 +1060,15 @@
       "metric": "network.ip.fragfails",
       "label": "IP fragmentation failures",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     },
     {
       "metric": "network.ip.reasmfails",
       "label": "IP reassembly failures",
       "category": "Network",
-      "polarity": "worse_up"
+      "polarity": "worse_up",
+      "min_abs": 1
     }
   ],
   "presets": {

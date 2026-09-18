@@ -6,6 +6,12 @@ const netDevFixture = `Inter-|   Receive                                        
  face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
     lo: 1000      10    0    0    0     0          0         0     1000      10    0    0    0     0       0          0
   eth0: 5000      50    1    2    0     0          0         0     6000      60    3    4    0     5       0          0
+ natgre: 700       7    0    0    0     0          0         0      800       8    0    0    0     0       0          0
+veth1c3052f: 9000  90    0    0    0     0          0         0     9100      91    0    0    0     0       0          0
+docker0: 4000      40    0    0    0     0          0         0     4100      41    0    0    0     0       0          0
+br-d862fd428d13: 300 3    0    0    0     0          0         0      310       3    0    0    0     0       0          0
+  gre0: 0           0    0    0    0     0          0         0        0       0    0    0    0     0       0          0
+ br-lan: 200       2    0    0    0     0          0         0      210       2    0    0    0     0       0          0
 `
 
 func TestParseNetDev(t *testing.T) {
@@ -21,9 +27,20 @@ func TestParseNetDev(t *testing.T) {
 	mustVal(t, &s, "network.interface.out.drops", "eth0", 4)
 	mustVal(t, &s, "network.interface.collisions", "eth0", 5)
 
-	// lo is excluded, matching internal/pcp/units.go: local traffic would
-	// dominate every bandwidth metric and hide the real interface.
+	// A tunnel someone configured and a bridge someone named are real links
+	// and must survive the synthetic filter.
+	mustVal(t, &s, "network.interface.in.bytes", "natgre", 700)
+	mustVal(t, &s, "network.interface.in.bytes", "br-lan", 200)
+
+	// Synthetic interfaces are excluded through the same pcp predicate the
+	// archive path uses. A veth's bytes are counted again on the bridge and
+	// again on the NIC that carries them off the host, and its name is gone
+	// the moment the container restarts.
 	mustAbsent(t, &s, "network.interface.in.bytes", "lo")
+	mustAbsent(t, &s, "network.interface.in.bytes", "veth1c3052f")
+	mustAbsent(t, &s, "network.interface.in.bytes", "docker0")
+	mustAbsent(t, &s, "network.interface.in.bytes", "br-d862fd428d13")
+	mustAbsent(t, &s, "network.interface.in.bytes", "gre0")
 	// The two header lines must not become an instance named "face".
 	mustAbsent(t, &s, "network.interface.in.bytes", "face")
 	mustAbsent(t, &s, "network.interface.in.bytes", "Inter-|   Receive")

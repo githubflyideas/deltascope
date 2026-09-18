@@ -94,20 +94,13 @@ func Compare(before, after []Sample, thresholdPct float64) Window {
 		if !have {
 			continue
 		}
-		info, ok := pcp.Lookup(row.Metric)
-		if !ok {
-			continue
-		}
 		s.applyBaselineTo(row)
-		// The per-metric threshold override and the dual-significance floor
-		// come from the same catalog the archive path reads, through the same
-		// exported Judge: a native comparison that judged by its own rules
-		// would disagree with the web UI about the same two windows.
-		eff := thresholdPct
-		if info.ThresholdPct > 0 {
-			eff = info.ThresholdPct
-		}
-		row.DeltaPct, row.Exceeded, row.Verdict = pcp.Judge(row.A, row.B, info.Polarity, eff, info.MinAbs)
+		// The per-metric threshold override, the dual-significance floor and
+		// the context-only rule all come from the same catalog the archive
+		// path reads, through the same exported JudgeMetric: a native
+		// comparison that judged by its own rules would disagree with the web
+		// UI about the same two windows.
+		row.DeltaPct, row.Exceeded, row.Verdict = pcp.JudgeMetric(row.Metric, row.A, row.B, thresholdPct)
 	}
 	return w
 }

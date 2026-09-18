@@ -703,9 +703,11 @@ func TestInferUnitAgreesWithRealObservations(t *testing.T) {
 	}
 }
 
-// TestExcludedInstance covers the two structural-noise cases: loopback
-// traffic (not external network activity) and loop-device filesystems
-// (snap package mounts, always ~100% full by construction).
+// TestExcludedInstance covers the structural-noise cases: container and
+// virtualisation plumbing (double-counted, and in the veth case ephemeral)
+// and loop-device filesystems (snap package mounts, always ~100% full by
+// construction). The false cases matter as much as the true ones -- a bond,
+// a tap, a WireGuard peer and a hand-named bridge all carry real traffic.
 func TestExcludedInstance(t *testing.T) {
 	cases := []struct {
 		metric, instance string
@@ -714,17 +716,90 @@ func TestExcludedInstance(t *testing.T) {
 		{"network.interface.in.bytes", "lo", true},
 		{"network.interface.out.bytes", "lo", true},
 		{"network.interface.in.bytes", "ens18", false},
-		{"network.interface.in.bytes", "docker0", false}, // present but always-zero already reads as flat
+		{"network.interface.in.bytes", "natgre", false}, // a GRE tunnel someone made
+		{"network.interface.in.bytes", "eth0", false},
+		{"network.interface.in.bytes", "veth1c3052f", true},
+		{"network.interface.in.bytes", "docker0", true},
+		{"network.interface.in.bytes", "br-d862fd428d13", true}, // docker network create
+		{"network.interface.in.bytes", "br-lan", false},         // OpenWrt's LAN
+		{"network.interface.in.bytes", "br0", false},            // a bridge a person made
+		{"network.interface.in.bytes", "gre0", true},            // kernel stub, never carries
+		{"network.interface.in.bytes", "tunl0", true},
+		{"network.interface.in.bytes", "bond0", false}, // the NIC on a real server
+		{"network.interface.in.bytes", "tap0", false},  // a VM's NIC
+		{"network.interface.in.bytes", "wg0", false},
+		{"network.interface.in.bytes", "virbr0", true},
+		{"network.interface.in.bytes", "cali7f3a1b2c", true},
 		{"filesys.full", "/dev/loop0", true},
 		{"filesys.full", "/dev/loop15", true},
 		{"filesys.full", "/dev/sda5", false},
 		{"filesys.full", "/dev/sda1", false},
-		{"disk.dev.avactive", "sda", false}, // unrelated metric, must not be affected
+		{"disk.dev.avactive", "sda", false},     // unrelated metric, must not be affected
+		{"disk.dev.read", "veth1c3052f", false}, // only network.interface.* is filtered
 	}
 	for _, c := range cases {
 		if got := excludedInstance(c.metric, c.instance); got != c.want {
 			t.Errorf("excludedInstance(%q, %q) = %v, want %v", c.metric, c.instance, got, c.want)
 		}
+	}
+}
+
+// TestContextOnlyMetricsAreNeverJudged pins the whole point of the
+// context-only set: uptime rises on every host that did not reboot, and a
+// ceiling is configuration rather than measurement, so neither may produce a
+// verdict. DeltaPct must survive, because rules.go's reboot detector matches
+// on it.
+func TestContextOnlyMetricsAreNeverJudged(t *testing.T) {
+	day := 86400.0
+	a := map[string]Value{
+		"up\x00":  {Metric: "kernel.all.uptime", Val: 3.5 * day},
+		"phys\x00": {Metric: "mem.physmem", Val: 4_000_000},
+		"avail\x00": {Metric: "mem.util.available", Val: 2_000_000},
+	}
+	b := map[string]Value{
+		"up\x00":  {Metric: "kernel.all.uptime", Val: 4.5 * day},
+		"phys\x00": {Metric: "mem.physmem", Val: 8_000_000},
+		"avail\x00": {Metric: "mem.util.available", Val: 1_000_000},
+	}
+	byMetric := map[string]DiffRow{}
+	for _, r := range buildRows(a, b, 15) {
+		byMetric[r.Metric] = r
+	}
+
+	for _, m := range []string{"kernel.all.uptime", "mem.physmem"} {
+		r, ok := byMetric[m]
+		if !ok {
+			t.Fatalf("%s produced no row", m)
+		}
+		if r.Verdict != VFlat || r.Exceeded {
+			t.Errorf("%s: verdict %v exceeded %v, want flat and not exceeded", m, r.Verdict, r.Exceeded)
+		}
+		if r.DeltaPct == nil {
+			t.Errorf("%s: DeltaPct dropped; rules.go's reboot detector needs it", m)
+		}
+	}
+	// A real metric alongside them must still be judged, or this test would
+	// pass with judging switched off entirely.
+	if r := byMetric["mem.util.available"]; r.Verdict != VWorse {
+		t.Errorf("mem.util.available halving should be worse, got %v", r.Verdict)
+	}
+}
+
+// TestRebootRuleStillFiresOnContextOnlyUptime is the other half: suppressing
+// uptime's verdict must not cost the one uptime finding that matters.
+func TestRebootRuleStillFiresOnContextOnlyUptime(t *testing.T) {
+	day := 86400.0
+	a := map[string]Value{"up\x00": {Metric: "kernel.all.uptime", Val: 40 * day}}
+	b := map[string]Value{"up\x00": {Metric: "kernel.all.uptime", Val: 0.02 * day}}
+	rows := buildRows(a, b, 15)
+	found := false
+	for _, f := range EvaluateRules(rows) {
+		if f.ID == "rebooted" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("uptime dropping from 40 days to 30 minutes should still raise the rebooted finding")
 	}
 }
 

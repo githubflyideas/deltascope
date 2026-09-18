@@ -468,14 +468,14 @@
       "label": "inbound traffic",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10240
+      "min_abs": 102400
     },
     {
       "metric": "network.interface.out.bytes",
       "label": "outbound traffic",
       "category": "Network",
       "polarity": "neutral",
-      "min_abs": 10240
+      "min_abs": 102400
     },
     {
       "metric": "network.interface.in.packets",

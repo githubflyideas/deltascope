@@ -3,6 +3,8 @@ package native
 import (
 	"strconv"
 	"strings"
+
+	"github.com/githubflyideas/deltascope/internal/pcp"
 )
 
 // Network parsing. The /proc/net files are the ones where PCP's metric
@@ -26,10 +28,14 @@ const (
 
 // parseNetDev reads /proc/net/dev, one instance per interface.
 //
-// The loopback interface is excluded, matching internal/pcp/units.go's
-// excludedInstance: lo carries every local connection's traffic, so a
-// machine talking to itself would dominate every bandwidth metric and
-// bury the interface that actually has a problem.
+// Synthetic interfaces are excluded through pcp.SyntheticInterface, the same
+// predicate internal/pcp/units.go's excludedInstance uses, so the native and
+// archive paths cannot disagree about which interfaces exist. Sharing one
+// function matters more than it looks: filtering here keeps ephemeral veth
+// names out of the trend store in the first place, while filtering there is
+// what keeps an archive recorded by pmlogger honest -- and a machine whose
+// two paths disagree reports a different set of NICs depending on which one
+// produced the report.
 func (s *Sample) parseNetDev(content string) {
 	leaves := map[string]int{
 		"in.bytes": ndRxBytes, "in.packets": ndRxPackets,
@@ -44,7 +50,7 @@ func (s *Sample) parseNetDev(content string) {
 			continue
 		}
 		iface := strings.TrimSpace(name)
-		if iface == "" || iface == "lo" || strings.Contains(iface, "|") {
+		if strings.Contains(iface, "|") || pcp.SyntheticInterface(iface) {
 			continue
 		}
 		f := strings.Fields(rest)

@@ -840,9 +840,12 @@ var States = []State{
 	{
 		ID:     "state.net.nic_dropping_in",
 		Domain: "network",
-		Description: "The NIC or its driver is dropping received packets, typically ring-buffer exhaustion when the " +
-			"host cannot drain the queue fast enough. Pairs with softirq_high to distinguish a CPU-starved receive " +
-			"path from a link problem.",
+		Description: "The interface's rx_dropped counter is moving. On its own this is not a fault: the kernel bumps " +
+			"the same counter both when a receive ring or backlog overflows and when a frame arrives that no protocol " +
+			"handler wants -- IPv6 router advertisements, MLD, STP, LLDP, unknown ethertypes. A VM on a bridged host " +
+			"sees a steady trickle of the second kind forever and is perfectly healthy. What separates the two is " +
+			"backlog pressure, not the drop count, so read this alongside softnet_dropping and softnet_squeezed: with " +
+			"either of those it is ring exhaustion, without both it is almost certainly unclaimed broadcast.",
 		When: []Cond{{Metric: "network.interface.in.drops", BGte: f(1)}},
 	},
 	{

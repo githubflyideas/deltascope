@@ -15,8 +15,10 @@ import "strings"
 // machine look like it's about to OOM. Units must travel with the number.
 func inferUnit(metric string) string {
 	switch {
-	case metric == "swap.free":
+	case metric == "swap.free" || metric == "swap.capacity":
 		return "byte"
+	case metric == "mem.physmem":
+		return "Kbyte"
 	case strings.HasPrefix(metric, "mem.util."):
 		return "Kbyte"
 	case strings.HasPrefix(metric, "swap.pages"):
@@ -50,6 +52,10 @@ func inferUnit(metric string) string {
 
 	case metric == "filesys.full":
 		return "none"
+	// Inode counts, not space. The generic filesys. rule below says Kbyte,
+	// which for these two would label a count of files as a size on disk.
+	case metric == "filesys.usedfiles" || metric == "filesys.maxfiles":
+		return "count"
 	case strings.HasPrefix(metric, "filesys."):
 		return "Kbyte"
 	case strings.HasPrefix(metric, "vfs."):
@@ -66,6 +72,8 @@ func inferUnit(metric string) string {
 		strings.HasPrefix(metric, "network.softnet.") || strings.HasPrefix(metric, "network.tcpconn."):
 		return "count / sec"
 	case strings.HasPrefix(metric, "network.sockstat."):
+		return "count"
+	case strings.HasPrefix(metric, "network.conntrack."):
 		return "count"
 
 	default:
@@ -84,6 +92,7 @@ func inferUnit(metric string) string {
 //     its numbers (which can be large -- some databases and message
 //     brokers talk to themselves over loopback TCP) look exactly like
 //     real external traffic if you don't know to discount it.
+//   - network.interface.* on a synthetic interface: see syntheticInterface.
 //   - filesys.* on a /dev/loopN device: loop devices back snap package
 //     mounts (Ubuntu ships dozens by default) and squashfs images, not
 //     disks anyone provisions or manages capacity for. They are always
@@ -94,11 +103,82 @@ func excludedInstance(metric, instance string) bool {
 	if instance == "" {
 		return false
 	}
-	if strings.HasPrefix(metric, "network.interface.") && instance == "lo" {
+	if strings.HasPrefix(metric, "network.interface.") && SyntheticInterface(instance) {
 		return true
 	}
 	if strings.HasPrefix(metric, "filesys.") && strings.HasPrefix(instance, "/dev/loop") {
 		return true
 	}
 	return false
+}
+
+// tunnelStubs are the interfaces the kernel creates the moment a tunnel
+// module loads, whether or not anything uses them. Configuring one real
+// GRE tunnel brings gre0, gretap0 and erspan0 into existence alongside
+// it; they are permanently down and carry nothing. Matched by exact name
+// so a tunnel someone actually created and named (natgre, gre1, wg0) is
+// never mistaken for a stub.
+var tunnelStubs = map[string]bool{
+	"gre0": true, "gretap0": true, "erspan0": true,
+	"ip_vti0": true, "ip6_vti0": true, "ip6tnl0": true,
+	"ip6gre0": true, "sit0": true, "tunl0": true,
+}
+
+// SyntheticInterface reports whether an interface name belongs to the
+// container/virtualisation plumbing rather than to a link this machine
+// sends traffic over. A Docker host with 40 containers reports 80-odd
+// interfaces, and every one of them is noise of a particularly bad kind:
+//
+//   - A veth is one end of a virtual pair. Its bytes are also counted on
+//     the bridge it is enslaved to and again on the NIC that carries them
+//     off the host, so including it triple-counts the same packet.
+//   - Its name (veth1c3052f) is assigned at container start and is gone
+//     for good at container stop. Every restart mints a fresh series, so
+//     the trend store fills with dead instances nothing will ever append
+//     to again -- which is what turns a chart legend into eighty entries.
+//   - A tunnel stub carries nothing at all, ever.
+//
+// Deliberately NOT matched: bond*, team*, tap*, tun*, wg* and a bridge
+// named br0 or br-lan. Those carry real traffic on real hosts -- a bond is
+// the NIC on a serious server, tap interfaces are VM NICs on a hypervisor,
+// and OpenWrt's br-lan is the LAN. Docker's own bridges are br- followed
+// by twelve hex digits, which is what the br- rule below requires.
+func SyntheticInterface(name string) bool {
+	switch {
+	case name == "" || name == "lo":
+		return true
+	case tunnelStubs[name]:
+		return true
+	case strings.HasPrefix(name, "veth"):
+		return true
+	case name == "docker0" || name == "docker_gwbridge":
+		return true
+	case strings.HasPrefix(name, "virbr"): // libvirt's own bridges
+		return true
+	case strings.HasPrefix(name, "cni") || strings.HasPrefix(name, "cali") ||
+		strings.HasPrefix(name, "cilium_") || strings.HasPrefix(name, "flannel.") ||
+		strings.HasPrefix(name, "lxcbr") || strings.HasPrefix(name, "nodelocaldns"):
+		return true // Kubernetes CNI plumbing
+	case strings.HasPrefix(name, "dummy"):
+		return true
+	case strings.HasPrefix(name, "br-") && isHex(name[len("br-"):], 12):
+		return true // docker network create
+	default:
+		return false
+	}
+}
+
+// isHex reports whether s is at least n characters long and entirely
+// lower-case hexadecimal. Used to tell Docker's br-d862fd428d13 apart
+// from a bridge a person named br-lan.
+func isHex(s string, n int) bool {
+	if len(s) < n {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

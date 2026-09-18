@@ -124,11 +124,7 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 				row.BMin, row.BMax, row.BCount = &mn, &mx, vb.Count
 			}
 		}
-		eff := thresholdPct
-		if info.ThresholdPct > 0 {
-			eff = info.ThresholdPct
-		}
-		row.DeltaPct, row.Exceeded, row.Verdict = judge(row.A, row.B, info.Polarity, eff, info.MinAbs)
+		row.DeltaPct, row.Exceeded, row.Verdict = JudgeMetric(meta.Metric, row.A, row.B, thresholdPct)
 		rows = append(rows, row)
 	}
 
@@ -164,6 +160,38 @@ func buildRows(a, b map[string]Value, thresholdPct float64) []DiffRow {
 // dual-significance floor would apply to some rows and not others.
 func Judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64, bool, Verdict) {
 	return judge(a, b, pol, thresholdPct, minAbs)
+}
+
+// JudgeMetric is Judge with the catalog consulted for the metric: its
+// polarity, its per-metric threshold override, its significance floor, and
+// whether it is context-only.
+//
+// It exists because there are two places that judge catalog rows -- this
+// package's buildRows, reading a PCP archive, and internal/native's Compare,
+// reading /proc -- and the same two windows have to produce the same verdict
+// either way. When the threshold-override lookup was written out at both
+// sites, "the same rules" was a thing a reader had to check by eye; the
+// context-only rule would have been the third such thing, and the first one
+// where forgetting a site puts a wrong verdict on screen rather than merely
+// a differently-rounded one.
+//
+// Context-only metrics keep their DeltaPct and lose their verdict: rules.go
+// still detects a reboot from uptime falling by half, and a ceiling that
+// moved is still visible in the row, but neither can be called worse.
+func JudgeMetric(metric string, a, b *float64, thresholdPct float64) (*float64, bool, Verdict) {
+	info, ok := Lookup(metric)
+	if !ok {
+		return nil, false, VFlat
+	}
+	eff := thresholdPct
+	if info.ThresholdPct > 0 {
+		eff = info.ThresholdPct
+	}
+	delta, exceeded, v := judge(a, b, info.Polarity, eff, info.MinAbs)
+	if contextOnly[metric] {
+		return delta, false, VFlat
+	}
+	return delta, exceeded, v
 }
 
 func judge(a, b *float64, pol Polarity, thresholdPct, minAbs float64) (*float64, bool, Verdict) {

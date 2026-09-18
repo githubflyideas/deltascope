@@ -1,6 +1,7 @@
 package native
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -200,4 +201,37 @@ func fixtureWindowSamples() []Sample {
 	s2.parseDiskstats(diskstatsFixtureLater)
 
 	return []Sample{s1, s2}
+}
+
+// uptimeRun is a window whose only content is the uptime clock, in seconds.
+func uptimeRun(start time.Time, seconds float64) []Sample {
+	var out []Sample
+	for i := 0; i < 2; i++ {
+		s := newSample(start.Add(time.Duration(i) * time.Second))
+		s.parseFirstNumber("kernel.all.uptime", fmt.Sprintf("%.2f 0.00\n", seconds+float64(i)))
+		out = append(out, s)
+	}
+	return out
+}
+
+// The native path must suppress context-only verdicts exactly as the archive
+// path does. Both go through pcp.JudgeMetric for that reason; this test is
+// what would catch a future edit that reintroduces a second judging rule
+// here, since a divergence shows up as the same two windows getting different
+// verdicts depending on whether the report came from /proc or from pmlogger.
+func TestCompareNeverJudgesContextOnlyMetrics(t *testing.T) {
+	before := uptimeRun(zeroTime, 3.5*86400)
+	after := uptimeRun(zeroTime.Add(time.Minute), 4.5*86400)
+
+	w := Compare(before, after, 10)
+	row, ok := rowFor(w, "kernel.all.uptime")
+	if !ok {
+		t.Fatal("kernel.all.uptime produced no row")
+	}
+	if row.Verdict != pcp.VFlat || row.Exceeded {
+		t.Errorf("uptime: verdict %v exceeded %v, want flat and not exceeded", row.Verdict, row.Exceeded)
+	}
+	if row.DeltaPct == nil {
+		t.Error("uptime: DeltaPct dropped; the reboot rule matches on it")
+	}
 }

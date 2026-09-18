@@ -57,6 +57,7 @@ var Catalog = []MetricInfo{
 	{"kernel.percpu.cpu.wait.total", "I/O wait · per-core", "CPU", WorseUp, false, 0, 0},
 	{"kernel.percpu.cpu.irq.soft", "softirq · per-core", "CPU", WorseUp, false, 0, 0},
 
+	{"mem.physmem", "physical memory", "Memory", Neutral, false, 0, 0},
 	{"mem.util.available", "available memory", "Memory", BetterUp, false, 0, 0},
 	{"mem.util.free", "free memory", "Memory", BetterUp, false, 0, 0},
 	{"mem.util.cached", "page cache", "Memory", Neutral, false, 0, 0},
@@ -71,6 +72,7 @@ var Catalog = []MetricInfo{
 	{"mem.util.committed_AS", "committed memory (Committed_AS)", "Memory", WorseUp, false, 0, 0},
 	{"mem.util.pageTables", "page table usage", "Memory", Neutral, false, 0, 0},
 	{"swap.free", "swap free", "Memory", BetterUp, false, 0, 0},
+	{"swap.capacity", "swap capacity", "Memory", Neutral, false, 0, 0},
 	{"swap.pagesin", "pages swapped in", "Memory", WorseUp, false, 0, 0},
 	{"swap.pagesout", "pages swapped out", "Memory", WorseUp, false, 0, 0},
 	{"mem.vmstat.pgmajfault", "major faults", "Memory", WorseUp, false, 0, 0},
@@ -119,7 +121,9 @@ var Catalog = []MetricInfo{
 	{"filesys.full", "space usage", "Filesystem", WorseUp, false, 0, 0},
 	{"filesys.free", "free space", "Filesystem", BetterUp, false, 0, 0},
 	{"filesys.usedfiles", "inodes used", "Filesystem", WorseUp, false, 0, 0},
+	{"filesys.maxfiles", "inode capacity", "Filesystem", Neutral, false, 0, 0},
 	{"vfs.files.count", "open files", "Filesystem", Neutral, false, 0, 0},
+	{"vfs.files.max", "open-file limit", "Filesystem", Neutral, false, 0, 0},
 	{"vfs.inodes.count", "kernel inode cache", "Filesystem", Neutral, false, 0, 0},
 	{"vfs.dentry.count", "dentry cache", "Filesystem", Neutral, false, 0, 0},
 	{"filesys.avail", "non-root available space", "Filesystem", BetterUp, false, 0, 0},
@@ -158,7 +162,11 @@ var Catalog = []MetricInfo{
 	{"network.sockstat.tcp.inuse", "TCP sockets in use", "Network", Neutral, false, 0, 0},
 	{"network.sockstat.tcp.alloc", "TCP sockets allocated", "Network", Neutral, false, 0, 0},
 	{"network.sockstat.tcp.tw", "TIME-WAIT connections", "Network", Neutral, false, 0, 0},
+	{"network.sockstat.tcp.max_tw_buckets", "TIME-WAIT capacity", "Network", Neutral, false, 0, 0},
 	{"network.sockstat.tcp.orphan", "orphan connections", "Network", WorseUp, false, 0, 0},
+	{"network.sockstat.tcp.max_orphans", "orphan-socket limit", "Network", Neutral, false, 0, 0},
+	{"network.conntrack.count", "conntrack entries", "Network", WorseUp, false, 0, 0},
+	{"network.conntrack.max", "conntrack table size", "Network", Neutral, false, 0, 0},
 	{"network.sockstat.udp.inuse", "UDP sockets in use", "Network", Neutral, false, 0, 0},
 	{"network.softnet.dropped", "softnet drops", "Network", WorseUp, false, 0, 0},
 	{"network.softnet.time_squeeze", "softnet time squeeze", "Network", WorseUp, false, 0, 0},
@@ -297,8 +305,23 @@ var minAbsDefault = map[string]float64{
 	"disk.md.write_bytes":  512,
 
 	// Network: bytes/sec and packets/sec on an idle link.
-	"network.interface.in.bytes":    10240, // 10 KB/s
-	"network.interface.out.bytes":   10240,
+	//
+	// 100 KB/s is 0.08% of a gigabit link, and traffic below it is not a
+	// workload -- it is monitoring agents, SSH keepalives, NTP, DNS and ARP.
+	// The old floor of 10 KB/s sat right in the middle of that band, and the
+	// dual-significance rule only calls a change noise when *both* windows
+	// are under the floor, so a host drifting between 12 KB/s and 8 KB/s
+	// straddled it and produced a "watch" on a -32% change in idle chatter.
+	// Those rows have a tell: their own min/max spans three orders of
+	// magnitude, so the mean-to-mean delta is far smaller than the spread
+	// inside either window.
+	//
+	// The tradeoff, stated plainly: a steady doubling from 30 to 60 KB/s is
+	// now suppressed. That is accepted. At those rates the absolute change
+	// cannot affect the machine, and the alternative -- reporting it -- is
+	// what buried the rows that could.
+	"network.interface.in.bytes":    102400, // 100 KB/s
+	"network.interface.out.bytes":   102400,
 	"network.interface.in.packets":  50,
 	"network.interface.out.packets": 50,
 	"network.tcp.insegs":            50,
@@ -404,6 +427,73 @@ var foldDefault = map[string]bool{
 	"kernel.percpu.cpu.irq.soft":   true,
 }
 
+// nativeOnly names the catalog metrics that must never be asked of an
+// archive, only read from /proc. These are the ceilings the derived ratios
+// in internal/reasoning divide by, and they fall into two groups.
+//
+// Names PCP does not have at all: network.conntrack.* and the two
+// network.sockstat.tcp.max_* sysctl ceilings. Querying them would earn one
+// "unknown metric" warning per process (absent.go) and never a value, so
+// they are excluded from the query set rather than learned the slow way.
+//
+// One name where PCP's unit differs: swap.capacity is byte-valued here,
+// because it is the denominator of swap.free, which is the one byte-valued
+// metric in this catalog. PCP's nearest equivalents (swap.length,
+// mem.util.swapTotal) are Kbyte, so an archive answering this name would
+// make the swap ratio 1024x too small and state.mem.swap_exhausted could
+// never fire. A ratio needs both halves measured the same way.
+//
+// mem.physmem, vfs.files.max and filesys.maxfiles are real PCP metrics in
+// unambiguous units and are deliberately NOT here: an archive recorded on
+// another host must be able to carry its own ceilings, or the ratio would
+// be computed against the ceilings of whichever host runs the report.
+var nativeOnly = map[string]bool{
+	"swap.capacity":                       true,
+	"network.conntrack.count":             true,
+	"network.conntrack.max":               true,
+	"network.sockstat.tcp.max_orphans":    true,
+	"network.sockstat.tcp.max_tw_buckets": true,
+}
+
+// NativeOnly reports whether a metric is collectable only from /proc.
+func NativeOnly(metric string) bool { return nativeOnly[metric] }
+
+// contextOnly names metrics that are reported but never judged: their rows
+// carry a value for context and always come out flat, never worse, never a
+// watch. Two kinds of metric belong here, for the same underlying reason --
+// the percentage change of the number is not a fact about the machine.
+//
+// Ceilings. mem.physmem, swap.capacity, the two sysctl max_* limits,
+// nf_conntrack_max, vfs.files.max and filesys.maxfiles are configuration,
+// not measurement. They exist in the catalog to be the denominators of the
+// derived ratios. If one of them ever does change between two windows
+// somebody resized the box or wrote to a sysctl, and the finding worth
+// reporting is the ratio moving, not the limit moving.
+//
+// kernel.all.uptime. A monotonic wall clock guarantees a verdict: 3.5 days
+// against 4.5 days is +28.6%, over any sane threshold, on every host that
+// did not reboot. That row appeared in every report and meant nothing, and
+// worse, it crowded out rows that did mean something. Uptime is still worth
+// printing -- a *drop* in uptime is the single most useful line in a diff,
+// because it says the machine rebooted -- and that keeps working, because
+// context-only suppresses the verdict and leaves DeltaPct alone. The
+// "rebooted" rule in rules.go matches on DeltaLte -50 and no Verdict, so it
+// still fires; it is the rise that is silenced, not the fall.
+var contextOnly = map[string]bool{
+	"kernel.all.uptime":                   true,
+	"mem.physmem":                         true,
+	"swap.capacity":                       true,
+	"vfs.files.max":                       true,
+	"filesys.maxfiles":                    true,
+	"network.sockstat.tcp.max_orphans":    true,
+	"network.sockstat.tcp.max_tw_buckets": true,
+	"network.conntrack.max":               true,
+}
+
+// ContextOnly reports whether a metric is shown for context but never
+// judged. Both judging paths consult it through JudgeMetric.
+func ContextOnly(metric string) bool { return contextOnly[metric] }
+
 var (
 	catalogIndex map[string]MetricInfo
 	orderIndex   map[string]int
@@ -444,6 +534,9 @@ func Lookup(metric string) (MetricInfo, bool) {
 func DiffMetrics() []string {
 	out := make([]string, 0, len(Catalog))
 	for _, c := range Catalog {
+		if nativeOnly[c.Metric] {
+			continue
+		}
 		out = append(out, c.Metric)
 	}
 	// Skip metrics this archive has already told us it does not have.
