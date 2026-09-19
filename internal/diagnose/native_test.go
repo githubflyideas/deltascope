@@ -219,7 +219,7 @@ func TestReasoningTakesTheHeadlineWithNoArchive(t *testing.T) {
 		ID: "diagnosis.memory_exhaustion", Branch: reasoning.BranchMemory,
 		Severity: "crit", Conclusion: "Available memory is nearly gone",
 	}}}
-	synthesize(out, nil, 1, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 
 	if out.Severity != "crit" {
 		t.Errorf("severity = %q, want crit from the reasoning chain", out.Severity)
@@ -243,7 +243,7 @@ func TestReasoningStillDefersToTheArchive(t *testing.T) {
 			Severity: "crit", Conclusion: "Available memory is nearly gone",
 		}},
 	}
-	synthesize(out, rep, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, rep, state.ProcDiff{}, state.Diff{})
 
 	if out.Severity == "crit" {
 		t.Errorf("severity = crit: the reasoning chain overrode the metric engine on its own ground")
@@ -263,7 +263,7 @@ func TestReasoningHeadlineStillNamesACulprit(t *testing.T) {
 		{Name: "java", RSSKBA: f(500000), RSSKBB: f(520000), RSSDelta: f(4), Verdict: state.PVFlat},
 		{Name: "nginx", RSSKBA: f(102400), RSSKBB: f(3800000), RSSDelta: f(3611), Verdict: state.PVWorse},
 	}}
-	synthesize(out, nil, 1, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if !strings.Contains(out.Culprit, "nginx") {
 		t.Errorf("culprit = %q, want nginx: a memory diagnosis must attribute by RSS", out.Culprit)

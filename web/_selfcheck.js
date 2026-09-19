@@ -251,6 +251,13 @@ const DIAG_FULL = {
       states: ["state.io.await_high"], evidence: [], next: [], is_root: false, root_id: "diag.cpu.runaway", downstream_of: "diag.cpu.runaway" },
   ],
   processes: PROC_FIXTURE,
+  // Partially answered catalog: the strip has to name both halves of the
+  // fraction and label every kind of gap behind it.
+  coverage: {
+    source: "archive", states: 70, evaluated: 58, active: 1,
+    gaps: { needs_root: 6, absent: 4, no_baseline: 2 },
+    holding: ["state.cpu.user_high"],
+  },
   changes: [
     { kind: "modified", key: "sysctl.net.core.somaxconn", title: "socket backlog", old: "128", new: "4096" },
     { kind: "added", key: "unit.foo.service", title: "new service", new: "enabled" },
@@ -261,6 +268,9 @@ const DIAG_FULL = {
 const DIAG_BARE = {
   severity: "unknown", headline: "", window: { label: "" },
   triage: [], reasoning: [], processes: [], changes: [], notes: [],
+  // Rows arrived and answered nothing. This is the case the old boolean got
+  // wrong, and the one the strip must state in words rather than as a zero.
+  coverage: { source: "proc", states: 70, evaluated: 0, gaps: { no_baseline: 70 } },
 };
 
 // The change page in the shape the timeline gives it: a dated kernel event
@@ -340,7 +350,19 @@ const STATEDIFF_NONE = { no_data: true, reason: "no_baseline", b_time: "2026-09-
           "rc-child", "No snapshots cover the baseline half.",
           'data-tab-jump="reasoning"',
           "Available memory +140%", "Steal time -80%", "tc-improved",
+          // The denominator, and a chip per kind of gap. Numbers rather than
+          // wording, since the labels are translated and this runs per locale.
+          "diag-coverage", "58", "70", "dc-gap", "6", "4", "2",
         ]);
+        // A partly answered catalog is not the zero-coverage case, and the
+        // tinted variant must not leak onto it.
+        if (sink.innerHTML.includes("dc-none")) {
+          fail(`renderDiagnosis(full)[${loc}] flagged 58 of 70 states as nothing measured`);
+        }
+      } else {
+        // Rows arrived, nothing was answerable: the strip says so instead of
+        // printing "0 of 70" under a verdict the reader might read as clean.
+        must(`renderDiagnosis(bare)[${loc}]`, sink.innerHTML, ["dc-none", "dc-count", "70"]);
       }
     }
     // renderStateDiff also writes into the DOM. Both shapes go through it:

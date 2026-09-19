@@ -37,8 +37,69 @@ type Diagnosis struct {
 	// aggregate metric engine cannot see. It also drives the CPU triage
 	// block's escalation, so the one-click view and the reasoning tab agree.
 	Reasoning []reasoning.Result `json:"reasoning,omitempty"`
+	// Coverage is the denominator behind every verdict above. Nil only when
+	// the state catalog was never run at all.
+	Coverage *Coverage `json:"coverage,omitempty"`
 
 	Notes []string `json:"notes,omitempty"`
+}
+
+// Coverage is how much of the state catalog this run could actually answer.
+//
+// The verdict used to rest on a boolean: rows arrived, therefore something was
+// measured, therefore "no regression detected" is a fair thing to say. But a
+// row set can arrive and answer nothing -- a first /proc window has no baseline
+// for the entire change-judgment half of the roster, and a stock pmlogger
+// config never logs several metric families at all. Green asserted over that is
+// the one answer this page must never give, and a reader cannot weigh it
+// without the denominator.
+//
+// The reasoning tab has shown this split all along. The one-click page did not,
+// so the same host could be green here and "unknown, not healthy" one tab over.
+type Coverage struct {
+	// Source is where the rows came from: archive, proc, or none.
+	Source string `json:"source"`
+	// States is the number of catalog entries that can be evaluated at all,
+	// and Evaluated how many of them this row set had the fields for.
+	States    int `json:"states"`
+	Evaluated int `json:"evaluated"`
+	// Active is how many of the evaluated states hold.
+	Active int `json:"active"`
+	// Gaps counts the unevaluated states by GapKind, because what the reader
+	// should do about a gap depends entirely on which kind it is -- and for
+	// one of the kinds the answer is "nothing at all".
+	Gaps map[string]int `json:"gaps,omitempty"`
+	// Holding names the states that hold. Carried for the one case where they
+	// are the whole answer: states fired and no diagnosis pattern claimed
+	// them, so the reader gets the raw states rather than a green light.
+	Holding []string `json:"holding,omitempty"`
+}
+
+// GapTotal is how many states could not be judged.
+func (c *Coverage) GapTotal() int {
+	if c == nil {
+		return 0
+	}
+	return c.States - c.Evaluated
+}
+
+// Nil-safe readers, because synthesize runs against a Diagnosis assembled by
+// hand as well as one built by Run. A nil Coverage means the catalog was never
+// run, which is not the same as running it and answering nothing: the first
+// leaves the older evidence (triage blocks, findings) to speak for itself, the
+// second is a measured zero.
+func (c *Coverage) evaluated() int {
+	if c == nil {
+		return 0
+	}
+	return c.Evaluated
+}
+
+func (c *Coverage) holds() int {
+	if c == nil {
+		return 0
+	}
+	return c.Active
 }
 
 type Window struct {
@@ -227,7 +288,7 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 		// reasoning states back into the CPU block so the one-click page
 		// agrees with the reasoning chain instead of showing a green light
 		// next to a diagnosis that says a core is saturated.
-		out.Reasoning = reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, metricRep.Rows))
+		out.Reasoning, out.Coverage = reason(metricRep.Rows, "archive")
 		escalateCPUFromReasoning(out)
 	} else if len(nativeRows) > 0 {
 		// No archive, so no Triage and no Findings: the rule engine behind
@@ -236,13 +297,72 @@ func Run(ctx context.Context, d Deps) (*Diagnosis, error) {
 		// is the half of the analysis that names causes rather than colours,
 		// so a PCP-less host still gets a real answer instead of a page of
 		// notes explaining what it cannot do.
-		out.Reasoning = reasoning.Diagnose(reasoning.Diagnoses, reasoning.Evaluate(reasoning.States, nativeRows))
+		out.Reasoning, out.Coverage = reason(nativeRows, "proc")
+	} else {
+		// No rows at all. Still record the denominator: "78 states, none of
+		// them answerable" is the fact the verdict below rests on, and an
+		// absent coverage block would read as though the question was never
+		// asked.
+		out.Coverage = &Coverage{Source: "none", States: evaluableStates()}
 	}
 	out.Processes = topProcesses(procDiff.Rows, 12)
 	out.Changes = summarizeChanges(stateDiff, 40)
 
-	synthesize(out, metricRep, len(nativeRows), procDiff, stateDiff)
+	synthesize(out, metricRep, procDiff, stateDiff)
 	return out, nil
+}
+
+// reason runs the state catalog over one row set and records what it could not
+// answer. The two halves are computed from the same rows through the same
+// index, so a state cannot be reported as unevaluated here while Evaluate
+// happily fires it.
+func reason(rows []pcp.DiffRow, source string) ([]reasoning.Result, *Coverage) {
+	active := reasoning.Evaluate(reasoning.States, rows)
+	gaps := reasoning.UnevaluatedGaps(reasoning.States, rows)
+
+	cov := &Coverage{Source: source, States: evaluableStates(), Active: len(active)}
+	cov.Evaluated = cov.States - len(gaps)
+	if len(gaps) > 0 {
+		cov.Gaps = make(map[string]int, 4)
+		for _, g := range gaps {
+			cov.Gaps[string(g.Kind)]++
+		}
+	}
+	for id := range active {
+		cov.Holding = append(cov.Holding, id)
+	}
+	sort.Strings(cov.Holding)
+
+	return reasoning.Diagnose(reasoning.Diagnoses, active), cov
+}
+
+// evaluableStates is the denominator. A catalog entry with no conditions is
+// never evaluated by anything -- UnevaluatedGaps skips it too -- so counting
+// the whole catalog would make even a perfect run look short.
+func evaluableStates() int {
+	n := 0
+	for _, st := range reasoning.States {
+		if len(st.When) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// coverageTail qualifies a green verdict with its own denominator. Green is
+// the only severity that needs it: every other headline names something that
+// was found, and a finding stands on its own evidence, while "nothing found"
+// is only as strong as the search behind it.
+//
+// Silent when the catalog was fully answered -- a qualification printed on
+// every report is one the reader learns to skip, which is how the ones that
+// matter stop being read.
+func coverageTail(c *Coverage) string {
+	if c.GapTotal() <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" in the %d of %d state(s) that could be checked; the other %d are unknown, not clean",
+		c.Evaluated, c.States, c.GapTotal())
 }
 
 // cpuReasoningHeadline maps a reasoning diagnosis ID to the short phrase
@@ -319,7 +439,7 @@ func PickWindow(now time.Time) Window {
 
 // synthesize is the correlation step: it decides the single headline and
 // attaches the culprit process and the related configuration change.
-func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.ProcDiff, sd state.Diff) {
+func synthesize(out *Diagnosis, rep *pcp.DiffReport, pd state.ProcDiff, sd state.Diff) {
 	// Descending priority: a rule-engine conclusion beats a bare resource
 	// signal, because a rule already knows what the combination means.
 	var crit, warn *pcp.Finding
@@ -377,11 +497,17 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.Pr
 	// unreachable and a green light is the one answer that is certainly
 	// wrong. Triage blocks and findings both come from the metric engine, so
 	// their presence is the evidence that a measurement happened -- green
-	// requires evidence, and silence is not evidence. Rows read from /proc
-	// count as the same kind of evidence: fewer states are answerable from
-	// them, but the ones that are were genuinely checked.
-	measured := len(out.Triage) > 0 || len(out.Findings) > 0 ||
-		(rep != nil && len(rep.Rows) > 0) || nativeRows > 0
+	// requires evidence, and silence is not evidence.
+	//
+	// The row count used to stand in for that evidence on the /proc path, and
+	// it is the wrong question: rows can arrive and answer nothing. A first
+	// sampler window has no baseline for the whole change-judgment half of the
+	// roster, and a stock pmlogger config never logs several families at all,
+	// so "rows exist" and "a state could be judged" are different facts. The
+	// coverage denominator is the right one, and it is what the reasoning tab
+	// has been showing next to this page all along.
+	cov := out.Coverage
+	measured := len(out.Triage) > 0 || len(out.Findings) > 0 || cov.evaluated() > 0
 
 	// headlineFrom records the reasoning result that won the headline, if one
 	// did. It is the only thing that knows which resource the answer is about
@@ -415,6 +541,16 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.Pr
 	case worstBlock != nil && worstBlock.Status == pcp.TriageWarn:
 		out.Severity = "warn"
 		out.Headline = worstBlock.Label + " needs watching: " + worstBlock.Headline
+	case cov.holds() > 0 && len(out.Reasoning) == 0:
+		// States hold and the catalog has no pattern for this combination. The
+		// CLI's `check` has answered warn here since it was written; this page
+		// answered "no regression detected", so one host got two colours from
+		// one engine depending on which entry point the reader used. The states
+		// themselves are a real signal even before the catalog has an opinion
+		// about what the combination means.
+		out.Severity = "warn"
+		out.Headline = fmt.Sprintf("%d state(s) hold but no diagnosis pattern matched them", cov.Active)
+		out.Evidence = cov.Holding
 	case rec != nil:
 		// Nothing is wrong AND something got measurably better. Severity
 		// stays "ok" rather than gaining a sixth value: the reader's question
@@ -439,10 +575,17 @@ func synthesize(out *Diagnosis, rep *pcp.DiffReport, nativeRows int, pd state.Pr
 		out.Headline = fmt.Sprintf("No performance regression, but %d configuration change(s) were detected", sd.Total)
 	case measured:
 		out.Severity = "ok"
-		out.Headline = "No regression and no configuration changes detected"
+		out.Headline = "No regression and no configuration changes detected" + coverageTail(cov)
 	default:
 		out.Severity = "unknown"
 		out.Headline = "Nothing was measured: no metric data for this window, so nothing can be ruled out"
+		if cov != nil && cov.Source != "none" && cov.States > 0 {
+			// Rows did arrive. They just answered nothing -- a first sampler
+			// window, or an archive logging none of the families the catalog
+			// rests on. "No metric data" would send the reader to check the
+			// collector when the collector is running.
+			out.Headline = fmt.Sprintf("Data arrived but none of the %d state(s) could be judged from it, so nothing can be ruled out", cov.States)
+		}
 		out.Next = []string{
 			"deltascope check",
 			"systemctl status pmcd pmlogger",

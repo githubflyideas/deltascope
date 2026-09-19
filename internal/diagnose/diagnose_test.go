@@ -35,7 +35,7 @@ func TestSynthesizeCorrelation(t *testing.T) {
 		},
 	}}, Total: 2}
 
-	synthesize(out, nil, 0, pd, sd)
+	synthesize(out, nil, pd, sd)
 
 	if out.Severity != "crit" {
 		t.Errorf("severity = %q, want crit", out.Severity)
@@ -68,7 +68,7 @@ func TestFindingOutranksTriage(t *testing.T) {
 			{Key: "cpu", Label: "CPU", Status: pcp.TriageBad, Headline: "user CPU +200%"},
 		},
 	}
-	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 	if !contains(out.Headline, "swapping") {
 		t.Errorf("rule conclusion should win the headline, got %q", out.Headline)
 	}
@@ -86,7 +86,7 @@ func TestMemoryCulpritByRSS(t *testing.T) {
 		{Name: "java", CPUPctA: f(50), CPUPctB: f(52), RSSKBA: f(500000), RSSKBB: f(520000), RSSDelta: f(4), Verdict: state.PVFlat},
 		{Name: "nginx", RSSKBA: f(102400), RSSKBB: f(3800000), RSSDelta: f(3611), Verdict: state.PVWorse},
 	}}
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 	if !contains(out.Culprit, "nginx") {
 		t.Errorf("memory culprit should be nginx (+3611%%), got %q", out.Culprit)
 	}
@@ -99,7 +99,7 @@ func TestHealthyMachine(t *testing.T) {
 		{Key: "cpu", Label: "CPU", Status: pcp.TriageOK, Headline: "normal"},
 		{Key: "mem", Label: "Memory", Status: pcp.TriageOK, Headline: "normal"},
 	}}
-	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 	if out.Severity != "ok" {
 		t.Errorf("severity = %q, want ok", out.Severity)
 	}
@@ -119,7 +119,7 @@ func TestChangesOnlyIsInfo(t *testing.T) {
 		Name: "security", Title: "Security Posture",
 		Changes: []state.Change{{Key: "net.ipv4.ip_forward", Kind: state.Modified, Old: "0", New: "1"}},
 	}}, Total: 1}
-	synthesize(out, nil, 0, state.ProcDiff{}, sd)
+	synthesize(out, nil, state.ProcDiff{}, sd)
 	if out.Severity != "info" {
 		t.Errorf("severity = %q, want info", out.Severity)
 	}
@@ -159,7 +159,7 @@ func TestPickWindowEndsAtNowNotTheLastFullHour(t *testing.T) {
 // fine" and "we could not look" is the whole value of the verdict.
 func TestNothingMeasuredIsNotHealthy(t *testing.T) {
 	out := &Diagnosis{}
-	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 
 	if out.Severity != "unknown" {
 		t.Errorf("severity = %q, want unknown: nothing was measured", out.Severity)
@@ -183,7 +183,7 @@ func TestChangesWithoutMetricsSaysSo(t *testing.T) {
 		Name: "sysctl", Title: "Kernel Parameters",
 		Changes: []state.Change{{Key: "vm.swappiness", Kind: state.Modified, Old: "60", New: "1"}},
 	}}, Total: 1}
-	synthesize(out, nil, 0, state.ProcDiff{}, sd)
+	synthesize(out, nil, state.ProcDiff{}, sd)
 
 	if out.Severity != "info" {
 		t.Errorf("severity = %q, want info", out.Severity)
@@ -205,7 +205,7 @@ func TestMeasuredAndQuietStaysHealthy(t *testing.T) {
 	out := &Diagnosis{Triage: []pcp.TriageBlock{
 		{Key: "cpu", Label: "CPU", Status: pcp.TriageOK, Headline: "normal"},
 	}}
-	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 	if out.Severity != "ok" {
 		t.Errorf("severity = %q, want ok: the window was measured and was quiet", out.Severity)
 	}

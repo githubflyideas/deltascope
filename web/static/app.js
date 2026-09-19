@@ -1319,6 +1319,49 @@ const SEV_STYLE = {
   unknown: { cls: "d-unknown", icon: "\u{26AA}", key: "sev_unknown" },
 };
 
+// What a reader has to do about an unmeasured state depends entirely on WHY it
+// is unmeasured, and one of the five reasons asks for nothing at all: a host
+// with no swap has no swap problems, and printing a to-do beside it would turn a
+// correct configuration into a permanent chore. Keyed off the server's gap_kind
+// rather than the reason prose, which is English while this interface is not.
+//
+// Module scope because two screens now read it: the reasoning tab labels each
+// unmeasured row, and the one-click page labels the gap counts under its
+// verdict. One table means a new GapKind cannot show up named on one screen and
+// unnamed on the other.
+const GAP_HINT = {
+  needs_root: "gap_needs_root",
+  absent: "gap_absent",
+  too_few_samples: "gap_too_few_samples",
+  no_baseline: "gap_no_baseline",
+  no_data: "gap_no_data",
+};
+
+// The denominator behind the verdict above it. A green light over 12 of 70
+// states is a far weaker claim than one over all 70, and until now the page
+// showed the two identically -- the severity was gated on "rows arrived", which
+// is not the same fact as "a state could be judged".
+//
+// Deliberately not a warning colour: every real host has some gaps, so a yellow
+// strip here would be permanent and the reader would learn to skip it. It states
+// the count and, for each kind of gap, what would close it.
+function diagCoverage(cov) {
+  if (!cov || !cov.states) return "";
+  const kinds = Object.entries(cov.gaps || {}).map(([kind, n]) => {
+    const key = GAP_HINT[kind];
+    // An unrecognised kind still gets its count: a number with no label is a
+    // worse answer than the label, and a much better one than dropping it.
+    return `<span class="dc-gap">${n} · ${key ? escapeHtml(t(key)) : escapeHtml(kind)}</span>`;
+  }).join("");
+  // Evaluated === 0 is the case the old boolean got wrong, so it says so in
+  // words rather than leaving the reader to notice a zero.
+  const head = cov.evaluated
+    ? t("diag_coverage", cov.evaluated, cov.states)
+    : t("diag_coverage_unknown", cov.states);
+  return `<div class="diag-coverage${cov.evaluated ? "" : " dc-none"}">
+    <span class="dc-count">${escapeHtml(head)}</span>${kinds}</div>`;
+}
+
 async function runDiagnose() {
   const btn = $("#diagRun");
   const err = $("#diagError");
@@ -1358,6 +1401,10 @@ function renderDiagnosis(d) {
     html += `<div class="dv-evidence">${t("evidence_label")} ${d.evidence.map(escapeHtml).join(" \u00b7 ")}</div>`;
   if (d.next && d.next.length)
     html += `<div class="dv-next">${t("next_label")} ${d.next.map((c) => `<code>${escapeHtml(c)}</code>`).join("")}</div>`;
+  // Inside the verdict card, not beside it: the coverage is what qualifies the
+  // headline, and a qualification that sits somewhere else on the page is one
+  // the reader takes in after they have already believed the headline.
+  html += diagCoverage(d.coverage);
   html += `</div>`;
 
   if (d.notes && d.notes.length)
@@ -1744,20 +1791,6 @@ function renderReasoning(d) {
   // the opposite of an audit, because it asserts a negative nobody verified.
   const states = d.states || [];
   if (states.length) {
-    // What a reader has to do about an unmeasured state depends entirely on
-    // WHY it is unmeasured, and one of the five reasons asks for nothing at
-    // all: a host with no swap has no swap problems, and printing a to-do
-    // beside it would turn a correct configuration into a permanent chore.
-    // Keyed off the server's gap_kind rather than the reason prose, which is
-    // English while this interface is not.
-    const GAP_HINT = {
-      needs_root: "gap_needs_root",
-      absent: "gap_absent",
-      too_few_samples: "gap_too_few_samples",
-      no_baseline: "gap_no_baseline",
-      no_data: "gap_no_data",
-    };
-
     const stateRow = (st) => {
       const unknown = !st.active && !!st.reason;
       // Three marks for three answers. The unmeasured mark is deliberately

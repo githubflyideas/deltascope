@@ -50,7 +50,7 @@ func TestRecoveryIsReportedWhenTheProcessIsStillRunning(t *testing.T) {
 		{Name: "sshd", CPUPctA: f(0.1), CPUPctB: f(0.1), Verdict: state.PVFlat},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if out.Severity != "ok" {
 		t.Errorf("severity = %q, want ok -- an improvement is not trouble", out.Severity)
@@ -83,7 +83,7 @@ func TestRecoveryIsNotClaimedWhenTheProcessDied(t *testing.T) {
 		{Name: "nodedata-linux-", CPUPctA: f(225), CPUPctB: nil, Verdict: state.PVGone},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if contains(out.Headline, "improved") {
 		t.Errorf("claimed an improvement over a process that disappeared: %q", out.Headline)
@@ -105,7 +105,7 @@ func TestADeadProcessVetoesEvenAnUnrelatedImprovement(t *testing.T) {
 		{Name: "postgres", CPUPctA: f(80), CPUPctB: nil, Verdict: state.PVGone},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if contains(out.Headline, "improved") {
 		t.Errorf("a gone process should silence the improvement, got %q", out.Headline)
@@ -118,7 +118,7 @@ func TestADeadProcessVetoesEvenAnUnrelatedImprovement(t *testing.T) {
 func TestRecoveryNeedsProcessEvidence(t *testing.T) {
 	out := &Diagnosis{Triage: improvedCPU(okBlocks(), -95)}
 
-	synthesize(out, nil, 0, state.ProcDiff{}, state.Diff{})
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
 
 	if contains(out.Headline, "improved") {
 		t.Errorf("claimed an improvement with no process data at all: %q", out.Headline)
@@ -137,7 +137,7 @@ func TestRecoveryIgnoresATrivialProcessChange(t *testing.T) {
 		{Name: "chronyd", CPUPctA: f(1.2), CPUPctB: f(0.9), CPUDelta: f(-25), Verdict: state.PVBetter},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if contains(out.Headline, "improved") {
 		t.Errorf("0.3%% of a core was accepted as the reason for -95%%: %q", out.Headline)
@@ -158,7 +158,7 @@ func TestARegressionOutranksAnImprovement(t *testing.T) {
 		{Name: "nodedata-linux-", CPUPctA: f(225), CPUPctB: f(11), CPUDelta: f(-95), Verdict: state.PVBetter},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if out.Severity != "crit" {
 		t.Errorf("severity = %q, want crit -- memory is degraded", out.Severity)
@@ -178,7 +178,7 @@ func TestRecoveryKeepsTheChangeCount(t *testing.T) {
 	}}
 	sd := state.Diff{Total: 3}
 
-	synthesize(out, nil, 0, pd, sd)
+	synthesize(out, nil, pd, sd)
 
 	if !contains(out.Headline, "improved") || !contains(out.Headline, "3 configuration change") {
 		t.Errorf("headline should carry both the improvement and the change count, got %q", out.Headline)
@@ -205,7 +205,7 @@ func TestNoRecoveryClaimForDiskOrNetwork(t *testing.T) {
 		{Name: "nodedata-linux-", CPUPctA: f(225), CPUPctB: f(11), CPUDelta: f(-95), Verdict: state.PVBetter},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	if contains(out.Headline, "improved") {
 		t.Errorf("claimed a network improvement it cannot attribute: %q", out.Headline)
@@ -223,7 +223,7 @@ func TestRecoveryMentionsARestart(t *testing.T) {
 			Verdict: state.PVBetter, Restarted: true, CPUApproxB: true},
 	}}
 
-	synthesize(out, nil, 0, pd, state.Diff{})
+	synthesize(out, nil, pd, state.Diff{})
 
 	ev := strings.Join(out.Evidence, " ")
 	if !contains(ev, "restart") {
