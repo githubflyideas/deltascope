@@ -24,8 +24,9 @@ each engine folds out underneath.
   into plain-language conclusions. A dual-significance floor (relative %
   *and* an absolute minimum) keeps a quiet machine from lighting up on noise.
 - **Change accounting** (`statediff` / `verify`) — snapshots ~1700 machine
-  facts (sysctl, packages, modules, ports, firewall, services, config
-  fingerprints) and diffs two points in time. `verify` is a release gate.
+  facts (sysctl, packages, modules, ports, firewall, services, NIC driver /
+  link / ring / offload settings, config fingerprints) and diffs two points in
+  time. `verify` is a release gate.
 - **Process accounting** — per-process CPU/memory with restart detection,
   read straight from `/proc`.
 - **Reasoning chain** — 78 named states, then 58 diagnoses over combinations

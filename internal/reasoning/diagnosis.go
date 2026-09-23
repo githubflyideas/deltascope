@@ -833,7 +833,15 @@ var Diagnoses = []Diagnosis{
 		Severity: "crit",
 		Conclusion: "The NIC is reporting frame errors, which is a physical-layer fault -- cable, transceiver, or " +
 			"switch port. No amount of kernel or application tuning addresses this",
-		Next:        []string{"ip -s link", "ethtool <nic>", "ethtool -S <nic> | grep -i err"},
+		// A driver or firmware update is the one non-physical cause that looks
+		// exactly like this, and it is the one the reader cannot see by looking at
+		// the card now. The nic section has both versions per capture.
+		Next: []string{
+			"ip -s link",
+			"ethtool <nic>",
+			"deltascope statediff -since 168h | grep 'nic\\.driver'",
+			"ethtool -S <nic> | grep -i err",
+		},
 		RequiresAll: []string{"state.net.nic_errors"},
 	},
 	{
@@ -923,7 +931,19 @@ var Diagnoses = []Diagnosis{
 		Conclusion: "The NIC is reporting Ethernet collisions or transmit errors -- a physical-layer fault: a duplex " +
 			"mismatch, a bad cable, or a failing switch port. No amount of kernel or application tuning changes this; " +
 			"the link itself needs attention",
-		Next:        []string{"ethtool <iface>", "ethtool -S <iface> | grep -iE 'err|collision|carrier'", "check the switch port and cabling"},
+		// The stored history comes before the live look. `ethtool <iface>` says
+		// the link is half-duplex now, which is the reading a duplex mismatch
+		// produces and also the reading a correctly configured 10Mb link
+		// produces; what settles it is whether it was full-duplex last week. The
+		// nic section has recorded the negotiated link, the driver and firmware
+		// version and the ring sizes on every capture since it landed, so that is
+		// a question with an answer instead of a guess.
+		Next: []string{
+			"deltascope statediff -since 168h | grep 'nic\\.'",
+			"ethtool <iface>",
+			"ethtool -S <iface> | grep -iE 'err|collision|carrier'",
+			"check the switch port and cabling",
+		},
 		RequiresAny: []string{"state.net.collisions_high", "state.net.nic_errors_out"},
 	},
 	{
@@ -932,7 +952,17 @@ var Diagnoses = []Diagnosis{
 		Severity: "warn",
 		Conclusion: "The host is dropping outbound packets at the NIC transmit queue: it is trying to send faster than " +
 			"the link or driver will accept. Throughput looks fine while individual sends are quietly lost",
-		Next:        []string{"ip -s link show <iface>", "tc -s qdisc show dev <iface>", "check the link speed and txqueuelen"},
+		// The transmit ring is the first thing to check and the one a driver
+		// update silently resets to its own default, so the stored value is worth
+		// as much as the current one: a ring that went 4096 -> 256 on the night of
+		// a kernel upgrade explains drops that started the next morning.
+		Next: []string{
+			"ethtool -g <iface>",
+			"deltascope statediff -since 168h | grep 'nic\\.ring'",
+			"ip -s link show <iface>",
+			"tc -s qdisc show dev <iface>",
+			"check the link speed and txqueuelen",
+		},
 		RequiresAll: []string{"state.net.nic_dropping_out"},
 	},
 	{

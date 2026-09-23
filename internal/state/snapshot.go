@@ -100,7 +100,13 @@ type Section struct {
 // both keyed as `route:default`), and a snap mount keys on its mountpoint
 // without the revision so a refresh is one Modified instead of an add/remove
 // pair.
-const SchemaVersion = 4
+//
+// 5: the nic section exists. A whole new section is the same problem in its
+// largest form -- every one of its keys is absent from every stored snapshot, so
+// without the boundary the first comparison after the upgrade would report that
+// the machine grew a driver version, an MTU, a ring size and eleven offload flags
+// per interface overnight.
+const SchemaVersion = 5
 
 type Snapshot struct {
 	Host     string    `json:"host"`
