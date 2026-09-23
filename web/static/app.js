@@ -1232,22 +1232,29 @@ function renderEvent(ev, fmtT) {
   </details>`;
 }
 
-// What the comparison could not see. Two separate claims, and the page has to
+// What the comparison could not see. Three separate claims, and the page has to
 // keep them apart: an area excluded because our access differed between the two
-// captures, and an area that could not be read either time and so was never in
-// the comparison at all. Both used to be computed and then dropped, so the page
-// showed a short report with no hint that a whole area was missing from it.
+// captures, an area that could not be read either time and so was never in the
+// comparison at all, and an area both captures read in full but as different
+// users, so the two lists are not comparable. All were computed and then dropped,
+// so the page showed a short report with no hint that an area was missing from it.
 function coverageBlock(cov) {
   if (!cov) return "";
   const list = (rows, hint) => {
     if (!rows || !rows.length) return "";
     const items = rows.map((r) => {
-      const why = r.reason ? `<span class="cov-why">${escapeHtml(r.reason)}</span>` : "";
-      return `<li>${escapeHtml(r.title || r.section)} ${why}</li>`;
+      // A drift row carries the two uids instead of a sentence: which run was
+      // privileged is the thing to reconcile, and "uid 0" needs no translation.
+      const why = r.reason
+        ? escapeHtml(r.reason)
+        : r.euid_a === undefined ? "" : `uid ${r.euid_a} → uid ${r.euid_b}`;
+      return `<li>${escapeHtml(r.title || r.section)} ${why ? `<span class="cov-why">${why}</span>` : ""}</li>`;
     }).join("");
     return `<div class="cov-block"><div class="cov-hint">${hint}</div><ul>${items}</ul></div>`;
   };
-  return list(cov.unreadable, t("cov_unreadable")) + list(cov.skipped, t("cov_skipped"));
+  return list(cov.unreadable, t("cov_unreadable")) +
+    list(cov.drifted, t("cov_priv_drift")) +
+    list(cov.skipped, t("cov_skipped"));
 }
 
 function renderStateDiff(rep) {

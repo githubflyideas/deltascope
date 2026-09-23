@@ -302,8 +302,8 @@ const STATEDIFF_EVENTS = {
 
 // The same page from a server that dates nothing: the flat fallback must still
 // render, since an older deltascope answers exactly this shape. This one also
-// carries the two coverage kinds and a substituted baseline -- the three facts
-// the page used to compute and then drop.
+// carries all three coverage kinds and a substituted baseline -- the facts the
+// page used to compute and then drop.
 const STATEDIFF_FLAT = {
   a_time: "2026-09-09T14:00:00Z", b_time: "2026-09-10T14:00:00Z", total: 1,
   schema_boundary: true,
@@ -311,6 +311,9 @@ const STATEDIFF_FLAT = {
     asked_sec: 86400, actual_sec: 10800, substituted: true },
   coverage: {
     unreadable: [{ section: "firewall", title: "Firewall", side: "a", reason: "needs root" }],
+    // Privilege drift: nothing was skipped, both sides listed every port, but
+    // one run was root and the other was not. Carries uids, not a reason string.
+    drifted: [{ section: "listen", title: "Listening Ports", euid_a: 0, euid_b: 997 }],
     skipped: [{ section: "security", title: "Security", reason: "selinux tools not installed" }],
   },
   sections: [{ name: "sysctl", title: "Kernel parameters", changes: [
@@ -390,6 +393,9 @@ const STATEDIFF_NONE = { no_data: true, reason: "no_baseline", b_time: "2026-09-
           // reasons, not just the section names.
           "Firewall", "needs root", "Security", "selinux tools not installed",
           "cov-block", "schema-note",
+          // Privilege drift, whose row is the two uids: a reader told only that
+          // the ports were left out cannot tell which run to re-take.
+          "Listening Ports", "uid 0", "uid 997",
         ]);
       } else {
         // No baseline must not render as a comparison: no window, no count.

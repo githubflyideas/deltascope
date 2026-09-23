@@ -152,7 +152,10 @@ type configs struct{}
 
 func (configs) Name() string { return "configs" }
 func (configs) Collect(ctx context.Context) Section {
-	sec := Section{Name: "configs", Title: "Config File Fingerprints"}
+	// PrivSensitive: fileHash fails on a file the capture cannot open, so a
+	// 0600 sshd_config is simply absent from an unprivileged snapshot. Compared
+	// against a root baseline, that reads as the file having been deleted.
+	sec := Section{Name: "configs", Title: "Config File Fingerprints", PrivSensitive: true}
 	patterns := []string{
 		"/etc/ssh/sshd_config", "/etc/ssh/sshd_config.d/*",
 		"/etc/security/limits.conf", "/etc/security/limits.d/*",

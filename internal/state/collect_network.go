@@ -29,15 +29,58 @@ func ifaceName(tok string) string {
 	return tok
 }
 
-// routeDev extracts the device from an `ip route` line: the token after
-// "dev". Returns "" if absent (some routes have none).
-func routeDev(f []string) string {
+// routeField returns the token following name in an `ip route` line, or "" if
+// the option is absent.
+func routeField(f []string, name string) string {
 	for i := 0; i < len(f)-1; i++ {
-		if f[i] == "dev" {
+		if f[i] == name {
 			return f[i+1]
 		}
 	}
 	return ""
+}
+
+// routeDev extracts the device from an `ip route` line: the token after
+// "dev". Returns "" if absent (some routes have none).
+func routeDev(f []string) string { return routeField(f, "dev") }
+
+// routeKey identifies one route within a routing table.
+//
+// The destination prefix alone does not: two default routes are the normal
+// shape of a multi-homed host -- one per uplink, separated by metric -- and a
+// policy-routing setup repeats the same prefix in several tables. Keyed on the
+// prefix alone they all landed on `route:default`, only one survived into the
+// item map, and which one survived was decided by sort order among equal keys.
+// An unchanged machine then reported its default route flipping between the two
+// uplinks, over and over, which is exactly the alarm a reader must be able to
+// trust.
+func routeKey(f []string) string {
+	k := "route:" + f[0]
+	if dev := routeDev(f); dev != "" {
+		k += " dev " + dev
+	}
+	if m := routeField(f, "metric"); m != "" {
+		k += " metric " + m
+	}
+	if tbl := routeField(f, "table"); tbl != "" {
+		k += " table " + tbl
+	}
+	return k
+}
+
+// procRouteKey is the same identity from /proc/net/route, whose columns are
+// Iface, Destination, Gateway, Flags, RefCnt, Use, Metric, Mask. Interface and
+// destination are not unique either: the mask separates a host route from the
+// network route it sits inside, and the metric separates the uplinks.
+func procRouteKey(f []string) string {
+	k := "route:" + f[0] + ":" + f[1]
+	if len(f) > 7 {
+		k += ":" + f[7]
+	}
+	if len(f) > 6 {
+		k += ":" + f[6]
+	}
+	return k
 }
 
 func (network) Name() string { return "network" }
@@ -55,7 +98,7 @@ func (network) Collect(ctx context.Context) Section {
 			if dev := routeDev(f); dev != "" && ephemeralIfaceRe.MatchString(dev) {
 				continue
 			}
-			sec.Items = append(sec.Items, Item{Key: "route:" + f[0], Value: l})
+			sec.Items = append(sec.Items, Item{Key: routeKey(f), Value: l})
 		}
 	} else if v, ok := readFile("/proc/net/route"); ok {
 		for i, l := range lines(v) {
@@ -67,7 +110,7 @@ func (network) Collect(ctx context.Context) Section {
 				if ephemeralIfaceRe.MatchString(f[0]) {
 					continue
 				}
-				sec.Items = append(sec.Items, Item{Key: "route:" + f[0] + ":" + f[1], Value: l})
+				sec.Items = append(sec.Items, Item{Key: procRouteKey(f), Value: l})
 			}
 		}
 	}
@@ -101,7 +144,10 @@ type listen struct{}
 
 func (listen) Name() string { return "listen" }
 func (listen) Collect(ctx context.Context) Section {
-	sec := Section{Name: "listen", Title: "Listening Ports"}
+	// PrivSensitive: `ss -lntuHp` unprivileged still lists every socket and
+	// only drops the owning process for sockets it does not own, so the Value
+	// of most items here depends on who ran the capture.
+	sec := Section{Name: "listen", Title: "Listening Ports", PrivSensitive: true}
 	out, ok := runCmd(ctx, "ss", "-lntuHp")
 	if !ok {
 		if out, ok = runCmd(ctx, "ss", "-lntu"); !ok {
@@ -267,6 +313,57 @@ func countNftRules(out string) map[string]int {
 
 type storage struct{}
 
+// snapMountRe matches a squashfs mountpoint managed by snapd, whose last path
+// element is the snap revision: /snap/core20/1974.
+var snapMountRe = regexp.MustCompile(`^(/snap/[^/]+)/[0-9]+$`)
+
+// perBootMountOpts are mount options whose value is a per-boot identifier
+// rather than a setting: an autofs pipe's file descriptor number, the pid of
+// the process group holding it, and the inode of the pipe itself. They change
+// on every boot and on every systemd restart while the mount is configured
+// identically.
+//
+// Deliberately not including gid= and mode=: those look equally mechanical on a
+// devpts line and are not. devpts mode going 620 -> 666 hands every user a
+// readable terminal, which is exactly the kind of change this tool exists to
+// report.
+var perBootMountOpts = map[string]bool{"fd": true, "pgrp": true, "pipe_ino": true}
+
+func stripPerBootOpts(opts string) string {
+	parts := strings.Split(opts, ",")
+	kept := parts[:0]
+	for _, p := range parts {
+		if i := strings.IndexByte(p, '='); i > 0 && perBootMountOpts[p[:i]] {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return strings.Join(kept, ",")
+}
+
+// mountItem builds one item from a /proc/mounts line (device, mountpoint,
+// fstype, options).
+//
+// Two normalizations, both of the same kind: move a value that changes on its
+// own out of the position where it would be read as an event, without dropping
+// it.
+//
+// A snap's revision lives in its mountpoint, so `snap refresh` removed
+// /snap/core20/1974 and added /snap/core20/2015 -- two rows for one update, and
+// neither of them says what the update was. Keyed on the snap instead, with the
+// revision in the value, the same refresh is one Modified reading 1974 -> 2015.
+// The loop device it is mounted from is renumbered by the kernel on every boot,
+// so for a snap it is replaced by the bare word: keeping it would trade a
+// phantom add/remove pair for a phantom Modified after every reboot.
+func mountItem(f []string) Item {
+	dev, point, fstype, opts := f[0], f[1], f[2], stripPerBootOpts(f[3])
+	if m := snapMountRe.FindStringSubmatch(point); m != nil {
+		rev := point[len(m[1])+1:]
+		return Item{Key: "mount:" + m[1], Value: "loop rev " + rev + " " + fstype + " " + opts}
+	}
+	return Item{Key: "mount:" + point, Value: dev + " " + fstype + " " + opts}
+}
+
 func (storage) Name() string { return "storage" }
 func (storage) Collect(ctx context.Context) Section {
 	sec := Section{Name: "storage", Title: "Storage & Mounts"}
@@ -274,7 +371,7 @@ func (storage) Collect(ctx context.Context) Section {
 		for _, l := range lines(v) {
 			f := fields(l)
 			if len(f) >= 4 && !strings.HasPrefix(f[0], "cgroup") && f[1] != "/proc" {
-				sec.Items = append(sec.Items, Item{Key: "mount:" + f[1], Value: f[0] + " " + f[2] + " " + f[3]})
+				sec.Items = append(sec.Items, mountItem(f))
 			}
 		}
 	}
@@ -289,11 +386,32 @@ func (storage) Collect(ctx context.Context) Section {
 		}
 	}
 	if out, ok := runCmd(ctx, "lsblk", "-nio", "NAME,SIZE,TYPE"); ok {
+		seen := map[string]bool{}
 		for _, l := range lines(out) {
 			f := fields(l)
-			if len(f) >= 3 {
-				sec.Items = append(sec.Items, Item{Key: "blk:" + strings.TrimLeft(f[0], "|`- "), Value: f[1] + " " + f[2]})
+			if len(f) < 3 {
+				continue
 			}
+			// A loop device is an installed snap or a mounted image seen from
+			// the block layer: it appears, disappears and renumbers as snapd
+			// works, and the mount rows above already carry what changed. The
+			// disk-metric side of this tool has filtered loops from the start
+			// (native/parse_disk.go, pcp/units.go); the snapshot side did not,
+			// so every snap refresh added a block device and removed another.
+			if f[2] == "loop" {
+				continue
+			}
+			// lsblk prints a device once per path that reaches it, so an LVM
+			// volume on two PVs, or anything behind multipath, is listed twice
+			// with identical size and type. Keep the first and move on: a
+			// duplicate key does not survive into the item map anyway, and
+			// carrying it only leaves an unstable sort something to shuffle.
+			name := strings.TrimLeft(f[0], "|`- ")
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			sec.Items = append(sec.Items, Item{Key: "blk:" + name, Value: f[1] + " " + f[2]})
 		}
 	}
 	return sec

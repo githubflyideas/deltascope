@@ -145,9 +145,23 @@ func (sysctl) Collect(ctx context.Context) Section {
 type packages struct{}
 
 func (packages) Name() string { return "packages" }
+
+// Collect fingerprints the installed package set.
+//
+// The key carries the architecture, and the value the epoch, because neither is
+// optional on a real host. A multilib box has glibc.i686 and glibc.x86_64
+// installed at once; keyed on the bare name they collided, one of the two won by
+// accident of sort order, and an unchanged machine reported a phantom
+// `glibc 2.34-1 -> 2.34-1.i686`-shaped Modified whenever the other one won next
+// time. The epoch is the other half: a vendor that bumps epoch alone ships a
+// genuinely different package under an identical version-release, and without it
+// that update is invisible.
 func (packages) Collect(ctx context.Context) Section {
 	sec := Section{Name: "packages", Title: "Packages"}
-	if out, ok := runCmd(ctx, "rpm", "-qa", "--qf", "%{NAME} %{VERSION}-%{RELEASE}\n"); ok {
+	// %|EPOCH?{...}| is rpm's own conditional: present epochs get a "N:" prefix,
+	// absent ones expand to nothing rather than to the literal "(none)".
+	if out, ok := runCmd(ctx, "rpm", "-qa", "--qf",
+		"%{NAME}.%{ARCH} %|EPOCH?{%{EPOCH}:}|%{VERSION}-%{RELEASE}\n"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
 			if len(f) == 2 {
@@ -156,7 +170,9 @@ func (packages) Collect(ctx context.Context) Section {
 		}
 		return sec
 	}
-	if out, ok := runCmd(ctx, "dpkg-query", "-W", "-f=${Package} ${Version}\n"); ok {
+	// dpkg's ${Version} already carries the epoch; only the architecture has to
+	// be added, and on a multi-arch host it is the same collision as rpm's.
+	if out, ok := runCmd(ctx, "dpkg-query", "-W", "-f=${Package}:${Architecture} ${Version}\n"); ok {
 		for _, l := range lines(out) {
 			f := fields(l)
 			if len(f) == 2 {

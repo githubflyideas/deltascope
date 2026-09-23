@@ -56,6 +56,51 @@ func changeLine(c colorizer, ch Change) string {
 	return s
 }
 
+// excludedTitles names excluded sections the way the rest of the report names
+// them. Diff records section names, because that is the stable identifier, but
+// "listen" is not what the section is called anywhere the reader has seen it.
+// Falls back to the name when neither snapshot carries a title, which is what an
+// old stored snapshot looks like.
+func excludedTitles(d Diff, names []string) string {
+	titles := make([]string, 0, len(names))
+	for _, n := range names {
+		t := n
+		for _, s := range append(append([]Section{}, d.B.Sections...), d.A.Sections...) {
+			if s.Name == n && s.Title != "" {
+				t = s.Title
+				break
+			}
+		}
+		titles = append(titles, t)
+	}
+	return strings.Join(titles, ", ")
+}
+
+// renderExclusions prints what the comparison left out, before any verdict is
+// printed from it.
+//
+// The order matters more than the wording: "State is identical" below is read as
+// a clean bill of health, and a comparison that excluded the listening ports
+// because the two captures ran as different users has not earned it. The web
+// side has carried these lists since the coverage work; the CLI computed them and
+// printed nothing, so the terminal was the one place the report still overclaimed.
+func renderExclusions(w io.Writer, c colorizer, d Diff) {
+	if len(d.PrivilegeDrift) > 0 {
+		fmt.Fprintf(w, "%s\n", c(ansiRed, fmt.Sprintf(
+			"! not compared, the two captures ran as different users (uid %d vs uid %d): %s",
+			d.EuidA, d.EuidB, excludedTitles(d, d.PrivilegeDrift))))
+		fmt.Fprintf(w, "  %s\n", c(ansiDim,
+			"both captures read these in full, but the lists answer to different privileges - re-take the baseline as the same user"))
+	}
+	if len(d.Unreadable) > 0 {
+		fmt.Fprintf(w, "%s\n", c(ansiRed, "! not compared, readable in only one of the two captures: "+
+			excludedTitles(d, d.Unreadable)))
+	}
+	if len(d.PrivilegeDrift) > 0 || len(d.Unreadable) > 0 {
+		fmt.Fprintln(w)
+	}
+}
+
 // RenderText renders a diff as terminal-friendly colored text.
 func RenderText(w io.Writer, d Diff, color bool) {
 	c := newColorizer(color)
@@ -65,7 +110,14 @@ func RenderText(w io.Writer, d Diff, color bool) {
 		d.A.Taken.Local().Format("2006-01-02 15:04:05"),
 		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
 
+	renderExclusions(w, c, d)
+
 	if d.Total == 0 {
+		if len(d.PrivilegeDrift) > 0 || len(d.Unreadable) > 0 {
+			fmt.Fprintln(w, c(ansiGreen, "No changes in what was compared.")+
+				" "+c(ansiDim, "The areas listed above were left out of it."))
+			return
+		}
 		fmt.Fprintln(w, c(ansiGreen, "State is identical between the two points in time - no configuration or environment changes detected."))
 		return
 	}
@@ -96,6 +148,7 @@ func RenderTimeline(w io.Writer, d Diff, evs []Event, color bool) {
 	fmt.Fprintf(w, "  A %s\n  B %s\n\n",
 		d.A.Taken.Local().Format("2006-01-02 15:04:05"),
 		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
+	renderExclusions(w, c, d)
 	fmt.Fprintf(w, "%s %d changes in %d event(s)\n\n", c(ansiBold, "▲"), d.Total, len(evs))
 
 	for _, ev := range evs {
@@ -154,6 +207,13 @@ func eventHead(ev Event) string {
 // RenderSummaryLine returns a single-line summary for cron logs or alert pipelines.
 func RenderSummaryLine(d Diff) string {
 	if d.Total == 0 {
+		// "no change" is what a cron job greps for, so it must not be printed
+		// for a comparison that skipped whole areas: the one line is the whole
+		// report as far as that pipeline is concerned.
+		if n := len(d.PrivilegeDrift) + len(d.Unreadable); n > 0 {
+			return fmt.Sprintf("[%s] no change in what was compared, %d area(s) not compared",
+				time.Now().Format("2006-01-02"), n)
+		}
 		return fmt.Sprintf("[%s] no change", time.Now().Format("2006-01-02"))
 	}
 	var a, r, m int
@@ -183,7 +243,20 @@ func RenderMarkdown(w io.Writer, d Diff, title string) {
 		d.A.Taken.Local().Format("2006-01-02 15:04:05"),
 		d.B.Taken.Local().Format("2006-01-02 15:04:05"))
 
+	if len(d.PrivilegeDrift) > 0 {
+		fmt.Fprintf(w, "> ⚠️ Not compared: **%s** - the two captures ran as different users (uid %d vs uid %d), so the two lists answer to different privileges.\n\n",
+			excludedTitles(d, d.PrivilegeDrift), d.EuidA, d.EuidB)
+	}
+	if len(d.Unreadable) > 0 {
+		fmt.Fprintf(w, "> ⚠️ Not compared: **%s** - readable in only one of the two captures.\n\n",
+			excludedTitles(d, d.Unreadable))
+	}
+
 	if d.Total == 0 {
+		if len(d.PrivilegeDrift) > 0 || len(d.Unreadable) > 0 {
+			fmt.Fprintln(w, "✅ **No changes in what was compared** - the areas noted above were left out of it.")
+			return
+		}
 		fmt.Fprintln(w, "✅ **No configuration or environment changes detected** - this change did not touch system state.")
 		return
 	}

@@ -112,6 +112,7 @@ en: {
   change_no_baseline: "No stored snapshot covers the baseline — there is nothing to compare against yet. Comparing a live capture with itself would report a quiet machine, which is a different claim.",
   change_baseline_short: "The baseline you asked for is older than the stored history, so the oldest snapshot was used instead. This report covers a shorter window than requested:",
   cov_unreadable: "Left out of this comparison: readable in one capture but not the other, so the difference would be in our access rather than in the machine.",
+  cov_priv_drift: "Left out of this comparison: both captures read this area in full, but ran as different users, so the two lists answer to different privileges. Re-take the baseline as the same user.",
   cov_skipped: "Never compared: could not be read in either capture.",
 
   unit_size: "size", unit_rate: "rate", unit_cores: "cores",
@@ -270,6 +271,7 @@ zh: {
   change_no_baseline: "库里还没有覆盖基线的快照 —— 现在无从比较。拿一次实时采集和它自己比，只会报出一台安静的机器，那是另一回事。",
   change_baseline_short: "你要的基线早于已存历史，改用了现存最早的快照。这份报告覆盖的时间比你要的短：",
   cov_unreadable: "已从本次比较中排除：两次采集只有一次读得到，差异出在我们的权限上，不在机器上。",
+  cov_priv_drift: "已从本次比较中排除：两次采集都完整读到了这一块，但跑的用户不同，两份清单对应的权限不一样。请用同一个用户重新取基线。",
   cov_skipped: "从未参与比较：两次采集都读不到。",
 
   unit_size: "大小", unit_rate: "速率", unit_cores: "核",
@@ -428,6 +430,7 @@ es: {
   change_no_baseline: "Ninguna instantánea guardada cubre la base — todavía no hay nada con lo que comparar. Comparar una captura en vivo consigo misma informaría de una máquina tranquila, que es otra afirmación.",
   change_baseline_short: "La base solicitada es anterior al historial guardado, así que se usó la instantánea más antigua. Este informe cubre una ventana más corta de la pedida:",
   cov_unreadable: "Excluido de esta comparación: legible en una captura pero no en la otra, así que la diferencia estaría en nuestro acceso y no en la máquina.",
+  cov_priv_drift: "Excluido de esta comparación: ambas capturas leyeron esta área por completo, pero se ejecutaron con usuarios distintos, así que las dos listas responden a privilegios diferentes. Vuelve a tomar la línea base con el mismo usuario.",
   cov_skipped: "Nunca comparado: no se pudo leer en ninguna de las dos capturas.",
 
   unit_size: "tamaño", unit_rate: "tasa", unit_cores: "núcleos",
@@ -586,6 +589,7 @@ fr: {
   change_no_baseline: "Aucun instantané enregistré ne couvre la référence — il n'y a encore rien à comparer. Comparer une capture en direct avec elle-même signalerait une machine calme, ce qui est une autre affirmation.",
   change_baseline_short: "La référence demandée est antérieure à l'historique enregistré ; le plus ancien instantané a donc été utilisé. Ce rapport couvre une fenêtre plus courte que demandée :",
   cov_unreadable: "Exclu de cette comparaison : lisible dans une capture mais pas dans l'autre, la différence porterait donc sur notre accès et non sur la machine.",
+  cov_priv_drift: "Exclu de cette comparaison : les deux captures ont lu cette zone en entier, mais sous des utilisateurs différents, donc les deux listes répondent à des privilèges différents. Reprenez la référence avec le même utilisateur.",
   cov_skipped: "Jamais comparé : illisible dans les deux captures.",
 
   unit_size: "taille", unit_rate: "débit", unit_cores: "cœurs",
@@ -744,6 +748,7 @@ pt: {
   change_no_baseline: "Nenhum instantâneo guardado cobre a base — ainda não há nada com que comparar. Comparar uma captura ao vivo consigo mesma relataria uma máquina tranquila, o que é outra afirmação.",
   change_baseline_short: "A base pedida é anterior ao histórico guardado, então o instantâneo mais antigo foi usado. Este relatório cobre uma janela mais curta que a pedida:",
   cov_unreadable: "Excluído desta comparação: legível em uma captura mas não na outra, então a diferença estaria no nosso acesso e não na máquina.",
+  cov_priv_drift: "Excluído desta comparação: as duas capturas leram esta área por completo, mas rodaram com usuários diferentes, então as duas listas respondem a privilégios diferentes. Refaça a linha de base com o mesmo usuário.",
   cov_skipped: "Nunca comparado: não foi possível ler em nenhuma das capturas.",
 
   unit_size: "tamanho", unit_rate: "taxa", unit_cores: "núcleos",
@@ -902,6 +907,7 @@ de: {
   change_no_baseline: "Kein gespeicherter Snapshot deckt die Basis ab — es gibt noch nichts zum Vergleichen. Eine Live-Aufnahme mit sich selbst zu vergleichen würde eine ruhige Maschine melden, und das ist eine andere Aussage.",
   change_baseline_short: "Die angeforderte Basis liegt vor der gespeicherten Historie, daher wurde der älteste Snapshot verwendet. Dieser Bericht deckt ein kürzeres Fenster ab als angefordert:",
   cov_unreadable: "Von diesem Vergleich ausgenommen: in einer Aufnahme lesbar, in der anderen nicht — der Unterschied läge an unserem Zugriff, nicht an der Maschine.",
+  cov_priv_drift: "Von diesem Vergleich ausgenommen: beide Aufnahmen haben diesen Bereich vollständig gelesen, liefen aber als unterschiedliche Benutzer — die beiden Listen gelten also für unterschiedliche Rechte. Basislinie mit demselben Benutzer neu aufnehmen.",
   cov_skipped: "Nie verglichen: in keiner der beiden Aufnahmen lesbar.",
 
   unit_size: "Größe", unit_rate: "Rate", unit_cores: "Kerne",
@@ -1060,6 +1066,7 @@ ru: {
   change_no_baseline: "Ни один сохранённый снимок не покрывает базу — сравнивать пока не с чем. Сравнение живого снимка с самим собой показало бы тихую машину, а это другое утверждение.",
   change_baseline_short: "Запрошенная база старше сохранённой истории, поэтому взят самый старый снимок. Этот отчёт покрывает более короткое окно, чем запрошено:",
   cov_unreadable: "Исключено из сравнения: читается в одном снимке и не читается в другом, значит разница в нашем доступе, а не в машине.",
+  cov_priv_drift: "Исключено из сравнения: оба снимка прочитали этот раздел полностью, но выполнялись от разных пользователей, поэтому два списка отвечают разным правам. Снимите базовый снимок от того же пользователя.",
   cov_skipped: "Никогда не сравнивалось: не удалось прочитать ни в одном из снимков.",
 
   unit_size: "размер", unit_rate: "скорость", unit_cores: "ядра",
@@ -1218,6 +1225,7 @@ ja: {
   change_no_baseline: "ベースラインを含む保存済みスナップショットがありません — まだ比較する相手がいません。ライブ取得を自分自身と比べれば静かなマシンと報告されますが、それは別の主張です。",
   change_baseline_short: "要求されたベースラインは保存履歴より古いため、最も古いスナップショットを使いました。このレポートが覆う期間は要求より短くなります:",
   cov_unreadable: "この比較から除外: 片方の取得では読めて他方では読めなかったため、差は権限の側にありマシンの側にはありません。",
+  cov_priv_drift: "この比較から除外: 両方の取得がこの領域を完全に読めていますが、実行ユーザーが異なるため、2つの一覧は別の権限に対する答えです。同じユーザーでベースラインを取り直してください。",
   cov_skipped: "一度も比較されていません: どちらの取得でも読めませんでした。",
 
   unit_size: "サイズ", unit_rate: "レート", unit_cores: "コア",
@@ -1376,6 +1384,7 @@ ko: {
   change_no_baseline: "기준을 포함하는 저장된 스냅샷이 없습니다 — 아직 비교할 대상이 없습니다. 실시간 수집을 자기 자신과 비교하면 조용한 머신으로 보고되지만, 그것은 다른 주장입니다.",
   change_baseline_short: "요청한 기준이 저장된 이력보다 오래되어 가장 오래된 스냅샷을 사용했습니다. 이 보고서가 다루는 구간은 요청보다 짧습니다:",
   cov_unreadable: "이 비교에서 제외됨: 한쪽 수집에서는 읽혔고 다른 쪽에서는 읽히지 않아, 차이는 머신이 아니라 우리 권한에 있습니다.",
+  cov_priv_drift: "이 비교에서 제외됨: 두 수집 모두 이 영역을 온전히 읽었지만 실행 사용자가 달라, 두 목록은 서로 다른 권한에 대한 답입니다. 같은 사용자로 기준선을 다시 수집하세요.",
   cov_skipped: "비교된 적 없음: 두 수집 모두에서 읽을 수 없었습니다.",
 
   unit_size: "크기", unit_rate: "속도", unit_cores: "코어",
@@ -1534,6 +1543,7 @@ id: {
   change_no_baseline: "Tidak ada snapshot tersimpan yang mencakup dasar — belum ada pembanding. Membandingkan tangkapan langsung dengan dirinya sendiri akan melaporkan mesin yang tenang, dan itu klaim yang berbeda.",
   change_baseline_short: "Dasar yang diminta lebih tua dari riwayat tersimpan, jadi snapshot tertua yang dipakai. Laporan ini mencakup rentang yang lebih pendek dari yang diminta:",
   cov_unreadable: "Dikecualikan dari perbandingan ini: terbaca di satu tangkapan tetapi tidak di yang lain, jadi perbedaannya ada pada akses kami, bukan pada mesin.",
+  cov_priv_drift: "Dikecualikan dari perbandingan ini: kedua tangkapan membaca area ini secara penuh, tetapi dijalankan sebagai pengguna berbeda, jadi kedua daftar menjawab hak akses yang berbeda. Ambil ulang garis dasar sebagai pengguna yang sama.",
   cov_skipped: "Belum pernah dibandingkan: tidak terbaca di kedua tangkapan.",
 
   unit_size: "ukuran", unit_rate: "laju", unit_cores: "core",

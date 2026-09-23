@@ -919,9 +919,11 @@ func substitutedBaseline(requested, actual time.Time) bool {
 // answer was dropped on the floor, so the page showed a short report with no
 // hint that a whole area had been left out of it.
 //
-// Two kinds, and they are not the same claim: a section excluded because
-// access DIFFERED between the two captures, and a section that could not be
-// read either time and so was never in the comparison at all.
+// Three kinds, and they are not the same claim: a section excluded because
+// access DIFFERED between the two captures, a section that could not be read
+// either time and so was never in the comparison at all, and a section both
+// captures read in full but as different users, so the two lists are not
+// comparable even though neither is missing.
 func coverageJSON(d state.Diff, a, b state.Snapshot) map[string]any {
 	index := func(s state.Snapshot) map[string]state.Section {
 		m := make(map[string]state.Section, len(s.Sections))
@@ -941,7 +943,7 @@ func coverageJSON(d state.Diff, a, b state.Snapshot) map[string]any {
 		return name
 	}
 
-	var unreadable, skipped []map[string]any
+	var unreadable, skipped, drifted []map[string]any
 	excluded := make(map[string]bool, len(d.Unreadable))
 	for _, name := range d.Unreadable {
 		excluded[name] = true
@@ -967,7 +969,18 @@ func coverageJSON(d state.Diff, a, b state.Snapshot) map[string]any {
 			"section": sec.Name, "title": title(sec.Name), "reason": sec.Skipped,
 		})
 	}
-	if len(unreadable) == 0 && len(skipped) == 0 {
+	// A third claim, distinct from both of the above: nothing was skipped, both
+	// sides produced a full-looking list, but the two lists answer to different
+	// users. The uids are part of the row because they are what the reader has
+	// to reconcile -- "re-take the baseline" is only actionable once you know
+	// which run was the privileged one.
+	for _, name := range d.PrivilegeDrift {
+		drifted = append(drifted, map[string]any{
+			"section": name, "title": title(name),
+			"euid_a": d.EuidA, "euid_b": d.EuidB,
+		})
+	}
+	if len(unreadable) == 0 && len(skipped) == 0 && len(drifted) == 0 {
 		return nil
 	}
 	out := map[string]any{}
@@ -976,6 +989,9 @@ func coverageJSON(d state.Diff, a, b state.Snapshot) map[string]any {
 	}
 	if len(skipped) > 0 {
 		out["skipped"] = skipped
+	}
+	if len(drifted) > 0 {
+		out["drifted"] = drifted
 	}
 	return out
 }

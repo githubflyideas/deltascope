@@ -52,6 +52,18 @@ type Diff struct {
 	// are shown. The UI notes this so a sparse result is not mistaken for a
 	// quiet machine.
 	SchemaBoundary bool `json:"schema_boundary,omitempty"`
+	// PrivilegeDrift names sections excluded because the two captures ran as
+	// different users and the section's contents depend on that (see
+	// Section.PrivSensitive). Like Unreadable, the difference is in our access
+	// rather than in the machine -- but it is a distinct claim, because these
+	// sections were not skipped: both captures produced a full-looking list,
+	// and comparing them would report the whole list as changed.
+	PrivilegeDrift []string `json:"privilege_drift,omitempty"`
+	// EuidA and EuidB are the effective uids the two captures ran as, recorded
+	// only when PrivilegeDrift is non-empty -- whoever has to fix the drift
+	// needs to know which run was which.
+	EuidA int `json:"euid_a,omitempty"`
+	EuidB int `json:"euid_b,omitempty"`
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
@@ -69,6 +81,11 @@ func Compare(a, b Snapshot) Diff {
 	if crossVersion {
 		d.SchemaBoundary = true
 	}
+	// Privilege drift, which is a different claim from a schema boundary and is
+	// only decidable when both captures recorded who they ran as. A snapshot
+	// from before Euid existed decodes as nil, and guessing root for it would
+	// silently suppress real changes.
+	privDrift := a.Euid != nil && b.Euid != nil && *a.Euid != *b.Euid
 	amap := indexSections(a)
 	bmap := indexSections(b)
 
@@ -85,6 +102,16 @@ func Compare(a, b Snapshot) Diff {
 		// otherwise report every item in the section as added or removed.
 		if (as.Skipped == "") != (bs.Skipped == "") {
 			d.Unreadable = append(d.Unreadable, name)
+			continue
+		}
+		// Both sides produced a list, but the lists answer to different users.
+		// `ss -lntuHp` run unprivileged keeps every socket and drops only the
+		// owning process, so comparing the two would report every port on the
+		// machine as having lost its service. Excluded rather than diffed, and
+		// named in the payload so the shorter report says why it is short.
+		if privDrift && (as.PrivSensitive || bs.PrivSensitive) {
+			d.PrivilegeDrift = append(d.PrivilegeDrift, name)
+			d.EuidA, d.EuidB = *a.Euid, *b.Euid
 			continue
 		}
 		title := bs.Title

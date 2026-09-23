@@ -120,8 +120,8 @@ func TestCoverageFallsBackToTheSectionName(t *testing.T) {
 	}
 }
 
-// The front end reads cov.unreadable / cov.skipped and prints each row's
-// reason inline. Pin the wire names so renaming a map key cannot silently
+// The front end reads cov.unreadable / cov.drifted / cov.skipped and prints each
+// row's reason inline. Pin the wire names so renaming a map key cannot silently
 // empty the block on screen while every Go test still passes.
 func TestCoverageJSONKeysMatchWhatThePageReads(t *testing.T) {
 	a := state.Snapshot{Sections: []state.Section{sec("firewall", "Firewall", "needs root")}}
@@ -143,6 +143,62 @@ func TestCoverageJSONKeysMatchWhatThePageReads(t *testing.T) {
 	}
 	if len(got.Unreadable) != 1 || got.Unreadable[0].Title == "" || got.Unreadable[0].Reason == "" {
 		t.Errorf("payload does not decode into the shape app.js reads: %s", blob)
+	}
+}
+
+// Privilege drift is the third kind, and the one the Skipped mechanism cannot
+// see: both captures listed every port, so nothing was skipped, but one ran as
+// root and the other did not. Excluded by Compare and named here, with the two
+// uids, because "re-take the baseline" is only actionable once the reader knows
+// which run was the privileged one.
+func TestCoverageCarriesPrivilegeDriftWithBothUids(t *testing.T) {
+	ports := func(proc string) state.Section {
+		s := sec("listen", "Listening Ports", "")
+		s.PrivSensitive = true
+		s.Items = []state.Item{{Key: "tcp 0.0.0.0:80", Value: proc}}
+		return s
+	}
+	root, svc := 0, 997
+	a := state.Snapshot{Euid: &root, Sections: []state.Section{ports("nginx")}}
+	b := state.Snapshot{Euid: &svc, Sections: []state.Section{ports("")}}
+
+	blob, err := json.Marshal(coverageJSON(state.Compare(a, b), a, b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Drifted []struct {
+			Section, Title string
+			EuidA          int `json:"euid_a"`
+			EuidB          int `json:"euid_b"`
+		} `json:"drifted"`
+	}
+	if err := json.Unmarshal(blob, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Drifted) != 1 {
+		t.Fatalf("drift missing from the payload the page reads: %s", blob)
+	}
+	r := got.Drifted[0]
+	if r.Section != "listen" || r.Title != "Listening Ports" || r.EuidA != 0 || r.EuidB != 997 {
+		t.Errorf("drift row = %+v, want listen/Listening Ports/0/997", r)
+	}
+}
+
+// And the steady state stays silent: two captures by the same user must not put
+// an exclusion notice on a page that excluded nothing.
+func TestSameUidLeavesTheCoverageBlockEmpty(t *testing.T) {
+	ports := func() state.Section {
+		s := sec("listen", "Listening Ports", "")
+		s.PrivSensitive = true
+		s.Items = []state.Item{{Key: "tcp 0.0.0.0:80", Value: "nginx"}}
+		return s
+	}
+	root := 0
+	a := state.Snapshot{Euid: &root, Sections: []state.Section{ports()}}
+	b := state.Snapshot{Euid: &root, Sections: []state.Section{ports()}}
+	if cov := coverageJSON(state.Compare(a, b), a, b); cov != nil {
+		t.Errorf("a same-user pair reported a coverage gap: %v", cov)
 	}
 }
 
