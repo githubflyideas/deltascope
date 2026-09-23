@@ -58,3 +58,56 @@ func TestNoPIDFallsBackToGenericCommands(t *testing.T) {
 		}
 	}
 }
+
+// A generic command can carry the placeholder itself -- the CPU catalog entry
+// ends in `perf top -p <pid>`. Prepending targeted commands used to leave that
+// one verbatim, so the reader got a command with a hole in it on the same screen
+// that named the process it was asking about.
+func TestAGenericCommandsOwnPIDPlaceholderIsFilledToo(t *testing.T) {
+	out := &Diagnosis{
+		Triage: []pcp.TriageBlock{{Key: "cpu", Label: "CPU", Status: pcp.TriageBad, Headline: "core saturated"}},
+		Findings: []pcp.Finding{{Severity: "crit", Conclusion: "cpu",
+			Next: []string{"perf top -p <pid>", "mpstat -P ALL 1 5"}}},
+	}
+	pd := state.ProcDiff{Rows: []state.ProcRow{
+		{Name: "sh", PID: 1291929, CPUPctB: fp(99), FromZero: true},
+	}}
+	synthesize(out, nil, pd, state.Diff{})
+
+	var filled bool
+	for _, c := range out.Next {
+		if containsStr(c, "<pid>") {
+			t.Errorf("placeholder survived into the reader's commands: %q", c)
+		}
+		if c == "perf top -p 1291929" {
+			filled = true
+		}
+	}
+	if !filled {
+		t.Errorf("perf was not pointed at the culprit: %v", out.Next)
+	}
+}
+
+// And with no culprit to name, the placeholder stays. Substituting nothing
+// would produce `perf top -p ` -- a command that fails in a way the reader has
+// to debug -- and dropping the line would hide the suggestion entirely.
+func TestWithoutACulpritThePIDPlaceholderSurvives(t *testing.T) {
+	out := &Diagnosis{
+		Triage: []pcp.TriageBlock{{Key: "cpu", Label: "CPU", Status: pcp.TriageBad, Headline: "busy"}},
+		Findings: []pcp.Finding{{Severity: "crit", Conclusion: "cpu",
+			Next: []string{"perf top -p <pid>"}}},
+	}
+	synthesize(out, nil, state.ProcDiff{}, state.Diff{})
+	var seen bool
+	for _, c := range out.Next {
+		if c == "perf top -p <pid>" {
+			seen = true
+		}
+		if containsStr(c, "-p ") && !containsStr(c, "<pid>") {
+			t.Errorf("an empty pid was substituted into %q", c)
+		}
+	}
+	if !seen {
+		t.Errorf("the suggestion was dropped instead of left for the reader: %v", out.Next)
+	}
+}

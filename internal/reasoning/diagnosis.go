@@ -1,6 +1,9 @@
 package reasoning
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Diagnosis is a conclusion expressed as a combination of named states,
 // rather than as a set of raw metric conditions.
@@ -98,12 +101,71 @@ func Diagnose(diagnoses []Diagnosis, active map[string]Active) []Result {
 		}
 		out = append(out, Result{
 			ID: d.ID, Branch: d.Branch, Severity: d.Severity, Conclusion: d.Conclusion,
-			Next: d.Next, States: states, Evidence: collectEvidence(states, active),
+			Next: fillTargets(d.Next, states, active), States: states,
+			Evidence:     collectEvidence(states, active),
 			DownstreamOf: d.DownstreamOf, // declared edges; pruned to active below
 		})
 	}
 	converge(out)
 	sortResults(out)
+	return out
+}
+
+// targetPlaceholders maps a placeholder the catalog writes into its next-step
+// commands to the instance kind that can fill it. <nic> and <iface> are the
+// same object under the two names the catalog uses interchangeably.
+var targetPlaceholders = map[string]string{
+	"<dev>":   "dev",
+	"<nic>":   "iface",
+	"<iface>": "iface",
+}
+
+// fillTargets substitutes the concrete disk or NIC into a diagnosis's
+// next-step commands.
+//
+// The catalog has to write `ethtool <iface>`, because one catalog entry serves
+// every host. But the rows that made the state hold name the interface, so
+// handing the placeholder to the reader makes them re-derive something we
+// already know -- and on a host with six NICs, re-derive it by guessing. This
+// is the same correction culpritCommands made for the PID: a command aimed at
+// a concrete object beats one the reader has to re-target.
+//
+// Substituted only when the states that fired name exactly ONE object of that
+// kind. Two saturated disks at once is a real situation, and `smartctl -a
+// /dev/sdb` when sdc is the other half of the answer points at a device that
+// is half the problem, stated as if it were all of it. The placeholder is the
+// better output there: it reads as "you fill this in".
+func fillTargets(next, states []string, active map[string]Active) []string {
+	if len(next) == 0 {
+		return next
+	}
+	// One candidate per kind, or the empty string once a second one turns up.
+	sole := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, id := range states {
+		a := active[id]
+		if a.Instance == "" || a.InstanceKind == "" {
+			continue
+		}
+		if prev, ok := sole[a.InstanceKind]; ok && prev != a.Instance {
+			ambiguous[a.InstanceKind] = true
+			continue
+		}
+		sole[a.InstanceKind] = a.Instance
+	}
+	// A new slice: d.Next belongs to the package-level catalog, and writing
+	// this run's device name into it would leak into every later run.
+	out := make([]string, len(next))
+	copy(out, next)
+	for ph, kind := range targetPlaceholders {
+		name := sole[kind]
+		if name == "" || ambiguous[kind] {
+			continue
+		}
+		for i := range out {
+			out[i] = strings.ReplaceAll(out[i], ph, name)
+		}
+	}
 	return out
 }
 

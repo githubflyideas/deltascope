@@ -135,6 +135,76 @@ type Active struct {
 	ID       string   `json:"id"`
 	Domain   string   `json:"domain,omitempty"`
 	Evidence []string `json:"evidence"`
+	// Instance names the single per-instance object the evidence landed on --
+	// the disk, or the NIC -- and InstanceKind says which kind of object that
+	// is. Empty when the state is whole-machine, or when its rows spread
+	// across more than one instance and there is therefore no single object
+	// to name.
+	//
+	// The evidence lines already carry the instance as text, inside the
+	// metric name (`disk.dev.avgqu-sz[sdb]`). This is the same fact in a form
+	// a caller can act on without parsing it back out; the diagnosis layer
+	// uses it to fill the <dev>/<iface> placeholders in its next-step
+	// commands.
+	Instance     string `json:"instance,omitempty"`
+	InstanceKind string `json:"instance_kind,omitempty"`
+}
+
+// stateMatch is what evaluating one state produced.
+type stateMatch struct {
+	evidence []string
+	instance string
+	kind     string
+}
+
+// instanceKinds maps a metric prefix to the kind of object its instances
+// name. Only the kinds a next-step command can be pointed at are listed:
+// knowing that a filesys row's instance is a mount point is true but not
+// actionable, and inventing a kind for it would put "/var" where a command
+// expects a block device.
+var instanceKinds = []struct {
+	prefix, kind string
+}{
+	{"disk.dev.", "dev"},
+	{"disk.dm.", "dev"},
+	{"disk.md.", "dev"},
+	{"disk.partitions.", "dev"},
+	{"network.interface.", "iface"},
+}
+
+func instanceKind(metric string) string {
+	for _, k := range instanceKinds {
+		if strings.HasPrefix(metric, k.prefix) {
+			return k.kind
+		}
+	}
+	return ""
+}
+
+// soleInstance reduces the rows that satisfied a state to the one object they
+// all point at, if there is one.
+//
+// More than one distinct instance means the state holds for two disks at once,
+// which is a real situation and not one we may paper over: naming either of
+// them in a command sends the reader to a device that is only half the answer.
+// The caller's fallback -- leaving the placeholder in place -- at least reads
+// as "you fill this in".
+func soleInstance(rows []pcp.DiffRow) (string, string) {
+	var name, kind string
+	for _, r := range rows {
+		if r.Instance == "" {
+			continue
+		}
+		k := instanceKind(r.Metric)
+		if k == "" {
+			continue
+		}
+		if name != "" && (name != r.Instance || kind != k) {
+			return "", ""
+		}
+		name, kind = r.Instance, k
+	}
+	return name, kind
 }
 
 // Evaluate returns every state that holds for the given rows, keyed by
@@ -159,8 +229,11 @@ func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active
 		if len(st.When) == 0 {
 			continue // a state with no conditions would always be true
 		}
-		if ev, ok := matchState(st, byMetric, m); ok {
-			out[st.ID] = Active{ID: st.ID, Domain: st.Domain, Evidence: ev}
+		if sm, ok := matchState(st, byMetric, m); ok {
+			out[st.ID] = Active{
+				ID: st.ID, Domain: st.Domain, Evidence: sm.evidence,
+				Instance: sm.instance, InstanceKind: sm.kind,
+			}
 		}
 	}
 	return out
@@ -171,19 +244,23 @@ func EvaluateOn(states []State, rows []pcp.DiffRow, m Machine) map[string]Active
 // rows; one instance meeting the condition makes the state true, since
 // "some disk is saturated" is the useful reading, not "every disk is".
 // matchState evaluates one state's conditions against the indexed rows,
-// honouring SameInstance. It returns the evidence rows on success.
-func matchState(st State, byMetric map[string][]pcp.DiffRow, m Machine) ([]string, bool) {
+// honouring SameInstance. It returns the evidence rows on success, together
+// with the single instance they landed on if there was one.
+func matchState(st State, byMetric map[string][]pcp.DiffRow, m Machine) (stateMatch, bool) {
 	if !st.SameInstance {
 		// Independent match: each condition may be satisfied by any row.
 		evidence := make([]string, 0, len(st.When))
+		matched := make([]pcp.DiffRow, 0, len(st.When))
 		for _, c := range st.When {
 			row, ok := firstMatch(c, byMetric[c.Metric], m)
 			if !ok {
-				return nil, false
+				return stateMatch{}, false
 			}
 			evidence = append(evidence, evidenceLine(row))
+			matched = append(matched, row)
 		}
-		return evidence, true
+		inst, kind := soleInstance(matched)
+		return stateMatch{evidence: evidence, instance: inst, kind: kind}, true
 	}
 
 	// Same-instance match: there must be one instance value for which every
@@ -210,8 +287,14 @@ func matchState(st State, byMetric map[string][]pcp.DiffRow, m Machine) ([]strin
 	if hasInstanceless {
 		instances[""] = true
 	}
-	for inst := range instances {
+	// Sorted, not map order. Two disks can satisfy the same state at once, and
+	// whichever one is examined first becomes the evidence the report prints
+	// and the device its next-step commands name. Ranging a map would pick a
+	// different one on each run, so an unchanged machine would produce a
+	// report that cites sdb this time and sdc the next.
+	for _, inst := range sortedInstances(instances) {
 		evidence := make([]string, 0, len(st.When))
+		matched := make([]pcp.DiffRow, 0, len(st.When))
 		ok := true
 		for _, c := range st.When {
 			row, found := matchOnInstance(c, byMetric[c.Metric], m, inst)
@@ -220,12 +303,14 @@ func matchState(st State, byMetric map[string][]pcp.DiffRow, m Machine) ([]strin
 				break
 			}
 			evidence = append(evidence, evidenceLine(row))
+			matched = append(matched, row)
 		}
 		if ok {
-			return evidence, true
+			name, kind := soleInstance(matched)
+			return stateMatch{evidence: evidence, instance: name, kind: kind}, true
 		}
 	}
-	return nil, false
+	return stateMatch{}, false
 }
 
 // matchOnInstance finds a row satisfying c that is either on the named

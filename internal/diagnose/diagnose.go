@@ -715,13 +715,21 @@ func culpritCommands(resource string, pid int, generic []string) []string {
 	}
 	// De-duplicate: drop any generic command already covered by a targeted
 	// one, keep the rest as follow-up context.
+	//
+	// The generic list can itself carry a <pid> placeholder (`perf top -p
+	// <pid>`), which used to survive into the output verbatim: the reader was
+	// handed a command with a hole in it on the same screen that named the
+	// process. Substitution happens before the de-duplication so a filled-in
+	// generic command can collide with a targeted one and be dropped.
 	seen := map[string]bool{}
 	for _, c := range targeted {
 		seen[c] = true
 	}
 	out := append([]string{}, targeted...)
 	for _, g := range generic {
+		g = strings.ReplaceAll(g, "<pid>", p)
 		if !seen[g] {
+			seen[g] = true
 			out = append(out, g)
 		}
 	}
