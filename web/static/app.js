@@ -1073,6 +1073,19 @@ function memVal(kb) {
   return kb.toFixed(0) + "K";
 }
 
+// unwatchedNote states the residual coverage gap: a process holding a listening
+// socket that process accounting does not track at all, so this report has no
+// figure for it -- not even a flat row. Left unstated it reads as the change
+// page and this page contradicting each other, which is exactly how it was
+// found: the change page named a new port and its owning process, and this page
+// did not mention that process anywhere.
+function unwatchedNote(rep) {
+  const u = rep.unwatched_listeners || [];
+  if (!u.length) return "";
+  return `<div class="table-legend" style="margin-top:8px">\u25CF ${t("unwatched_listeners")} ` +
+    u.map((n) => `<code>${escapeHtml(n)}</code>`).join(" ") + `</div>`;
+}
+
 function renderProcDiff(rep) {
   if (rep.no_data) {
     $("#procResult").innerHTML =
@@ -1094,6 +1107,10 @@ function renderProcDiff(rep) {
 
   if (!active.length) {
     html += `<div class="no-finding" style="margin-top:10px">\u2705 ${t("no_significant_change")}</div>`;
+    // Still say it here. "No significant change" beside a change page that just
+    // named a new listening port is the contradiction the note exists to
+    // prevent, and this is the path where it reads worst.
+    html += unwatchedNote(rep);
     $("#procResult").innerHTML = html;
     return;
   }
@@ -1101,9 +1118,11 @@ function renderProcDiff(rep) {
   const trs = active.map((r) => {
     const v = PV[r.verdict] || PV.flat;
     const mark = r.restarted ? ` <span class="restart-tag">\u27F3</span>` : "";
+    // Why a 12 MB process with no measurable CPU is in this table at all.
+    const serves = r.listens ? ` <span class="listen-tag" title="${escapeHtml(t("listens_hint"))}">\u25CF</span>` : "";
     const inst = r.instances > 1 ? ` <code>${r.instances}\u00d7</code>` : "";
     return `<tr class="${v.cls}">
-      <td class="proc-name"><span class="p-dot">${v.icon}</span>${escapeHtml(r.name)}${mark}${inst}</td>
+      <td class="proc-name"><span class="p-dot">${v.icon}</span>${escapeHtml(r.name)}${mark}${serves}${inst}</td>
       <td>${pctVal(r.cpu_pct_a)}</td><td>${pctValApprox(r.cpu_pct_b, r.cpu_approx_b)}</td>
       <td class="delta-cell">${deltaValFrom(r.cpu_delta_pct, r.from_zero)}</td>
       <td>${memVal(r.rss_kb_a)}</td><td>${memVal(r.rss_kb_b)}</td>
@@ -1128,6 +1147,7 @@ function renderProcDiff(rep) {
         <th>${t("th_verdict")}</th>
       </tr></thead><tbody>${trs}</tbody></table>
     <div class="table-legend">${t("legend_ab")}</div></div>`;
+  html += unwatchedNote(rep);
 
   $("#procResult").innerHTML = html;
 }

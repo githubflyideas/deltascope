@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/githubflyideas/deltascope/internal/state"
@@ -51,6 +52,10 @@ func renderProcDiff(w io.Writer, d state.ProcDiff, color bool) {
 	fmt.Fprintf(w, "%s  (%d changed of %d tracked)\n", c(cBold, "== Process accounting =="), shown, len(d.Rows))
 	if shown == 0 {
 		fmt.Fprintln(w, c(cGray, "  no significant change"))
+		// Still say it. "No significant change" next to a change report that
+		// just named a new listening port is the contradiction this note
+		// exists to prevent, and it is at its worst on exactly this path.
+		unwatchedNote(w, c, d)
 		return
 	}
 
@@ -75,6 +80,12 @@ func renderProcDiff(w io.Writer, d state.ProcDiff, color bool) {
 		if r.Restarted {
 			mark = " \u27f3"
 		}
+		// The listening marker earns a row its place. A 12 MB process with no
+		// measurable CPU is in this table because it holds a port, and without
+		// the marker the reader is left wondering what it is doing here.
+		if r.Listens {
+			mark += " \u25cf"
+		}
 		line := fmt.Sprintf("  %s%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			r.Name, mark,
 			pct(r.CPUPctA), pctApprox(r.CPUPctB, r.CPUApproxB), deltaFrom(r.CPUDelta, r.FromZero),
@@ -83,6 +94,39 @@ func renderProcDiff(w io.Writer, d state.ProcDiff, color bool) {
 		fmt.Fprintln(tw, c(col, line))
 	}
 	tw.Flush()
+
+	if listensShown(d.Rows) {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, c(cGray, "  \u25cf = owns a listening socket"))
+	}
+	unwatchedNote(w, c, d)
+}
+
+// unwatchedNote states the residual coverage gap: a process holding a listening
+// socket that process accounting does not track at all, so this report has no
+// figure for it -- not even a flat row. The selection is the reason (a service
+// whitelist plus the heaviest processes by weight, and a new daemon is neither),
+// and an unstated reason reads as the change report and this report
+// contradicting each other.
+func unwatchedNote(w io.Writer, c func(string, string) string, d state.ProcDiff) {
+	if len(d.UnwatchedListeners) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "%s\n", c(cGray, fmt.Sprintf(
+		"  holds a listening socket but is not tracked here: %s",
+		strings.Join(d.UnwatchedListeners, ", "))))
+	fmt.Fprintln(w, c(cGray, "  (this section records a service whitelist plus the heaviest processes by weight)"))
+}
+
+// listensShown reports whether the table printed a listening marker, so the
+// legend appears only when there is something to explain.
+func listensShown(rows []state.ProcRow) bool {
+	for _, r := range rows {
+		if r.Verdict != state.PVFlat && r.Listens {
+			return true
+		}
+	}
+	return false
 }
 
 func pct(v *float64) string {

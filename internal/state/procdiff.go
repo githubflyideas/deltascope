@@ -51,6 +51,12 @@ type ProcRow struct {
 	// delta column is nonetheless flagged; without it the report looks
 	// like it flagged a row for no reason.
 	FromZero bool `json:"from_zero,omitempty"`
+	// Listens marks a process that owned a listening socket in a window it
+	// was seen in, according to the listen section captured beside the
+	// process section. It is why a row consuming almost nothing can still be
+	// reported as having appeared or gone, so the reader is not left to
+	// wonder what a 12 MB idle process is doing in the report.
+	Listens bool `json:"listens,omitempty"`
 }
 
 // ProcDiff is the full process comparison.
@@ -63,7 +69,19 @@ type ProcDiff struct {
 	BEnd     time.Time `json:"b_end"`
 	Rows     []ProcRow `json:"rows"`
 	Restarts []ProcRow `json:"restarts"`
-	Note     string    `json:"note,omitempty"`
+	// UnwatchedListeners names processes that own a listening socket and are
+	// absent from process accounting altogether, so this report holds no CPU
+	// or memory figure for them at all -- not even a flat row.
+	//
+	// It exists because of the contradiction a reader actually hit: the change
+	// report named a new listening port and the process holding it, the reader
+	// turned to process accounting to see what that process costs, and process
+	// accounting said nothing. The selection is the reason (a service
+	// whitelist plus the heaviest procTopN by weight, and a new daemon is
+	// neither), and an unstated reason reads as the two engines contradicting
+	// each other.
+	UnwatchedListeners []string `json:"unwatched_listeners,omitempty"`
+	Note               string   `json:"note,omitempty"`
 }
 
 const clockTicksPerSec = 100 // USER_HZ, fixed at 100 on all mainstream Linux
@@ -83,6 +101,41 @@ func procSection(s Snapshot) map[string]Item {
 		if sec.Name == "processes" {
 			return itemMap(sec)
 		}
+	}
+	return nil
+}
+
+// listenOwners is the set of process names owning a listening socket in a
+// snapshot, taken from the listen section that is captured beside the process
+// section on every snapshot. Nil when that section is absent or was skipped,
+// which is what an older stored snapshot and a host without `ss` look like.
+//
+// Read here, at comparison time, rather than folded into the process
+// collector's selection -- and that is the whole design decision.
+// `ss -lntuHp` reports the owning process only for sockets the capture had the
+// privilege to see, which is why the listen section is PrivSensitive. Choosing
+// WHICH processes to record on that basis would make the process section's key
+// set a function of who ran the capture, so a root baseline against a
+// service-user capture would report every small daemon as having appeared or
+// vanished -- the phantom add/remove class of bug, reintroduced for the sake of
+// a wider selection. Used at comparison time it can only upgrade the verdict of
+// a row whose presence changed for real, and no privilege difference can
+// manufacture that: what the process section contains does not depend on `ss`.
+//
+// Empty values are dropped. An unprivileged `ss` lists the socket and omits the
+// owner, so keeping "" would match nothing useful and match it eagerly.
+func listenOwners(s Snapshot) map[string]bool {
+	for _, sec := range s.Sections {
+		if sec.Name != "listen" || sec.Skipped != "" {
+			continue
+		}
+		owners := make(map[string]bool, len(sec.Items))
+		for _, it := range sec.Items {
+			if it.Value != "" {
+				owners[it.Value] = true
+			}
+		}
+		return owners
 	}
 	return nil
 }
@@ -139,6 +192,12 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 
 	elapsedA := a2.Taken.Sub(a1.Taken)
 	elapsedB := b2.Taken.Sub(b1.Taken)
+
+	// Who was serving. A process owning a listening socket is a service, and a
+	// service arriving or leaving is an event at any size -- which the weight
+	// bar below cannot see, because it ranks a presence change by how much the
+	// process consumes.
+	ownA, ownB := listenOwners(a2), listenOwners(b2)
 
 	// Uptime at the end of each window, used to date a process that did not
 	// exist at the start of it. Absent on older snapshots, in which case the
@@ -220,6 +279,7 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 			RSSKBB:     rssB,
 			Instances:  instB,
 			CPUApproxB: approxB,
+			Listens:    ownA[name] || ownB[name],
 		}
 		if inA && inB && startA > 0 && startB > startA {
 			row.Restarted = true
@@ -229,18 +289,19 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 		case !inA && inB:
 			// A process appearing is only a finding if it is substantial --
 			// a database that was not here yesterday, or a process now
-			// consuming real CPU/RSS. A desktop's churn of short-lived,
-			// D-Bus-activated helpers (goa-identity, gsd-*, transient
-			// Socket Process) enters and leaves on its own and is not an
-			// event. noteworthy() gates that; trivial appearances fall
-			// through to flat and are filtered from the report.
-			if noteworthyPresence(cpuB, rssB) {
+			// consuming real CPU/RSS -- or if it is serving. A desktop's
+			// churn of short-lived, D-Bus-activated helpers (goa-identity,
+			// gsd-*, transient Socket Process) enters and leaves on its own
+			// and is not an event. noteworthyPresence() gates that; trivial
+			// appearances fall through to flat and are filtered from the
+			// report.
+			if noteworthyPresence(cpuB, rssB, ownB[name]) {
 				row.Verdict = PVAppeared
 			} else {
 				row.Verdict = PVFlat
 			}
 		case inA && !inB:
-			if noteworthyPresence(cpuA, rssA) {
+			if noteworthyPresence(cpuA, rssA, ownA[name]) {
 				row.Verdict = PVGone
 			} else {
 				row.Verdict = PVFlat
@@ -259,20 +320,51 @@ func CompareProcesses(a1, a2, b1, b2 Snapshot, thresholdPct, minCPUPct, minRSSKB
 		}
 	}
 
+	// The residual gap, stated rather than left to look like a contradiction.
+	// A listening socket whose owner is not in the process section at all has
+	// no row here -- not even a flat one -- because the collector records a
+	// service whitelist plus the heaviest procTopN by weight, and a small new
+	// daemon is neither. Only the compare window is considered: a name that
+	// stopped listening is already covered by the listen section's own diff.
+	for name := range ownB {
+		if !names[name] {
+			d.UnwatchedListeners = append(d.UnwatchedListeners, name)
+		}
+	}
+	sort.Strings(d.UnwatchedListeners)
+
 	sortProcRows(d.Rows)
 	sort.Slice(d.Restarts, func(i, j int) bool { return d.Restarts[i].Name < d.Restarts[j].Name })
 	return d
 }
 
 // noteworthyPresence reports whether a process's mere appearance or
-// disappearance is worth showing. The bar is deliberately well above the
-// significance floors: a process only "appearing" carries one fact (it
-// exists now), so it has to be substantial -- a quarter-core of CPU or a
-// quarter-gig of RSS -- to outweigh the desktop's constant churn of tiny
-// transient helpers. Long-running services people care about (a database
-// that vanished) clear this easily; a 9 MB identity broker that lives for
-// thirty seconds does not.
-func noteworthyPresence(cpu, rss *float64) bool {
+// disappearance is worth showing. There are two ways to qualify, and they
+// answer different questions.
+//
+// By weight: a quarter-core of CPU or a quarter-gig of RSS. The bar is
+// deliberately well above the significance floors, because a process only
+// "appearing" carries one fact -- it exists now -- so it has to be substantial
+// to outweigh the desktop's constant churn of tiny transient helpers. A 9 MB
+// identity broker that lives for thirty seconds does not clear it.
+//
+// By serving: the process owned a listening socket. This exists because the
+// weight bar asks the wrong question of a service. A 12 MB Go daemon that binds
+// a port is the ordinary shape of a new service, not churn -- and the report
+// had a reader hit exactly that: change accounting named the new port and the
+// process holding it, process accounting said nothing about that process, and
+// two engines looking at the same machine appeared to contradict each other.
+// The weight bar was built for the anonymous helpers nothing else in the
+// snapshot mentions; a process the listen section names is not one of those.
+//
+// Membership in procWhitelist deliberately does NOT qualify. That list holds
+// generic runtimes (python3, node, java, ruby) whose one-off invocations are
+// precisely the churn the bar exists to suppress. A listening socket is a fact
+// about what the process is doing; a name is a guess about what it is.
+func noteworthyPresence(cpu, rss *float64, serves bool) bool {
+	if serves {
+		return true
+	}
 	if cpu != nil && *cpu >= presenceCPUPct {
 		return true
 	}
@@ -281,6 +373,16 @@ func noteworthyPresence(cpu, rss *float64) bool {
 	}
 	return false
 }
+
+// SubstantialInA reports whether the row's baseline-window CPU or memory clears
+// the presence weight bar on its own, ignoring whether it was serving.
+//
+// Exported for the recovery veto, which must not fire on the rows the
+// listening-socket qualifier added. That qualifier exists so a small service
+// arriving or leaving gets reported; it says nothing about whether the process
+// consumed enough for its departure to explain a fall in a machine-level
+// metric, which is the only question the veto asks.
+func (r ProcRow) SubstantialInA() bool { return noteworthyPresence(r.CPUPctA, r.RSSKBA, false) }
 
 const (
 	presenceCPUPct = 25     // percent of one core

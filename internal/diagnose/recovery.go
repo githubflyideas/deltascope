@@ -70,9 +70,7 @@ func findRecovery(blocks []pcp.TriageBlock, pd state.ProcDiff) *recovery {
 	// not there in window B, "it is using less" is the one explanation of the
 	// fall that is definitely wrong, and we cannot tell from here whether the
 	// improvement we found is a separate real one or the same event seen from
-	// another angle. PVGone is already gated on the process having been
-	// substantial (a quarter core or 256 MB), so every row it appears on is
-	// worth staying quiet about.
+	// another angle.
 	if gone := goneProcess(pd.Rows); gone != nil {
 		return nil
 	}
@@ -106,9 +104,17 @@ func findRecovery(blocks []pcp.TriageBlock, pd state.ProcDiff) *recovery {
 
 // goneProcess returns the first substantial process present in the baseline
 // window and absent from the compare window.
+//
+// The weight check is explicit rather than inherited from the verdict. PVGone
+// is also reached by a process that merely owned a listening socket, at any
+// size, so that a small service leaving is reported -- and a 12 MB daemon
+// stopping cannot explain a fall in a machine-level CPU or memory metric, which
+// is the only thing this veto is guarding against. Leaving the check implicit
+// would silence every legitimate recovery claim on a host where any small
+// service happened to stop in the same window.
 func goneProcess(rows []state.ProcRow) *state.ProcRow {
 	for i := range rows {
-		if rows[i].Verdict == state.PVGone {
+		if rows[i].Verdict == state.PVGone && rows[i].SubstantialInA() {
 			return &rows[i]
 		}
 	}

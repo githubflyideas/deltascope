@@ -333,6 +333,12 @@ tr[hidden] { display: none; }
 .restart-chip { font-family: var(--mono); font-size: 14px; background: var(--bg); padding: 3px 10px; border-radius: 999px; }
 .restart-chip em { color: var(--muted); font-style: normal; }
 .restart-tag { color: #b28dff; font-weight: 700; cursor: help; }
+/* Marks a row that is in the table because the process holds a listening
+   socket, not because it consumed enough to clear the weight bar. It has to
+   read as an annotation on the name rather than part of it, so it is small and
+   dimmed -- and blue-green, kept away from the verdict colours, because it says
+   nothing about whether the change is good or bad. */
+.listen-tag { color: #3fb6a8; font-size: 11px; cursor: help; vertical-align: middle; }
 .report .approx { border-bottom: 1px dotted currentColor; cursor: help; opacity: .9; }
 /* A rise from an idle baseline has no percentage to show. This label sits
    in the delta column in place of a number, so it must read as an
